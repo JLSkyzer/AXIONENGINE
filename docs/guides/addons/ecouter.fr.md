@@ -45,3 +45,38 @@ registrar.registerInteractionListener(new InteractionListener() {
   seulement prévenu, avec la cause `ejected`.
 - Une **exception** est journalisée en nommant ton mod, et ne refuse rien. Après `content.listener_strikes`
   exceptions de suite (20), l'écouteur est **désactivé pour la session** (`E-1012`).
+
+## Les événements de contenu
+
+Une definition déclare ses événements au schéma 7, et à qui chacun part :
+
+```json
+"events": {
+  "klaxon": { "replicate": "occupants" },
+  "portiere_claque": { "replicate": "all" },
+  "compteur": { "replicate": "none" }
+}
+```
+
+Ils s'émettent par l'action `{ "emit_event": { "event": "portiere_claque", "value": 1 } }` d'une liste
+d'interaction, par une interaction `"action": "emit_event", "event": "klaxon"`, ou par ton mod :
+`assembly.emit("klaxon", 1.0)`. Un événement que la definition ne déclare pas est refusé, en se nommant.
+
+```java
+registrar.registerContentEventListener(new ContentEventListener() {
+    @Override
+    public void onEvent(Assembly assembly, String event, double value) {
+        // au serveur, au tick de l'émission
+    }
+
+    @Override
+    public void onClientEvent(Entity assembly, String event, double value) {
+        // chez un client à qui l'événement part : un son, des particules
+    }
+});
+```
+
+- `replicate` : `all` (par défaut) aux joueurs qui suivent l'assembly, `occupants` à ses seuls occupants, `none` au
+  serveur seul.
+- Un événement est un **instant** : il ne se sauvegarde pas. Pour un état qui dure, prends une variable.
+- Un joueur en reçoit au plus `net.events_per_player_tick` par tick (16).

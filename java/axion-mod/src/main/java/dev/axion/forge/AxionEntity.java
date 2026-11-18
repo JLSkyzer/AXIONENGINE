@@ -607,7 +607,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * La liste ne suit qu'une action qui a eu son effet ; {@code actions} n'en a pas d'autre.
      */
     private boolean play(Seating.Interaction interaction, Player player) {
-        boolean done = interaction.action() == Seating.Action.ACTIONS || playAction(interaction, player);
+        boolean done = interaction.action() == Seating.Action.ACTIONS
+                || (interaction.action() == Seating.Action.EMIT_EVENT ? !interaction.actions().isEmpty()
+                        : playAction(interaction, player));
         if (done && !interaction.actions().isEmpty()) {
             runActions(interaction.actions(), "interaction (" + player.getName().getString() + ")");
         }
@@ -669,6 +671,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 boolean hidden = current != null && current.hidden();
                 float emissive = current == null ? Float.NaN : current.emissive();
                 float[] color = current == null ? null : current.color();
+                if (action.kind() == Seating.NodeActionKind.EMIT) {
+                    emitEvent(action.name(), action.value(), writer);
+                    continue;
+                }
                 int swapped = current == null ? -1 : current.swapped();
                 switch (action.kind()) {
                     case HIDE -> hidden = true;
@@ -680,6 +686,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                         if (action.color() != null) {
                             color = action.color();
                         }
+                    }
+                    case EMIT -> {
+                        // Traité plus haut : un événement ne change aucun node.
                     }
                     case SWAP -> {
                         // Le remplaçant d'avant retourne à l'ombre ; le nouveau se montre, l'original se cache.
@@ -701,6 +710,53 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return;
         }
         nodeStates = next;
+    }
+
+    /** Les événements que la definition déclare, relus quand elle change. */
+    private dev.axion.definition.ContentEvents contentEvents = dev.axion.definition.ContentEvents.NONE;
+    private Definition eventsOf;
+
+    /** {@return les événements de contenu que la definition de l'assembly déclare (ADR-174 D2)} */
+    public dev.axion.definition.ContentEvents contentEvents() {
+        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        if (definition == null) {
+            return dev.axion.definition.ContentEvents.NONE;
+        }
+        if (definition != eventsOf) {
+            contentEvents = dev.axion.definition.ContentEvents.of(definition.root());
+            eventsOf = definition;
+        }
+        return contentEvents;
+    }
+
+    /**
+     * Émet un événement de contenu (serveur, ADR-174 D2) : les écouteurs des mods le reçoivent tout de suite, et les
+     * joueurs que sa déclaration désigne avec le snapshot de ce tick.
+     *
+     * @param event son nom
+     * @param value sa valeur
+     * @param writer qui l'émet, pour le journal
+     * @throws IllegalArgumentException si la definition ne le déclare pas
+     */
+    void emitEvent(String event, double value, String writer) {
+        AuthoritativeThread.require();
+        dev.axion.definition.ContentEvents declared = contentEvents();
+        int rank = declared.indexOf(event);
+        if (rank < 0) {
+            throw new IllegalArgumentException("événement « " + event + " » inconnu de " + definitionId + " ; elle"
+                    + " déclare : " + String.join(", ", declared.names()));
+        }
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException("événement « " + event + " » : valeur " + value + " non finie");
+        }
+        dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+        ContentListeners.notify(ContentListeners.events(), listener -> listener.onEvent(view, event, value),
+                "l'événement " + event + " de " + writer);
+        dev.axion.definition.ContentEvents.Replicate replicate = declared.declared().get(rank).replicate();
+        if (replicate != dev.axion.definition.ContentEvents.Replicate.NONE) {
+            dev.axion.forge.net.AxionNetwork.queueEvent(this, rank, value,
+                    replicate == dev.axion.definition.ContentEvents.Replicate.OCCUPANTS);
+        }
     }
 
     /** {@return l'état d'un node, caché ou montré, le reste gardé} */

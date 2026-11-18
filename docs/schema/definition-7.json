@@ -1695,6 +1695,23 @@
                   ],
                   "additionalProperties": false
                 },
+                "emit_event": {
+                  "type": "object",
+                  "properties": {
+                    "event": {
+                      "type": "string",
+                      "pattern": "^[ -~]{1,64}$",
+                      "x-axion-refers": "event"
+                    },
+                    "value": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "event"
+                  ],
+                  "additionalProperties": false
+                },
                 "set_material_param": {
                   "type": "object",
                   "properties": {
@@ -1725,6 +1742,11 @@
             "minItems": 1,
             "maxItems": 16,
             "x-axion-code": "E-3050"
+          },
+          "event": {
+            "type": "string",
+            "pattern": "^[ -~]{1,64}$",
+            "x-axion-refers": "event"
           }
         },
         "required": [
@@ -1795,6 +1817,30 @@
         "required": [
           "type"
         ],
+        "additionalProperties": false
+      },
+      "maxProperties": 64,
+      "x-axion-code": "E-3050"
+    },
+    "events": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[ -~]{1,64}$",
+        "x-axion-declares": "event",
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "replicate": {
+            "type": "string",
+            "enum": [
+              "all",
+              "occupants",
+              "none"
+            ]
+          }
+        },
         "additionalProperties": false
       },
       "maxProperties": 64,

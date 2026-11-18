@@ -49,6 +49,11 @@ fallback asset (`axion:builtin/missing`): the missing part is visible, and nothi
 Block → material mappings travel with the registry: a client that predicts its vehicle needs them for contact with
 the ground ([ADR-168](../decisions/ADR-168.md), clarification 6d-1).
 
+**Content events** — a horn, a door slamming — are sent after the snapshot of the same tick (`S2C_Event`, protocol 13,
+[ADR-174](../decisions/ADR-174.md)): to the players who track the assembly, or to its occupants only, as the definition
+says. A player receives at most `net.events_per_player_tick` per tick (16); beyond, they are not sent, and the server
+log says so once per second.
+
 ## Prediction of the driven vehicle
 
 A player who drives a vehicle on a remote server sees it answer their keys at once: their client simulates that vehicle

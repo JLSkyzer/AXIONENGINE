@@ -510,6 +510,13 @@ final class DefinitionChecker {
                     && interaction.get("animation") == null) {
                 invalid(path, "l'action « " + action + " » nomme le clip qu'elle joue");
             }
+            if ("emit_event".equals(action) && version >= 7 && interaction.get("event") == null) {
+                invalid(path, "l'action « emit_event » nomme l'événement qu'elle émet, déclaré dans « events »"
+                        + " (ADR-174 D2)");
+            }
+            if (interaction.get("event") != null && !"emit_event".equals(action)) {
+                invalid(path + ".event", "« event » ne sert qu'à l'action « emit_event »");
+            }
             if ("actions".equals(action) && interaction.get("actions") == null) {
                 invalid(path, "l'action « actions » joue la liste « actions », qu'elle déclare (ADR-174 D3)");
             }
@@ -535,8 +542,9 @@ final class DefinitionChecker {
      */
     private void checkNodeAction(JsonObject step, String path) {
         if (step.size() != 1) {
-            invalid(path, "une action est un objet à une seule clé — hide_node, show_node, swap_mesh ou"
-                    + " set_material_param —, pour que la liste garde son ordre ; " + step.size() + " clés ici");
+            invalid(path, "une action est un objet à une seule clé — hide_node, show_node, swap_mesh,"
+                    + " set_material_param ou emit_event —, pour que la liste garde son ordre ; " + step.size()
+                    + " clés ici");
             return;
         }
         if (step.get("swap_mesh") instanceof JsonObject swap && swap.get("with") != null

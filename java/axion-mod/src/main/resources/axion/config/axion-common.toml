@@ -134,6 +134,7 @@ digest_interval_ticks = 40        # 0..
 max_deform_snapshots_per_second = 4# 0..
 max_deform_snapshots_per_second_fallback = 16# 0..
 divergence_tolerance = 3          # 1..32
+events_per_player_tick = 16       # 1..256
 
 [persistence]
 max_bytes_per_assembly = 65536    # 0..

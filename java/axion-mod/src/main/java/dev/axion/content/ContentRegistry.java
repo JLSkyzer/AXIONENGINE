@@ -81,6 +81,13 @@ public final class ContentRegistry {
     private final List<ListenerEntry<dev.axion.api.assembly.SeatListener>> seatListeners = new ArrayList<>();
     private final List<ListenerEntry<dev.axion.api.assembly.InteractionListener>> interactionListeners =
             new ArrayList<>();
+    /** Les écouteurs des événements de contenu (ADR-174 D2), avec leur mod, dans l'ordre d'enregistrement. */
+    private final List<ListenerEntry<dev.axion.api.assembly.ContentEventListener>> eventListeners = new ArrayList<>();
+
+    /** {@return les écouteurs des événements de contenu enregistrés, dans l'ordre (ADR-174 D2)} */
+    public List<ListenerEntry<dev.axion.api.assembly.ContentEventListener>> eventListeners() {
+        return List.copyOf(eventListeners);
+    }
 
     /**
      * Un écouteur et le mod qui l'a enregistré.
@@ -412,6 +419,12 @@ public final class ContentRegistry {
         public void registerSeatListener(dev.axion.api.assembly.SeatListener listener) {
             ensureOpen();
             seatListeners.add(new ListenerEntry<>(modId, Objects.requireNonNull(listener, "listener")));
+        }
+
+        @Override
+        public void registerContentEventListener(dev.axion.api.assembly.ContentEventListener listener) {
+            ensureOpen();
+            eventListeners.add(new ListenerEntry<>(modId, Objects.requireNonNull(listener, "listener")));
         }
 
         @Override

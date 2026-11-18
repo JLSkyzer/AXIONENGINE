@@ -482,5 +482,11 @@ public final class ForgeAxionApi implements AxionApi {
             AuthoritativeThread.require();
             return entity.sources().applyAsDouble(name);
         }
+
+        @Override
+        public void emit(String event, double value) {
+            AuthoritativeThread.require();
+            entity.emitEvent(java.util.Objects.requireNonNull(event, "event"), value, "API");
+        }
     }
 }

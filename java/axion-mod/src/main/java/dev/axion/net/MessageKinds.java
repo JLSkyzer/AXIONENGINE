@@ -35,6 +35,12 @@ public final class MessageKinds {
      */
     public static final int CORRECTION = 8;
 
+    /**
+     * {@code S2C_Event} (ADR-174 D2) : les événements de contenu qu'un tick a émis vers ce joueur, après son snapshot.
+     * Ajouté par le protocole 13.
+     */
+    public static final int EVENT = 9;
+
     private MessageKinds() {
         throw new AssertionError("classe de constantes, non instanciable");
     }

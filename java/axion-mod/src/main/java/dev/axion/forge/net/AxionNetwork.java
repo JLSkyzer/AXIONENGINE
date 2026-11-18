@@ -202,6 +202,10 @@ public final class AxionNetwork {
             if (session.corrections() != corrections) {
                 clientCorrections.accept(context.getNetworkManager(), session.lastCorrection());
             }
+            List<dev.axion.net.EventMessage.Event> events = session.drainEvents();
+            if (!events.isEmpty()) {
+                clientEvents.accept(events);
+            }
             if (ack != null) {
                 AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(ack), context.getNetworkManager(),
                         NetworkDirection.PLAY_TO_SERVER);
@@ -259,6 +263,54 @@ public final class AxionNetwork {
         }
     }
 
+    /** Le dernier tick où une borne des événements a été journalisée : une fois par seconde au plus. */
+    private static long eventsDropLogged = Long.MIN_VALUE;
+
+    /**
+     * Pose un événement de contenu émis à ce tick (serveur, ADR-174 D2) : vers les joueurs qui suivent l'assembly, ou
+     * vers ses seuls occupants. Il part en fin de tick, après le snapshot. Au-delà de {@code net.events_per_player_tick}
+     * pour un joueur, il ne part pas ; le compte le dit, et le journal une fois par seconde.
+     *
+     * @param assembly l'assembly qui l'émet
+     * @param rank son rang dans les événements de la definition
+     * @param value sa valeur
+     * @param occupantsOnly vrai pour {@code replicate: occupants}
+     */
+    public static void queueEvent(AxionEntity assembly, int rank, double value, boolean occupantsOnly) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        if (runtime == null || runtime.outcome() == null || SYNCS.isEmpty()) {
+            return;
+        }
+        int limit = (int) runtime.outcome().config().getInt("net.events_per_player_tick");
+        dev.axion.net.EventMessage.Event event = new dev.axion.net.EventMessage.Event(assembly.getId(), rank, value);
+        List<ServerPlayer> targets = new ArrayList<>();
+        if (occupantsOnly) {
+            for (Entity passenger : assembly.getPassengers()) {
+                if (passenger instanceof ServerPlayer player) {
+                    targets.add(player);
+                }
+            }
+        } else if (assembly.getServer() != null) {
+            for (ServerPlayer player : assembly.getServer().getPlayerList().getPlayers()) {
+                PlayerSync sync = SYNCS.get(player.getUUID());
+                if (sync != null && sync.tracked().contains(assembly.getId())) {
+                    targets.add(player);
+                }
+            }
+        }
+        for (ServerPlayer player : targets) {
+            PlayerSync sync = SYNCS.get(player.getUUID());
+            if (sync != null && !sync.event(event, limit)) {
+                long tick = assembly.getServer() == null ? 0 : assembly.getServer().getTickCount();
+                if (tick - eventsDropLogged >= 20) {
+                    eventsDropLogged = tick;
+                    LOGGER.warn("AXION : événements de contenu retenus pour {} : plus de {} à ce tick"
+                            + " (net.events_per_player_tick)", player.getName().getString(), limit);
+                }
+            }
+        }
+    }
+
     /**
      * Chez le client : envoie les entrées de ce tick (ADR-158 D4).
      *
@@ -301,6 +353,20 @@ public final class AxionNetwork {
     public static void installClientCorrections(
             java.util.function.BiConsumer<Connection, dev.axion.net.CorrectionMessage> sink) {
         clientCorrections = sink;
+    }
+
+    /** Ce que le client fait des événements de contenu reçus (ADR-174 D2) ; rien tant que son code ne l'a pas posé. */
+    private static volatile java.util.function.Consumer<List<dev.axion.net.EventMessage.Event>> clientEvents =
+            events -> { };
+
+    /**
+     * Pose ce que le client fait des événements de contenu reçus (ADR-174 D2). Appelé par le code du client, à son
+     * démarrage.
+     *
+     * @param sink appelé sur le thread de Netty, avec les événements d'un message
+     */
+    public static void installClientEvents(java.util.function.Consumer<List<dev.axion.net.EventMessage.Event>> sink) {
+        clientEvents = sink;
     }
 
     /**
@@ -419,6 +485,11 @@ public final class AxionNetwork {
                     return new SnapshotSender.Candidate(handle, state, SnapshotSender.Frequency.of(state), distance);
                 }, SEQUENCE.getAndIncrement() & Integer.MAX_VALUE);
                 for (byte[] frame : frames) {
+                    AxionChannel.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                            new ChannelFrames.PlayToClient(frame));
+                }
+                // ADR-174 D2 : les événements de contenu de ce tick, après le snapshot.
+                for (byte[] frame : sync.eventFrames(SEQUENCE.getAndIncrement() & Integer.MAX_VALUE)) {
                     AxionChannel.CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
                             new ChannelFrames.PlayToClient(frame));
                 }

@@ -189,6 +189,7 @@ alors ignorée (R-1830).
 | `max_deform_snapshots_per_second` | entier | `4` | `0..` | non | non | Plafond de snapshots de déformation par seconde en réplication par événements. |
 | `max_deform_snapshots_per_second_fallback` | entier | `16` | `0..` | non | non | Plafond de snapshots de déformation par seconde en mode SNAPSHOT, quand la reconstruction déterministe n'est pas garantie (5.12bis). |
 | `divergence_tolerance` | entier | `3` | `1..32` | non | non | Nombre de divergences d'empreinte tolérées avant bascule de RECONSTRUCT vers SNAPSHOT. |
+| `events_per_player_tick` | entier | `16` | `1..256` | non | non | Événements de contenu qu'un tick du serveur envoie au plus à un joueur ; au-delà, ils ne partent pas, comptés et journalisés. |
 
 ### `[persistence]`
 

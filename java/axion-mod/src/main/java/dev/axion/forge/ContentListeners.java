@@ -24,6 +24,7 @@ final class ContentListeners {
 
     private static volatile List<ListenerEntry<SeatListener>> seats = List.of();
     private static volatile List<ListenerEntry<InteractionListener>> interactions = List.of();
+    private static volatile List<ListenerEntry<dev.axion.api.assembly.ContentEventListener>> events = List.of();
     private static final Map<Object, Integer> strikes = new HashMap<>();
     private static final Set<Object> disabled = new HashSet<>();
     private static volatile int maxStrikes = 20;
@@ -42,6 +43,43 @@ final class ContentListeners {
         interactions = List.copyOf(interactionListeners);
         strikes.clear();
         disabled.clear();
+    }
+
+    /**
+     * Publie les écouteurs des événements de contenu (ADR-174 D2).
+     *
+     * @param eventListeners les écouteurs, dans l'ordre
+     */
+    static synchronized void publishEvents(List<ListenerEntry<dev.axion.api.assembly.ContentEventListener>> eventListeners) {
+        events = List.copyOf(eventListeners);
+    }
+
+    /** {@return les écouteurs des événements de contenu} */
+    static List<ListenerEntry<dev.axion.api.assembly.ContentEventListener>> events() {
+        return events;
+    }
+
+    /**
+     * Prévient chaque écouteur d'un fait arrivé chez le client, sur son thread principal (ADR-174 D2).
+     *
+     * @param entries les écouteurs
+     * @param notice ce qu'on leur dit
+     * @param what ce qui a eu lieu, pour le journal
+     * @param <T> leur type
+     */
+    static <T> void notifyClient(List<ListenerEntry<T>> entries, java.util.function.Consumer<T> notice, String what) {
+        AuthoritativeThread.requireClient();
+        for (ListenerEntry<T> entry : entries) {
+            if (disabled.contains(entry.listener())) {
+                continue;
+            }
+            try {
+                notice.accept(entry.listener());
+                strikes.remove(entry.listener());
+            } catch (RuntimeException | LinkageError failure) {
+                fault(entry, what, failure);
+            }
+        }
     }
 
     /**

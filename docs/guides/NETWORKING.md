@@ -49,6 +49,11 @@ l'asset de secours (`axion:builtin/missing`) : la pièce manquante se voit, et r
 Les correspondances bloc → matériau voyagent avec le registre : le client qui prédit son véhicule en a besoin pour
 le contact avec le terrain ([ADR-168](../decisions/ADR-168.md), précision 6d-1).
 
+Les **événements de contenu** — un klaxon, une portière qui claque — partent après le snapshot du même tick
+(`S2C_Event`, protocole 13, [ADR-174](../decisions/ADR-174.md)) : aux joueurs qui suivent l'assembly, ou à ses seuls
+occupants, selon la definition. Un joueur en reçoit au plus `net.events_per_player_tick` par tick (16) ; au-delà, ils
+ne partent pas, et le journal du serveur le dit une fois par seconde.
+
 ## La prédiction du véhicule piloté
 
 Un joueur qui conduit un véhicule, sur un serveur distant, le voit répondre à ses touches tout de suite : son client

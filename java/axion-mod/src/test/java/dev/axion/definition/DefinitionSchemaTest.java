@@ -689,6 +689,30 @@ class DefinitionSchemaTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D2 : au schéma 7, une definition déclare ses événements ; emit_event les nomme")
+    void lesEvenementsDuSchemaSept() {
+        JsonObject avecEvenements = septAvec("[{\"emit_event\": {\"event\": \"klaxon\", \"value\": 2}}]", "actions");
+        avecEvenements.add("events", JsonParser.parseString("{\"klaxon\": {\"replicate\": \"occupants\"},"
+                + " \"porte\": {}}"));
+        assertDoesNotThrow(() -> read(avecEvenements));
+        assertEquals(java.util.List.of("klaxon", "porte"), ContentEvents.of(avecEvenements).names(),
+                "dans l'ordre de la definition");
+        assertEquals(ContentEvents.Replicate.ALL, ContentEvents.of(avecEvenements).declared().get(1).replicate(),
+                "à tous par défaut");
+
+        JsonObject inconnu = septAvec("[{\"emit_event\": {\"event\": \"sirene\"}}]", "actions");
+        inconnu.add("events", JsonParser.parseString("{\"klaxon\": {}}"));
+        assertThrows(DefinitionException.class, () -> read(inconnu), "un événement non déclaré");
+
+        JsonObject interaction = septAvec(null, "emit_event");
+        interaction.add("events", JsonParser.parseString("{\"klaxon\": {}}"));
+        assertEquals("$.interaction[0]", assertThrows(DefinitionException.class, () -> read(interaction)).path(),
+                "au schéma 7, l'interaction emit_event nomme son événement");
+        interaction.getAsJsonArray("interaction").get(0).getAsJsonObject().addProperty("event", "klaxon");
+        assertDoesNotThrow(() -> read(interaction));
+    }
+
+    @Test
     @DisplayName("ADR-174 D3 : une action à deux clés, une émission ou une teinte hors bornes, une liste absente : refusées")
     void lesActionsMalFormeesSontRefusees() {
         DefinitionException deuxCles = assertThrows(DefinitionException.class, () -> read(septAvec(

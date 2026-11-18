@@ -139,6 +139,19 @@ public interface ContentRegistrar {
     }
 
     /**
+     * Enregistre un écouteur des événements de contenu (ADR-174 D2, CAP-02) : au serveur, chaque événement émis ; chez
+     * un client, ceux qui lui sont envoyés. Les écouteurs sont appelés dans l'ordre des mods, puis de leur
+     * enregistrement.
+     *
+     * @param listener l'écouteur
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void registerContentEventListener(dev.axion.api.assembly.ContentEventListener listener) {
+        throw new UnsupportedOperationException("registerContentEventListener : ce registraire ne suit pas les"
+                + " événements");
+    }
+
+    /**
      * Enregistre un écouteur des interactions (ADR-174 D1, CAP-11) : il suit chaque interaction d'un joueur sur le
      * serveur, et peut en refuser. Les écouteurs sont appelés dans l'ordre des mods, puis de leur enregistrement.
      *

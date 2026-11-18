@@ -169,6 +169,13 @@ public final class ClientSession {
             } catch (MalformedPacketException error) {
                 journal.add(error.report("correction"));
             }
+        } else if (kind == MessageKinds.EVENT) {
+            // ADR-174 D2 : les événements de contenu de ce tick, que le client relaie à ses écouteurs.
+            try {
+                receivedEvents.addAll(EventMessage.decode(message).events());
+            } catch (MalformedPacketException error) {
+                journal.add(error.report("événements"));
+            }
         } else if (kind == MessageKinds.REGISTRY) {
             applyRegistry(message, "registre en jeu");
         } else {
@@ -183,6 +190,16 @@ public final class ClientSession {
      */
     public CorrectionMessage lastCorrection() {
         return lastCorrection;
+    }
+
+    /** Les événements de contenu reçus et pas encore relayés (ADR-174 D2). */
+    private final List<EventMessage.Event> receivedEvents = new java.util.ArrayList<>();
+
+    /** {@return les événements de contenu reçus depuis le dernier appel, dans l'ordre (ADR-174 D2)} */
+    public synchronized List<EventMessage.Event> drainEvents() {
+        List<EventMessage.Event> drained = List.copyOf(receivedEvents);
+        receivedEvents.clear();
+        return drained;
     }
 
     /** {@return les corrections reçues depuis la connexion} */

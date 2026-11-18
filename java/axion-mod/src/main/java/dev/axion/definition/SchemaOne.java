@@ -165,6 +165,11 @@ final class SchemaOne {
             root.opt("variables",
                     new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(), Variables.MAX));
         }
+        if (version >= 7) {
+            // ADR-174 D2 : les événements de contenu, et à qui chacun part.
+            root.opt("events", new Dict(new TextRule.Declares(NameCategory.EVENT),
+                    obj().opt("replicate", oneOf("all", "occupants", "none")).build(), ContentEvents.MAX));
+        }
         if (version >= 4) {
             // ADR-167 D2 : la plage qu'un réglage peut donner à chaque paramètre, dans son unité. Le nom du paramètre et
             // la base que la plage doit contenir se vérifient avec la definition entière (Tuning.check).
@@ -675,8 +680,10 @@ final class SchemaOne {
                     .opt("distance", new Num(0.1, 16, false, false));
         }
         if (version >= 7) {
-            // ADR-174 D3 : ce que l'interaction fait ensuite, dans l'ordre, au même tick.
-            interaction.opt("actions", new Arr(nodeAction(), 1, MAX_ACTIONS, true));
+            // ADR-174 D3 : ce que l'interaction fait ensuite, dans l'ordre, au même tick ; D2 : l'événement
+            // qu'emit_event émet, sa valeur dans « value ».
+            interaction.opt("actions", new Arr(nodeAction(), 1, MAX_ACTIONS, true))
+                    .opt("event", refers(NameCategory.EVENT));
         }
         return interaction.build();
     }
@@ -696,6 +703,10 @@ final class SchemaOne {
                 .opt("swap_mesh", obj()
                         .req("node", refers(NameCategory.NODE))
                         .opt("with", refers(NameCategory.NODE))
+                        .build())
+                .opt("emit_event", obj()
+                        .req("event", refers(NameCategory.EVENT))
+                        .opt("value", number())
                         .build())
                 .opt("set_material_param", obj()
                         .req("node", refers(NameCategory.NODE))

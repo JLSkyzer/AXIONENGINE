@@ -139,4 +139,55 @@ public final class EcouteursGameTests {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * ADR-174 D2 : un événement que l'interaction émet, puis un autre que l'API émet, arrivent aux écouteurs du serveur,
+     * avec leur valeur ; un événement que la definition ne déclare pas est refusé, en se nommant.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr174_LesEvenementsArriventAuxEcouteurs(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, DEFINITION, new Vec3(4.5, DESSUS_DALLE, 4.5),
+                new float[] {0f, 0f, 0f, 1f});
+        ServerPlayer joueur = SiegesGameTests.joueur(helper, "evenements");
+        List<String> recus = new ArrayList<>();
+        dev.axion.api.assembly.ContentEventListener ecoute = new dev.axion.api.assembly.ContentEventListener() {
+            @Override
+            public void onEvent(Assembly a, String event, double value) {
+                if (a.entity() == assembly) {
+                    recus.add(event + "=" + value);
+                }
+            }
+        };
+        List<ListenerEntry<dev.axion.api.assembly.ContentEventListener>> avant = ContentListeners.events();
+        List<ListenerEntry<dev.axion.api.assembly.ContentEventListener>> avec = new ArrayList<>(avant);
+        avec.add(new ListenerEntry<>("essai", ecoute));
+        ContentListeners.publishEvents(avec);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    try {
+                        helper.assertTrue(assembly.contentEvents().names().equals(List.of("porte", "klaxon", "secret")),
+                                "événements : " + assembly.contentEvents().names());
+                        helper.assertTrue(SiegesGameTests.cliquer(assembly, joueur, 2f, 0.5f, 0f)
+                                == InteractionResult.CONSUME, "le clic joue ses actions");
+                        helper.assertTrue(recus.equals(List.of("porte=2.0")), "l'action emit_event : " + recus);
+                        Assembly vue = dev.axion.api.AxionApi.get().assemblies().byEntity(assembly).orElseThrow();
+                        vue.emit("secret", 7.5);
+                        helper.assertTrue(recus.equals(List.of("porte=2.0", "secret=7.5")),
+                                "l'API émet, un événement replicate: none compris : " + recus);
+                        boolean refuse = false;
+                        try {
+                            vue.emit("sirene", 1.0);
+                        } catch (IllegalArgumentException attendu) {
+                            refuse = attendu.getMessage().contains("sirene");
+                        }
+                        helper.assertTrue(refuse, "un événement non déclaré est refusé, en se nommant");
+                    } finally {
+                        ContentListeners.publishEvents(avant);
+                    }
+                })
+                .thenSucceed();
+    }
 }

@@ -99,6 +99,7 @@ pub const SINGULARS: &[(&str, &str)] = &[
     ("collider_variants", "collider_variant"),
     ("collision_proxies", "collision_proxy"),
     ("damage_zones", "damage_zone"),
+    ("events", "event"),
     ("gauges", "gauge"),
     ("joints", "joint"),
     ("modifiers", "modifier"),

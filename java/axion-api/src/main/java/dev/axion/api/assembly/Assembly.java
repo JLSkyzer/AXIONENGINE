@@ -91,4 +91,18 @@ public interface Assembly {
     default double source(String name) {
         throw new UnsupportedOperationException("source : cette assembly ne lit pas les sources procédurales");
     }
+
+    /**
+     * Émet un événement de contenu que sa definition déclare (ADR-174 D2) : les écouteurs du serveur le reçoivent au
+     * tick, et les joueurs que sa déclaration désigne avec le snapshot suivant.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755).
+     *
+     * @param event son nom dans {@code events}
+     * @param value sa valeur
+     * @throws IllegalArgumentException si la definition ne déclare pas cet événement
+     */
+    default void emit(String event, double value) {
+        throw new UnsupportedOperationException("emit : cette assembly n'émet pas d'événements");
+    }
 }

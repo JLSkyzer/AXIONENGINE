@@ -986,6 +986,14 @@ public final class ConfigSchema {
                     false,
                     "Nombre de divergences d'empreinte tolérées avant bascule de RECONSTRUCT vers SNAPSHOT."),
             new Option(
+                    "net.events_per_player_tick",
+                    Kind.INTEGER,
+                    16L,
+                    new Domain(DomainKind.INT_RANGE, 1.0, 256.0, List.of()),
+                    false,
+                    false,
+                    "Événements de contenu qu'un tick du serveur envoie au plus à un joueur ; au-delà, ils ne partent pas, comptés et journalisés."),
+            new Option(
                     "persistence.max_bytes_per_assembly",
                     Kind.INTEGER,
                     65536L,

@@ -339,6 +339,29 @@ public final class DefinitionBuilder {
     }
 
     /**
+     * {@code events}.
+     *
+     * @param name clé de la table
+     * @param config règle l'élément ; rappelée avec les mêmes clés, elle complète le même
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder event(String name, Consumer<Event> config) {
+        Map<String, Object> item = path(values, "events", name);
+        Objects.requireNonNull(config, "config").accept(new Event(item));
+        return this;
+    }
+
+    /**
+     * {@code events}.
+     *
+     * @param name clé de la table
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder event(String name) {
+        return event(name, item -> { });
+    }
+
+    /**
      * {@code interaction}.
      *
      * @param action le champ obligatoire {@code action}
@@ -1818,6 +1841,61 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code events.*}. */
+    @Experimental
+    public static final class Event {
+
+        private final Map<String, Object> values;
+
+        private Event(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code events.*.replicate} : parmi {@code all}, {@code occupants}, {@code none}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Event replicate(String value) {
+            values.put("replicate", Objects.requireNonNull(value, "replicate"));
+            return this;
+        }
+    }
+
+    /** {@code interaction[].actions[].emit_event}. */
+    @Experimental
+    public static final class InteractionActionEmitEvent {
+
+        private final Map<String, Object> values;
+
+        private InteractionActionEmitEvent(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code interaction[].actions[].emit_event.event} : nom (event) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionEmitEvent event(String value) {
+            values.put("event", Objects.requireNonNull(value, "event"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].emit_event.value}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionEmitEvent value(double value) {
+            values.put("value", value);
+            return this;
+        }
+    }
+
     /** {@code interaction[].actions[].set_material_param}. */
     @Experimental
     public static final class InteractionActionSetMaterialParam {
@@ -1940,6 +2018,18 @@ public final class DefinitionBuilder {
         }
 
         /**
+         * {@code interaction[].actions[].emit_event}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionAction emitEvent(Consumer<InteractionActionEmitEvent> config) {
+            Map<String, Object> nested = object(values, "emit_event");
+            Objects.requireNonNull(config, "config").accept(new InteractionActionEmitEvent(nested));
+            return this;
+        }
+
+        /**
          * {@code interaction[].actions[].hide_node} : nom (node) dans le modèle.
          *
          * @param value la valeur
@@ -2041,6 +2131,17 @@ public final class DefinitionBuilder {
          */
         public Interaction distance(double value) {
             values.put("distance", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].event} : nom (event) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction event(String value) {
+            values.put("event", Objects.requireNonNull(value, "event"));
             return this;
         }
 

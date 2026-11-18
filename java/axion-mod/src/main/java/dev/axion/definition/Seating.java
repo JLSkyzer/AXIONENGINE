@@ -252,8 +252,8 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         PLAY_ANIMATION("play_animation", null),
         /** Ouvrir un conteneur. */
         OPEN_CONTAINER("open_container", "un système de conteneurs, qu'aucun chantier ne porte encore"),
-        /** Émettre un événement de contenu. */
-        EMIT_EVENT("emit_event", "un bus d'événements de contenu, qu'aucun chantier ne porte encore"),
+        /** Émettre un événement de contenu (ADR-174 D2) ; avant le schéma 7, sans événement nommé, sans effet. */
+        EMIT_EVENT("emit_event", null),
         /** Poser une variable de contenu (ADR-163 D2). */
         SET_VARIABLE("set_variable", null),
         /** Réparer. */
@@ -391,9 +391,11 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param color la teinte posée par {@code set_material_param}, {@code null} sans
      * @param with l'index du node dont {@code swap_mesh} montre les maillages à la place, {@code -1} : l'original
      * @param withName le nom de ce node, {@code null} sans
+     * @param value la valeur d'un {@code emit_event} (alors {@code name} est l'événement et {@code node} vaut
+     *     {@code -1}) ; {@code NaN} pour une autre action
      */
     public record NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color, int with,
-            String withName) {
+            String withName, double value) {
 
         /** Copie la teinte. */
         public NodeAction {
@@ -412,7 +414,33 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
          * @param color la teinte posée, {@code null} sans
          */
         public NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color) {
-            this(kind, node, name, emissive, color, -1, null);
+            this(kind, node, name, emissive, color, -1, null, Double.NaN);
+        }
+
+        /**
+         * Une action sur l'état d'un node.
+         *
+         * @param kind ce qu'elle fait
+         * @param node l'index du node visé
+         * @param name son nom
+         * @param emissive l'émission posée, {@code NaN} sans
+         * @param color la teinte posée, {@code null} sans
+         * @param with le remplaçant d'un {@code swap_mesh}, {@code -1} sans
+         * @param withName son nom, {@code null} sans
+         */
+        public NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color, int with,
+                String withName) {
+            this(kind, node, name, emissive, color, with, withName, Double.NaN);
+        }
+
+        /**
+         * {@return l'émission d'un événement de contenu (ADR-174 D2)}
+         *
+         * @param event son nom
+         * @param value sa valeur
+         */
+        public static NodeAction emit(String event, double value) {
+            return new NodeAction(NodeActionKind.EMIT, -1, event, Float.NaN, null, -1, null, value);
         }
     }
 
@@ -425,7 +453,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         /** Poser son émission ou sa teinte. */
         MATERIAL,
         /** Montrer à sa place les maillages d'un autre node, ou revenir à l'original. */
-        SWAP
+        SWAP,
+        /** Émettre un événement de contenu (ADR-174 D2) : le nom de l'action est celui de l'événement. */
+        EMIT
     }
 
     /**
@@ -486,6 +516,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         Map<String, Integer> named = new java.util.LinkedHashMap<>();
         for (Interaction interaction : interactions) {
             for (NodeAction action : interaction.actions()) {
+                if (action.kind() == NodeActionKind.EMIT) {
+                    continue;
+                }
                 named.putIfAbsent(action.name(), action.node());
                 if (action.withName() != null) {
                     named.putIfAbsent(action.withName(), action.with());
@@ -512,6 +545,24 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
     }
 
     /**
+     * {@return les actions qu'une interaction joue après la sienne} : l'événement d'un {@code emit_event} d'abord,
+     * puis sa liste (ADR-174 D2, D3).
+     */
+    private static List<NodeAction> interactionActions(Action action, JsonObject interaction, String path,
+            Map<String, Integer> byPath) {
+        List<NodeAction> listed = nodeActions(interaction, path, byPath);
+        if (action != Action.EMIT_EVENT || interaction.get("event") == null) {
+            return listed;
+        }
+        List<NodeAction> all = new ArrayList<>(listed.size() + 1);
+        JsonElement value = interaction.get("value");
+        all.add(NodeAction.emit(interaction.get("event").getAsString(),
+                value instanceof com.google.gson.JsonPrimitive number && number.isNumber() ? number.getAsDouble() : 1.0));
+        all.addAll(listed);
+        return all;
+    }
+
+    /**
      * {@return les actions d'une interaction, dans leur ordre (ADR-174 D3)} Le node de chacune est celui que le natif a
      * résolu pour sa référence.
      */
@@ -534,6 +585,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                 actions.add(new NodeAction(NodeActionKind.SWAP, node(byPath, at + ".swap_mesh.node"),
                         swap.get("node").getAsString(), Float.NaN, null,
                         with == null ? -1 : node(byPath, at + ".swap_mesh.with"), with));
+            } else if (step.get("emit_event") instanceof JsonObject emit) {
+                actions.add(NodeAction.emit(emit.get("event").getAsString(),
+                        emit.has("value") ? emit.get("value").getAsDouble() : 1.0));
             } else if (step.get("set_material_param") instanceof JsonObject param) {
                 JsonElement value = param.get("value");
                 boolean emissive = "emissive".equals(param.get("param").getAsString());
@@ -604,6 +658,11 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         for (JsonObject interaction : objects(root, "interaction")) {
             String path = "$.interaction[" + interactions.size() + "]";
             Action action = Action.of(interaction.get("action").getAsString());
+            if (action == Action.EMIT_EVENT && interaction.get("event") == null) {
+                // Avant le schéma 7, emit_event ne nomme pas d'événement : sans effet.
+                warnings.add(path + " : l'action « emit_event » n'émet rien sans événement nommé, au schéma 7"
+                        + " (ADR-174 D2)");
+            }
             if (!action.effective()) {
                 warnings.add(path + " : l'action « " + action.key() + " » reste sans effet jusqu'à "
                         + action.awaits() + " (ADR-158 D6)");
@@ -636,7 +695,7 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                     variable >= 0 && interaction.get("value") != null ? Variables.value(interaction.get("value")) : 0.0,
                     text(interaction, "socket"), kinds,
                     interaction.has("distance") ? interaction.get("distance").getAsDouble() : Double.NaN,
-                    nodeActions(interaction, path, byPath)));
+                    interactionActions(action, interaction, path, byPath)));
         }
         SocketTable sockets = SocketTable.of(root, byPath);
         return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0 && sockets.isEmpty()

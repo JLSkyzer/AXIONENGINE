@@ -406,6 +406,9 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Cap on deformation snapshots per second in SNAPSHOT mode, when deterministic reconstruction is not guaranteed (5.12bis)."),
     i("net.divergence_tolerance", 3, 1, 32, "Nombre de divergences d'empreinte tolérées avant bascule de RECONSTRUCT vers SNAPSHOT.")
         .en("Number of digest divergences tolerated before switching from RECONSTRUCT to SNAPSHOT."),
+    // ADR-174 D2 : la borne des événements de contenu qu'un tick envoie à un joueur.
+    i("net.events_per_player_tick", 16, 1, 256, "Événements de contenu qu'un tick du serveur envoie au plus à un joueur ; au-delà, ils ne partent pas, comptés et journalisés.")
+        .en("Content events a server tick sends to a player at most; beyond, they are not sent, counted and logged."),
 
     // [persistence]
     ip("persistence.max_bytes_per_assembly", 65536, "Taille maximale de l'état persisté d'une assembly, en octets.")

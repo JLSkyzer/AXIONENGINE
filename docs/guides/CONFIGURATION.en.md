@@ -189,6 +189,7 @@ ignored (R-1830).
 | `max_deform_snapshots_per_second` | integer | `4` | `0..` | no | no | Cap on deformation snapshots per second in event-based replication. |
 | `max_deform_snapshots_per_second_fallback` | integer | `16` | `0..` | no | no | Cap on deformation snapshots per second in SNAPSHOT mode, when deterministic reconstruction is not guaranteed (5.12bis). |
 | `divergence_tolerance` | integer | `3` | `1..32` | no | no | Number of digest divergences tolerated before switching from RECONSTRUCT to SNAPSHOT. |
+| `events_per_player_tick` | integer | `16` | `1..256` | no | no | Content events a server tick sends to a player at most; beyond, they are not sent, counted and logged. |
 
 ### `[persistence]`
 

@@ -44,3 +44,38 @@ registrar.registerInteractionListener(new InteractionListener() {
   with the cause `ejected`.
 - An **exception** is logged naming your mod, and refuses nothing. After `content.listener_strikes` consecutive
   exceptions (20), the listener is **disabled for the session** (`E-1012`).
+
+## Content events
+
+From schema 7, a definition declares its events, and who each one goes to:
+
+```json
+"events": {
+  "horn": { "replicate": "occupants" },
+  "door_slam": { "replicate": "all" },
+  "counter": { "replicate": "none" }
+}
+```
+
+They are emitted by the action `{ "emit_event": { "event": "door_slam", "value": 1 } }` of an interaction list, by an
+interaction `"action": "emit_event", "event": "horn"`, or by your mod: `assembly.emit("horn", 1.0)`. An event the
+definition does not declare is refused, naming itself.
+
+```java
+registrar.registerContentEventListener(new ContentEventListener() {
+    @Override
+    public void onEvent(Assembly assembly, String event, double value) {
+        // on the server, in the tick of the emission
+    }
+
+    @Override
+    public void onClientEvent(Entity assembly, String event, double value) {
+        // on a client the event is sent to: a sound, particles
+    }
+});
+```
+
+- `replicate`: `all` (default) to the players who track the assembly, `occupants` to its occupants only, `none` to
+  the server alone.
+- An event is an **instant**: it is not saved. For a lasting state, use a variable.
+- A player receives at most `net.events_per_player_tick` per tick (16).

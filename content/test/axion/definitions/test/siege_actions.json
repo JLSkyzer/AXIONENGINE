@@ -2,6 +2,11 @@
   "schema": 7,
   "asset": "axion:models/test/siege.gltf",
   "kind": "rigid_object",
+  "events": {
+    "porte": { "replicate": "all" },
+    "klaxon": { "replicate": "occupants" },
+    "secret": { "replicate": "none" }
+  },
   "seats": [
     { "name": "conducteur", "node": "siege_g", "role": "driver", "exit_offsets": [[2.0, 0.0, 0.0]] }
   ],
@@ -9,7 +14,8 @@
     { "node": "porte_d", "action": "actions", "actions": [
         { "hide_node": "caisse_vue" },
         { "set_material_param": { "node": "siege_g", "param": "emissive", "value": 2.5 } },
-        { "set_material_param": { "node": "siege_g", "param": "color", "value": [1.0, 0.25, 0.25] } }
+        { "set_material_param": { "node": "siege_g", "param": "color", "value": [1.0, 0.25, 0.25] } },
+        { "emit_event": { "event": "porte", "value": 2 } }
     ] },
     { "node": "siege_g_collideur", "action": "actions", "actions": [
         { "show_node": "caisse_vue" }

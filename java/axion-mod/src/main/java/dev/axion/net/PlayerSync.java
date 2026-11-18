@@ -157,6 +157,60 @@ public final class PlayerSync {
         return Fragments.split(message, sequence);
     }
 
+    /** Les événements de contenu de ce tick vers ce joueur (ADR-174 D2), dans l'ordre de leur émission. */
+    private final List<EventMessage.Event> events = new java.util.ArrayList<>();
+    private long eventsSent;
+    private long eventsDropped;
+
+    /**
+     * Pose un événement de contenu émis à ce tick vers ce joueur (ADR-174 D2). Au-delà de {@code limit} par tick, il ne
+     * part pas, et se compte ({@link #eventsDropped}).
+     *
+     * @param event l'événement
+     * @param limit {@code net.events_per_player_tick}
+     * @return faux s'il dépasse la borne
+     */
+    public boolean event(EventMessage.Event event, int limit) {
+        if (events.size() >= Math.min(limit, EventMessage.MAX_EVENTS)) {
+            eventsDropped++;
+            return false;
+        }
+        events.add(event);
+        return true;
+    }
+
+    /**
+     * Les trames des événements de ce tick, après le snapshot, dans le débit du joueur (21.10). Sans débit, ils ne
+     * partent pas, et se comptent.
+     *
+     * @param sequence numéro du message pour sa fragmentation, positif ou nul
+     * @return leurs trames ; vide sans événement, ou si le débit les retient
+     */
+    public List<byte[]> eventFrames(int sequence) {
+        if (events.isEmpty()) {
+            return List.of();
+        }
+        byte[] message = new EventMessage(events).encode();
+        int count = events.size();
+        events.clear();
+        if (!sender.spend(message.length)) {
+            eventsDropped += count;
+            return List.of();
+        }
+        eventsSent += count;
+        return Fragments.split(message, sequence);
+    }
+
+    /** {@return les événements partis vers ce joueur depuis la connexion} */
+    public long eventsSent() {
+        return eventsSent;
+    }
+
+    /** {@return les événements que la borne par tick ou le débit ont retenus depuis la connexion} */
+    public long eventsDropped() {
+        return eventsDropped;
+    }
+
     /** {@return les corrections parties depuis la connexion} */
     public long correctionsSent() {
         return correctionsSent;

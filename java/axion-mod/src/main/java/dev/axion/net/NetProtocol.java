@@ -23,12 +23,14 @@ public final class NetProtocol {
      * descripteur d'états 6, les modificateurs des paramètres d'une assembly (ADR-167 D8), 9 avec la famille des
      * correspondances bloc → matériau du registre (ADR-168 D6), 10 avec l'octet de cadence de {@code C2S_Input} et la
      * profondeur de la file dans {@code S2C_Correction} (ADR-168 D3, révisé le 2026-11-14), 11 avec le descripteur
-     * d'états 7, les attaches d'une assembly (ADR-171 D7).
+     * d'états 7, les attaches d'une assembly (ADR-171 D7), 12 avec le descripteur d'états 8, les réglages des attaches
+     * et la correction de l'ensemble (ADR-171 Q8), 13 avec {@code S2C_Event}, les événements de contenu, et le
+     * descripteur d'états 9, l'état des nodes (ADR-174 D2, D3).
      */
-    public static final String VERSION = "AXION-12";
+    public static final String VERSION = "AXION-13";
 
     /** {@code protocol_version} du handshake (21.3) : le numéro de {@link #VERSION}. */
-    public static final int PROTOCOL_VERSION = 12;
+    public static final int PROTOCOL_VERSION = 13;
 
     /**
      * Taille maximale d'une trame AXION, en-tête de fragment compris, dans les deux sens.
