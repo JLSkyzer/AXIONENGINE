@@ -33,7 +33,7 @@ class DefinitionBuilderTest {
                         .ccd(true).collisionGroup("assembly")
                         .collidesWith("world", "assembly", "entity_proxy", "debris"))
                 .body("caisse", b -> b.rootNode("chassis"))
-                .joint("charniere_capot", j -> j.type("revolute").a("caisse").bNode("capot").axis(-1, 0, 0)
+                .joint("charniere_capot", j -> j.type("revolute").a("caisse").bNode("capot").axis(1, 0, 0)
                         .limits(0.0, 1.2).break_(b -> b.force(6000.0)))
                 .wheel("roue_avant_gauche", w -> roue(w.steering(true).powered(false)))
                 .wheel("roue_avant_droite", w -> roue(w.steering(true).powered(false)))

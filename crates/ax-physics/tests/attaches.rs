@@ -422,3 +422,39 @@ fn adr171_une_corde_qui_se_retend_s_etire_au_lieu_de_claquer() {
     ));
     assert!(ecart < 4.2, "la corde retient la remorque : {ecart} m");
 }
+
+#[test]
+fn adr171_une_corde_posee_sur_une_assembly_nee_endormie_la_reveille() {
+    // T-891 au jeu : le maillon naît endormi par la gestion d'activité (ADR-153 D4) ; une corde de 2 m vers un point à
+    // 3,5 m au-dessus, qui tient 50 N, doit le réveiller, le tirer et rompre.
+    let mut world = monde(true);
+    let charge = caisse(&mut world, Vec3::ZERO, Vec3::new(0.25, 0.25, 0.25));
+    world.suspend_assembly(charge);
+    assert_eq!(world.is_sleeping(charge), Some(true));
+    let mut corde = attache(attachment_kind::ROPE, Vec3::new(0.0, 0.25, 0.0));
+    corde.length = 2.0;
+    corde.max_force = 50.0;
+    world
+        .attach(
+            9,
+            assembly(1),
+            charge,
+            AttachEnd::World(Vec3::new(0.0, 3.75, 0.0)),
+            &corde,
+        )
+        .unwrap();
+    world.drain_events();
+    let mut rompue = false;
+    for _ in 0..20 {
+        world.advance(TICK);
+        rompue |= world
+            .drain_events()
+            .iter()
+            .any(|e| e.kind == event_kind::DETACH_ATTACHMENT && e.data == 9);
+    }
+    assert!(
+        rompue,
+        "la corde rompt ; le maillon dort encore : {:?}",
+        world.is_sleeping(charge)
+    );
+}

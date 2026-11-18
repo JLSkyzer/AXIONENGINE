@@ -40,7 +40,8 @@ Three kinds of view:
   camera sits at the seat's node, offset by `[x, y, z]` metres in its frame.
 - **`follow`** — the chase view. It looks the way the vehicle is moving (its heading when stopped and when reversing),
   smoothed over time; a block between the vehicle and the camera pulls it closer, like Minecraft's third person.
-  Without `distance` or `height`, it frames itself on the vehicle's size.
+  Without `distance` or `height`, it frames itself on the vehicle's size — and what is attached to it: a car towing
+  a trailer is framed together with it, the camera aiming at the middle of both.
 - **`fixed`** — attached to a node of your model, which it follows as it moves: a bonnet, a bumper, a mirror, a crane's
   basket. Section 3 shows how to place it.
 

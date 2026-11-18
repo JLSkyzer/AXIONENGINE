@@ -41,7 +41,8 @@ Trois sortes de vues :
   caméra se place au node du siège, décalée de `[x, y, z]` mètres dans son repère.
 - **`follow`** — la poursuite. Elle regarde dans le sens où roule le véhicule (son cap à l'arrêt et en marche
   arrière), lissée dans le temps ; un bloc entre le véhicule et la caméra la rapproche, comme la troisième personne de
-  Minecraft. Sans `distance` ni `height`, elle se cadre sur la taille du véhicule.
+  Minecraft. Sans `distance` ni `height`, elle se cadre sur la taille du véhicule — et de ce qui lui est attaché :
+  une voiture qui tire une remorque est cadrée avec elle, la caméra visant le milieu des deux.
 - **`fixed`** — attachée à un node de ton modèle, qui suit son mouvement : un capot, un pare-chocs, un rétroviseur, la
   nacelle d'une grue. La section 3 montre comment le poser.
 

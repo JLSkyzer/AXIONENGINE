@@ -1775,6 +1775,30 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return son ensemble au client (ADR-171 D7, CAP-37) : elle et les assemblies que les attaches reçues lui
+     * relient, de proche en proche, présentes dans son niveau, en ordre d'identifiant réseau}
+     */
+    public List<AxionEntity> clientEnsemble() {
+        Map<Integer, List<Integer>> posed = new java.util.HashMap<>();
+        for (Map.Entry<Integer, AssemblyState.Links> origin : RECEIVED_LINKS.entrySet()) {
+            List<Integer> others = new ArrayList<>();
+            for (AssemblyState.Link link : origin.getValue().links()) {
+                if (!link.anchored()) {
+                    others.add(link.other());
+                }
+            }
+            posed.put(origin.getKey(), others);
+        }
+        List<AxionEntity> members = new ArrayList<>();
+        for (int id : dev.axion.attach.EnsembleLinks.members(getId(), posed)) {
+            if (level().getEntity(id) instanceof AxionEntity member && !member.isRemoved()) {
+                members.add(member);
+            }
+        }
+        return members;
+    }
+
+    /**
      * {@return ce que lisent ses sources {@code attach.*} et {@code socket.*} à cette image (client, ADR-171 D7)} Pour
      * chaque socket, dans l'ordre de la definition : attaché, longueur de la corde, tension, désalignement — celles
      * qu'elle a posées et celles que d'autres ont posées vers elle.
@@ -2203,6 +2227,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** {@return vrai dès que le natif a rapporté son état depuis sa création ou sa lecture : ses corps existent} */
     boolean simulated() {
         return simulated;
+    }
+
+    /** Son corps natif est retiré (fin de suivi) : jusqu'à son prochain état, ses corps n'existent plus. */
+    void forgetSimulation() {
+        simulated = false;
     }
 
     /** {@return vrai si la physique a endormi l'assembly} */

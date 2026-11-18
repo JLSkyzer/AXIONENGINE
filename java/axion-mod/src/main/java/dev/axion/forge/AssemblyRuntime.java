@@ -345,6 +345,13 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         speeds.remove(index);
         rootNodes.remove(index);
         pending.add(new Pending(false, index, 0L, null, null, 0L, null, false));
+        // Son corps natif part, et ses attaches avec lui (REMOVE_ASSEMBLY) : sans être détruite, elle les retrouve
+        // quand on la suit de nouveau et que le natif l'a recréée (ADR-171, 8e).
+        assembly.forgetSimulation();
+        AttachmentRuntime attachments = AttachmentRuntime.current();
+        if (attachments != null) {
+            attachments.bodyRemoved(assembly);
+        }
     }
 
     /**
@@ -419,7 +426,19 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         EntityMetrics.GLOBAL.bodies(ledger.bodies());
         SimCommandStream stream = new SimCommandStream();
         Pending cmd;
+        // La frontière applique les créations d'un flux avant ses retraits (ADR-171, 8e) : une assembly retirée puis
+        // recréée dans le même tick — son chunk quitte le suivi et y revient — y naîtrait, puis serait retirée, et
+        // Java la croirait encore dotée d'un corps. Sa création part au tick suivant, après le retrait.
+        java.util.Set<Integer> removedNow = new java.util.HashSet<>();
+        List<Pending> later = new ArrayList<>();
         while ((cmd = pending.poll()) != null) {
+            if (cmd.create() && removedNow.contains(cmd.index())) {
+                later.add(cmd);
+                continue;
+            }
+            if (!cmd.create()) {
+                removedNow.add(cmd.index());
+            }
             if (cmd.create()) {
                 stream.createAssembly(cmd.index(), GENERATION, cmd.dimension(), cmd.position(), cmd.rotation(),
                         cmd.definition(), cmd.restored(), cmd.asleep());
@@ -434,6 +453,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             // Le natif oublie l'export d'une assembly retirée ; une assembly créée part sans.
             exporting.remove(cmd.index());
         }
+        pending.addAll(later);
         animate(stream);
         // ADR-167 D9 : les contrôleurs lisent l'état du début du tick, avant que les entrées partent au natif.
         control(stream);

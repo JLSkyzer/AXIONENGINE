@@ -16,6 +16,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -140,8 +141,17 @@ public final class VehicleCamera {
                 if (positionUnavailable) {
                     return;
                 }
-                double size = Math.max(assembly.getBoundingBox().getXsize(), assembly.getBoundingBox().getZsize());
-                ViewRig.Shot shot = rig.follow(view, new double[] {target.x, target.y, target.z}, vehicleYaw,
+                // La poursuite cadre l'emprise de l'ensemble — le véhicule et ce qui lui est attaché (ADR-171 D7,
+                // CAP-37) : elle vise le centre de leurs boîtes réunies, décalé depuis la pose dessinée du véhicule,
+                // et recule de leur plus grande dimension horizontale.
+                AABB box = assembly.getBoundingBox();
+                for (AxionEntity member : assembly.clientEnsemble()) {
+                    box = box.minmax(member.getBoundingBox());
+                }
+                Vec3 shift = box.getCenter().subtract(assembly.getBoundingBox().getCenter());
+                double size = Math.max(box.getXsize(), box.getZsize());
+                ViewRig.Shot shot = rig.follow(view, new double[] {target.x + shift.x, target.y, target.z + shift.z},
+                        vehicleYaw,
                         new double[] {velocity.x, velocity.y, velocity.z}, size, relativeYaw, now / 1e6, dt,
                         (from, to) -> free(minecraft, player, from, to));
                 place(event, shot.x(), shot.y(), shot.z(), shot.yaw(), shot.pitch());

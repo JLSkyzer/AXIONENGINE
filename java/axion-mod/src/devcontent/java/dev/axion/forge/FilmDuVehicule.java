@@ -419,8 +419,9 @@ public final class FilmDuVehicule {
             }
         } else if (REMORQUE && cordePosee && cible != null && AttachmentRuntime.current() != null) {
             // Remorqué à la corde, un véhicule freine avec celui qui le tire : sans quoi, la corde molle, il le rattrape
-            // et le pousse (ADR-171, 8d). Le film tient ce conducteur pendant le freinage et l'arrêt.
-            boolean freine = etape == Etape.FREIN || etape == Etape.ARRET;
+            // et le pousse (ADR-171, 8d). Le film tient ce conducteur pendant le freinage, l'arrêt et le frein à main
+            // final ; il le relâche pendant le recul, où la voiture repousse la remorque.
+            boolean freine = etape == Etape.FREIN || etape == Etape.ARRET || etape == Etape.FIN;
             if (freine != remorqueFreine) {
                 remorqueFreine = freine;
                 ForgeAxionApi.view(remorque).vehicle().orElseThrow()
@@ -555,7 +556,16 @@ public final class FilmDuVehicule {
             }
             return;
         }
-        Vec3 versLeVehicule = vehicule.position().add(0, 0.9, 0).subtract(vue.getPosition()).normalize();
+        // La poursuite vise le centre de l'ensemble, le véhicule et ce qui lui est attaché (ADR-171, 8e3).
+        Vec3 vise = vehicule.position();
+        if (VUES && vehicule instanceof AxionEntity assembly) {
+            net.minecraft.world.phys.AABB boite = assembly.getBoundingBox();
+            for (AxionEntity membre : assembly.clientEnsemble()) {
+                boite = boite.minmax(membre.getBoundingBox());
+            }
+            vise = vise.add(boite.getCenter().subtract(assembly.getBoundingBox().getCenter()).multiply(1, 0, 1));
+        }
+        Vec3 versLeVehicule = vise.add(0, 0.9, 0).subtract(vue.getPosition()).normalize();
         Vector3f regard = vue.getLookVector();
         double cosinus = versLeVehicule.x * regard.x() + versLeVehicule.y * regard.y() + versLeVehicule.z * regard.z();
         if (cosinus < Math.cos(Math.toRadians(CHAMP_TOLERE_DEG))) {
@@ -617,7 +627,7 @@ public final class FilmDuVehicule {
      * caméra qui suit le véhicule de côté.
      */
     private static void choisirLaVue(Minecraft minecraft) {
-        if (ROUES || REMORQUE) {
+        if (ROUES || REMORQUE && !VUES) {
             vueConducteur = false;
             if (camera != null && minecraft.getCameraEntity() != camera) {
                 minecraft.setCameraEntity(camera);

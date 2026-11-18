@@ -490,7 +490,32 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         }
         restore();
         holdEnsembles();
+        // Une attache ne part au natif qu'une fois ses deux extrémités dotées d'un corps (ADR-171, 8e) : posée juste
+        // après leur apparition, quand leur création native est encore étalée sous budget (R-1730), le natif la
+        // refuserait comme visant une extrémité inconnue, et le refus l'oublierait. Elle attend en file, avec ce qui la
+        // suit ; défaite avant de partir, elle ne part pas.
+        List<Pending> held = new ArrayList<>();
+        java.util.Set<Integer> heldIds = new java.util.HashSet<>();
         for (Pending command : pending) {
+            if (command instanceof PendingAttach at) {
+                Live attached = live.get(at.id());
+                if (attached == null) {
+                    continue;
+                }
+                if (!attached.a.simulated() || attached.b != null && !attached.b.simulated()) {
+                    held.add(at);
+                    heldIds.add(at.id());
+                    continue;
+                }
+            } else if (command instanceof PendingDetach detach && heldIds.contains(detach.id())) {
+                held.removeIf(waiting -> waiting instanceof PendingAttach at && at.id() == detach.id()
+                        || waiting instanceof PendingLength length && length.id() == detach.id());
+                heldIds.remove(detach.id());
+                continue;
+            } else if (command instanceof PendingLength length && heldIds.contains(length.id())) {
+                held.add(length);
+                continue;
+            }
             if (command instanceof PendingAttach at) {
                 stream.attach(new SimCommandStream.AttachRequest(at.id(), at.kind(), at.aIndex(),
                         AssemblyRuntime.GENERATION, at.aNode(), at.aFrame(), Math.max(0, at.bIndex()),
@@ -504,6 +529,7 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
             }
         }
         pending.clear();
+        pending.addAll(held);
         return stream;
     }
 
@@ -916,6 +942,29 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
     /** {@return les chunks que des ensembles ont tenus au dernier tick (essais)} */
     public List<ChunkPos> heldChunks() {
         return List.copyOf(heldChunks);
+    }
+
+    /**
+     * Le corps natif d'une assembly vient d'être retiré (fin de suivi, AssemblyRuntime) : ses attaches partent avec lui,
+     * en silence (REMOVE_ASSEMBLY). Une assembly détruite ou déchargée est déjà traitée au tick ; une assembly
+     * seulement mise de côté — son chunk n'est plus suivi, elle existe encore — n'était vue par rien, et ses attaches
+     * restaient crues vivantes sans plus aucun joint (ADR-171, 8e). Elles sont suspendues, et se rétablissent quand le
+     * natif l'a recréée.
+     *
+     * @param assembly l'assembly dont le corps est retiré
+     */
+    void bodyRemoved(AxionEntity assembly) {
+        AuthoritativeThread.require();
+        if (assembly.isRemoved()) {
+            return;
+        }
+        for (Live attached : List.copyOf(live.values())) {
+            if (attached.a == assembly || attached.b == assembly) {
+                LOGGER.info("AXION : attache {} suspendue — {} n'est plus suivie, à {} ; elle se rétablira à son retour",
+                        attached.id, assembly.definitionId(), assembly.blockPosition());
+                drop(attached.id, SUSPENDED, false);
+            }
+        }
     }
 
     /** Rétablit les attaches gardées dont les deux extrémités sont là ; les autres attendent (D7). */

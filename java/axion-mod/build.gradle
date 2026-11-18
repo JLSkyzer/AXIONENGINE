@@ -233,6 +233,21 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmRemorqueVues {
+            // ADR-171, tranche 8e3 : le remorquage filme par la camera de vehicule elle-meme ; la poursuite cadre
+            // l'ensemble, la voiture et sa remorque.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-remorque-vues')
+            property 'axion.film', 'vehicule'
+            property 'axion.film.remorque', 'true'
+            property 'axion.film.vues', 'true'
+            property 'axion.souris.libre', 'true'
+            property 'axion.content.examples', 'true'
+            property 'axion.film.definition', 'axion:test/remorqueuse'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmRoues {
             // Le plan des roues : la scene du film du vehicule, filmee de cote a hauteur de roue.
             parent minecraft.runs.client
@@ -574,6 +589,16 @@ tasks.matching { it.name == 'runFilmRemorque' }.configureEach {
         delete rootProject.file('.runs/film-remorque/saves/axion-film')
         delete fileTree(rootProject.file('.runs/film-remorque/axion-film'))
         delete rootProject.file('.runs/film-remorque/axion/world')
+    }
+}
+
+tasks.matching { it.name == 'runFilmRemorqueVues' }.configureEach {
+    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/film-remorque-vues'))
+        delete rootProject.file('.runs/film-remorque-vues/saves/axion-film')
+        delete fileTree(rootProject.file('.runs/film-remorque-vues/axion-film'))
+        delete rootProject.file('.runs/film-remorque-vues/axion/world')
     }
 }
 

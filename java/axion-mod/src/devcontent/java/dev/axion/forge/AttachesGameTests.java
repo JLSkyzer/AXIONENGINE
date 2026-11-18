@@ -48,20 +48,26 @@ public final class AttachesGameTests {
     @GameTest(template = "test/plancher_16", timeoutTicks = 300)
     public static void t890_LeMaillonSuitLeBuggyALaCorde(GameTestHelper helper) {
         ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        // Le buggy part vers -Z avec dix blocs de plancher devant lui, au tiers des gaz : allégé à sa masse de 340 kg
+        // (ADR-151, correctif de D2), plein gaz, il sortait du plancher — dans un chunk que le serveur de GameTests ne
+        // fait pas tourner — avant que la corde, qui s'étire, ait tiré le maillon de deux blocs.
         AxionEntity buggy = AssembliesDeTest.poser(helper, "axion:example/buggy", new Vec3(8.0, DESSUS_DALLE + 0.3,
-                6.0), DROIT);
-        AxionEntity maillon = AssembliesDeTest.poser(helper, MAILLON, new Vec3(8.0, DESSUS_DALLE + 0.05, 10.5), DROIT);
-        double[] depart = new double[1];
+                10.0), DROIT);
+        AxionEntity maillon = AssembliesDeTest.poser(helper, MAILLON, new Vec3(8.0, DESSUS_DALLE + 0.05, 14.5), DROIT);
+        double[] depart = new double[2];
         helper.runAfterDelay(20, () -> {
             attendu(helper, vue(buggy).attachments().attach("attelage", vue(maillon), "avant", "rope"),
                     AttachResult.Status.ATTACHED);
             depart[0] = maillon.position().z;
-            vue(buggy).vehicle().orElseThrow().drive(new DriverInput(0.6, 0, 0, 0, 0, 1));
+            depart[1] = buggy.position().z;
+            vue(buggy).vehicle().orElseThrow().drive(new DriverInput(0.3, 0, 0, 0, 0, 1));
         });
         helper.runAfterDelay(25, () -> helper.succeedWhen(() -> {
             helper.assertTrue(vue(buggy).attachments().list().size() == 1, "la corde tient");
             double tire = depart[0] - maillon.position().z;
-            helper.assertTrue(tire > 2.0, "le maillon suit le buggy vers l'avant : " + tire + " blocs");
+            helper.assertTrue(tire > 2.0, "le maillon suit le buggy vers l'avant : " + tire + " blocs ; le buggy a avancé"
+                    + " de " + (depart[1] - buggy.position().z) + " ; la corde : " + vue(buggy).attachments().list()
+                    + " ; maillon endormi " + maillon.netSleeping());
             vue(buggy).vehicle().orElseThrow().drive(DriverInput.NONE);
         }));
     }
@@ -82,7 +88,8 @@ public final class AttachesGameTests {
         helper.runAfterDelay(22, () -> helper.succeedWhen(() -> {
             helper.assertTrue(posee[0], "ancrée");
             helper.assertTrue(vue(maillon).attachments().list().isEmpty(),
-                    "la corde de 50 N a rompu sous un maillon de 20 kg");
+                    "la corde de 50 N a rompu sous un maillon de 20 kg : " + vue(maillon).attachments().list()
+                            + " ; maillon à y " + maillon.position().y + ", endormi " + maillon.netSleeping());
         }));
     }
 
@@ -114,6 +121,68 @@ public final class AttachesGameTests {
                             + b.chunkPosition());
             joueur[0].quitter();
         }));
+    }
+
+    /**
+     * ADR-171, 8e : une assembly que Minecraft cesse de suivre sans la détruire — son chunk n'est plus au niveau où ses
+     * entités tournent — perd son corps natif, et ses attaches avec lui. Elles sont suspendues, puis rétablies quand
+     * elle est suivie de nouveau et que le natif l'a recréée ; avant, elles restaient crues vivantes sans aucun joint.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr171_UneAttacheSurvitALaFinDuSuiviDUneExtremite(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity a = AssembliesDeTest.poser(helper, MAILLON, new Vec3(6.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        AxionEntity b = AssembliesDeTest.poser(helper, MAILLON, new Vec3(7.2, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        helper.startSequence()
+                .thenIdle(20)
+                .thenExecute(() -> attendu(helper, vue(a).attachments().attach("avant", vue(b), "arriere", "rope"),
+                        AttachResult.Status.ATTACHED))
+                .thenIdle(5)
+                // Ce que Minecraft fait quand le chunk de b cesse d'être suivi, b existant toujours.
+                .thenExecute(() -> net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+                        new net.minecraftforge.event.entity.EntityLeaveLevelEvent(b, helper.getLevel())))
+                .thenExecute(() -> {
+                    helper.assertTrue(!b.isRemoved(), "b existe toujours");
+                    helper.assertTrue(AttachmentRuntime.current().suspended(a) == 1,
+                            "son corps parti, l'attache est suspendue, pas crue vivante");
+                })
+                .thenExecute(() -> net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+                        new net.minecraftforge.event.entity.EntityJoinLevelEvent(b, helper.getLevel())))
+                .thenWaitUntil(() -> helper.assertTrue(vue(a).attachments().list().size() == 1
+                                && AttachmentRuntime.current().suspended(a) == 0,
+                        "suivie de nouveau et recréée, l'attache est rétablie : " + vue(a).attachments().list()
+                                + " ; b simulée " + b.simulated() + ", a simulée " + a.simulated() + ", gardées par a "
+                                + a.attachmentRecords() + ", suspendues " + AttachmentRuntime.current().suspended(a)))
+                .thenSucceed();
+    }
+
+    /**
+     * ADR-171, 8e : une attache posée dans le tick où ses deux extrémités apparaissent, avant que le natif ne les crée,
+     * attend leurs corps au lieu d'être refusée puis oubliée.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 100)
+    public static void adr171_UneAttachePoseeALApparitionAttendSesCorps(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity a = AssembliesDeTest.poser(helper, MAILLON, new Vec3(6.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        AxionEntity b = AssembliesDeTest.poser(helper, MAILLON, new Vec3(7.2, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        // Au premier tick où leurs sockets sont connus, avant que le natif ne les ait créés : le cas à prouver.
+        boolean[] posee = new boolean[1];
+        boolean[] avantLeurCorps = new boolean[1];
+        helper.onEachTick(() -> {
+            if (!posee[0] && !a.sockets().sockets().isEmpty() && !b.sockets().sockets().isEmpty()) {
+                avantLeurCorps[0] = !a.simulated() && !b.simulated();
+                attendu(helper, vue(a).attachments().attach("avant", vue(b), "arriere", "rope"),
+                        AttachResult.Status.ATTACHED);
+                posee[0] = true;
+            }
+        });
+        helper.succeedWhen(() -> {
+            helper.assertTrue(posee[0], "posée");
+            helper.assertTrue(avantLeurCorps[0], "posée avant que le natif ne crée les maillons, comme voulu");
+            List<dev.axion.api.attach.Attachments.Attachment> liste = vue(a).attachments().list();
+            helper.assertTrue(liste.size() == 1 && liste.get(0).length() > 0,
+                    "l'attache tient, et le natif la rapporte : " + liste);
+        });
     }
 
     /** T-892 : trois maillons en chaîne ne se referment pas en boucle — E-8030. */
