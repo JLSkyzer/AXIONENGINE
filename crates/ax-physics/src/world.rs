@@ -2206,6 +2206,23 @@ impl PhysicsWorld {
             .unwrap_or_else(|| vec![id])
     }
 
+    /// Les corps que la gestion d'activité traite d'un bloc avec `id` : ceux de son assembly
+    /// (ADR-151 D2), et ceux des assemblies que des attaches lui relient, de proche en proche —
+    /// l'ensemble d'ADR-171 D7, qui s'endort, se réveille et se plafonne comme un tout (CAP-37).
+    fn activity_members(&self, id: BodyId) -> Vec<BodyId> {
+        let Some(assembly) = self.identity.get(&id).map(|identity| identity.assembly) else {
+            return vec![id];
+        };
+        let ensemble = self.ensemble_assemblies(assembly);
+        if ensemble.len() < 2 {
+            return self.assembly_members(id);
+        }
+        ensemble
+            .iter()
+            .flat_map(|handle| self.assembly_bodies(*handle).iter().copied())
+            .collect()
+    }
+
     /// Vrai pour un corps d'une assembly à plusieurs corps qui n'en est pas la racine :
     /// la gestion d'activité relève l'assembly par sa racine.
     fn is_secondary(&self, id: BodyId) -> bool {
@@ -2862,8 +2879,21 @@ impl PhysicsWorld {
                 })
             })
             .collect();
+        // Un ensemble se relève une fois, par la première de ses racines dans l'ordre du monde
+        // (ADR-171 D7) : ses autres assemblies le suivent.
+        let mut covered = std::collections::BTreeSet::new();
         for id in roots {
-            let members = self.assembly_members(id);
+            if let Some(identity) = self.identity.get(&id) {
+                let ensemble = self.ensemble_assemblies(identity.assembly);
+                if ensemble.len() > 1
+                    && !ensemble
+                        .iter()
+                        .all(|handle| covered.insert(crate::sim::handle_key(*handle)))
+                {
+                    continue;
+                }
+            }
+            let members = self.activity_members(id);
             // À portée dès que l'un de ses corps l'est (R-612) : une assembly étirée ne
             // s'endort pas sous les yeux d'un joueur parce que sa racine est loin.
             let distance = members
@@ -2918,7 +2948,7 @@ impl PhysicsWorld {
     /// s'endort entière (ADR-151 D2) ; le `CLAMPED` part une fois, pour ce corps.
     pub(crate) fn force_sleep(&mut self, id: BodyId, budget: bool) {
         let mut slept = false;
-        for member in self.assembly_members(id) {
+        for member in self.activity_members(id) {
             let Some(body) = self.inner.bodies.get_mut(member.handle()) else {
                 continue;
             };
@@ -2944,7 +2974,7 @@ impl PhysicsWorld {
     ///
     /// Sans effet sur un corps que la gestion n'a pas endormi.
     pub(crate) fn end_forced_sleep(&mut self, id: BodyId) {
-        for member in self.assembly_members(id) {
+        for member in self.activity_members(id) {
             self.wake_forced(member);
         }
     }

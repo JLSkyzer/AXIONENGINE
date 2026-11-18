@@ -179,6 +179,10 @@ All types accept `break` and `collide`.
 - **Cap.** At most `budgets.max_active_bodies` active bodies on the server, across all
   dimensions: beyond that, the ones furthest from a player fall asleep, the oldest first at equal
   distance (R-613).
+- **Attached ensemble.** Assemblies linked by attachments (a car and its trailer) form an
+  ensemble, which activity handles as a whole: it stays awake while one of its members is within
+  reach of a player, falls asleep and wakes up at once, and counts under the cap whole or not at
+  all. An anchor to the world links nothing (ADR-171 D7).
 - **CCD.** When declared, it stays on. Otherwise, it turns itself on at the substep where the
   body travels more than half its smallest dimension (`|v|·dt > 0,5 × min_dim`, section
   5.23), and turns off below that. The smallest dimension is that of the body's thinnest part.

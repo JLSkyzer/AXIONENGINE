@@ -458,3 +458,101 @@ fn r1430_un_collider_anime_reveille_son_corps_endormi_mais_pas_un_corps_suspendu
     );
     assert!(dort(&mut driver, 0, loin), "la suspension tient");
 }
+
+/// Une corde de `longueur` blocs entre deux billes, posée sur le monde comme le pilote le fait après avoir résolu les
+/// deux extrémités (ADR-171 D6).
+fn corde(
+    driver: &mut SimDriver,
+    dimension: u64,
+    id: u32,
+    a: (u32, BodyId),
+    b: (u32, BodyId),
+    longueur: f32,
+) {
+    use ax_model::dm::attachments::attachment_kind;
+    use ax_physics::{AttachEnd, AttachmentSpec};
+    driver
+        .world_mut(dimension)
+        .unwrap()
+        .attach(
+            id,
+            Handle::new(a.0, 1),
+            a.1,
+            AttachEnd::Body {
+                assembly: Handle::new(b.0, 1),
+                body: b.1,
+                frame: (Vec3::ZERO, Quat::IDENTITY),
+            },
+            &AttachmentSpec {
+                kind: attachment_kind::ROPE,
+                frame_a: (Vec3::ZERO, Quat::IDENTITY),
+                max_force: f32::INFINITY,
+                max_torque: f32::INFINITY,
+                cone: 0.6,
+                length: longueur,
+                min_length: 0.5,
+                max_length: 10.0,
+                speed: 1.0,
+            },
+        )
+        .expect("la corde");
+}
+
+#[test]
+fn adr171_d7_un_ensemble_reste_eveille_tant_qu_un_membre_est_a_portee() {
+    // CAP-37 : la remorque, hors du rayon, ne s'endort pas pendant que la voiture qui la tire est vue.
+    let mut driver = pilote(32.0, 2048);
+    let voiture = bille(&mut driver, 0, 1, [30.0, 0.0, 0.0]);
+    let remorque = bille(&mut driver, 0, 2, [36.0, 0.0, 0.0]);
+    corde(&mut driver, 0, 1, (1, voiture), (2, remorque), 8.0);
+
+    let report = tick(&mut driver, 0, &[[0.0; 3]]);
+
+    assert_eq!(report.slept_by_radius, 0, "aucun membre ne s'endort");
+    assert!(!dort(&mut driver, 0, voiture));
+    assert!(
+        !dort(&mut driver, 0, remorque),
+        "la remorque suit la voiture vue"
+    );
+}
+
+#[test]
+fn adr171_d7_un_ensemble_s_endort_et_se_reveille_entier() {
+    let mut driver = pilote(32.0, 2048);
+    let voiture = bille(&mut driver, 0, 1, [100.0, 0.0, 0.0]);
+    let remorque = bille(&mut driver, 0, 2, [106.0, 0.0, 0.0]);
+    let seule = bille(&mut driver, 0, 3, [200.0, 0.0, 0.0]);
+    corde(&mut driver, 0, 1, (1, voiture), (2, remorque), 8.0);
+
+    let report = tick(&mut driver, 0, &[[0.0; 3]]);
+    assert_eq!(
+        report.slept_by_radius, 3,
+        "le rapport compte des corps : les deux de l'ensemble, la bille seule"
+    );
+    assert!(dort(&mut driver, 0, voiture) && dort(&mut driver, 0, remorque));
+
+    // Un joueur s'approche de la remorque seule : l'ensemble se réveille d'un bloc.
+    tick(&mut driver, 0, &[[110.0, 0.0, 0.0]]);
+    assert!(
+        !dort(&mut driver, 0, voiture),
+        "la voiture se réveille avec sa remorque"
+    );
+    assert!(!dort(&mut driver, 0, remorque));
+    assert!(dort(&mut driver, 0, seule));
+}
+
+#[test]
+fn adr171_d7_le_plafond_compte_un_ensemble_entier_ou_pas_du_tout() {
+    // R-613 : deux places ; l'ensemble de deux billes, plus proche, les prend toutes — la bille seule s'endort, et
+    // l'ensemble n'est jamais coupé en deux.
+    let mut driver = pilote(64.0, 2);
+    let seule = bille(&mut driver, 0, 1, [20.0, 0.0, 0.0]);
+    let voiture = bille(&mut driver, 0, 2, [5.0, 0.0, 0.0]);
+    let remorque = bille(&mut driver, 0, 3, [40.0, 0.0, 0.0]);
+    corde(&mut driver, 0, 1, (2, voiture), (3, remorque), 40.0);
+
+    tick(&mut driver, 0, &[[0.0; 3]]);
+
+    assert!(!dort(&mut driver, 0, voiture) && !dort(&mut driver, 0, remorque));
+    assert!(dort(&mut driver, 0, seule));
+}

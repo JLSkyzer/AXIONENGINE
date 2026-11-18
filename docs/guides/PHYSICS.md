@@ -181,6 +181,10 @@ Tous les types acceptent `break` et `collide`.
 - **Plafond.** Au plus `budgets.max_active_bodies` corps actifs sur le serveur, toutes
   dimensions confondues : au-delà, les plus éloignés d'un joueur s'endorment, et les plus
   anciens d'abord à distance égale (R-613).
+- **Ensemble attaché.** Des assemblies reliées par des attaches (une voiture et sa remorque)
+  forment un ensemble, que l'activité traite comme un tout : il reste éveillé tant qu'un de ses
+  membres est à portée d'un joueur, s'endort et se réveille d'un bloc, et compte sous le plafond
+  entier ou pas du tout. Un ancrage au monde n'y relie rien (ADR-171 D7).
 - **CCD.** Déclarée, elle reste active. Sinon, elle s'active d'elle-même au sous-pas où le
   corps parcourt plus de la moitié de sa plus petite dimension (`|v|·dt > 0,5 × min_dim`, fiche
   5.23), et se coupe en deçà. La plus petite dimension est celle de la pièce la plus fine du

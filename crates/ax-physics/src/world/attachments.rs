@@ -99,6 +99,39 @@ pub(super) struct AttachmentEntry {
 }
 
 impl PhysicsWorld {
+    /// Les assemblies de l'ensemble d'`assembly` (ADR-171 D7) : elle, et celles que des attaches
+    /// vivantes entre corps lui relient de proche en proche, dans l'ordre de leurs clés. Un ancrage
+    /// au monde n'y ajoute rien : le monde n'est pas un nœud (Q6).
+    pub(super) fn ensemble_assemblies(&self, assembly: Handle) -> Vec<Handle> {
+        let mut found = vec![assembly];
+        let mut next = 0;
+        while next < found.len() {
+            let current = found[next];
+            for entry in self.attachments.values() {
+                let Some(b) = entry.b else {
+                    continue;
+                };
+                let alive = self
+                    .joints
+                    .get(&entry.joint)
+                    .is_some_and(|joint| joint.joint.is_some());
+                let other = if entry.a == current {
+                    b
+                } else if b == current {
+                    entry.a
+                } else {
+                    continue;
+                };
+                if alive && !found.contains(&other) {
+                    found.push(other);
+                }
+            }
+            next += 1;
+        }
+        found.sort_by_key(|handle| crate::sim::handle_key(*handle));
+        found
+    }
+
     /// Crée l'attache `id` entre le socket `a` — un corps de l'assembly `assembly` — et `end`
     /// (ADR-171 D6). Le joint naît de la table des joints, entre les deux corps, sans contact entre
     /// eux ; il rompt au-delà des seuils de `spec`. Un `ATTACH` part, `data` portant `id`.

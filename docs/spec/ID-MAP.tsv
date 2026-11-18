@@ -60,7 +60,7 @@ ADR-167	ADR		3333	16	12.5 Groupe motopropulseur
 ADR-168	ADR		5096	10	21.3 Handshake
 ADR-169	ADR		7910	1	38.9 Registre des amendements postérieurs au gel
 ADR-170	ADR		2040	11	5.25 C-33 : Vehicle System
-ADR-171	ADR		1156	14	3.17 DM-17 : Attache entre assemblies
+ADR-171	ADR		1156	15	3.17 DM-17 : Attache entre assemblies
 B-01	B	6540	5908	9	30.2 Ce qui est mesuré
 B-02	B	6541	6541	3	30.2 Ce qui est mesuré
 B-03	B	6542	6542	1	30.2 Ce qui est mesuré
@@ -195,7 +195,7 @@ CAP-33	CAP	8349	8349	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-34	CAP	8350	7908	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-35	CAP	8351	2086	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-36	CAP	8352	8352	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-37	CAP	8353	5200	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-37	CAP	8353	2019	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-38	CAP	8354	8354	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-39	CAP	8355	7908	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-40	CAP	8356	7905	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
@@ -533,7 +533,7 @@ R-601	R	1996	1996	2	5.22 C-30 : Scene Graph
 R-610	R	2016	2016	1	5.23 C-31 : Physics World
 R-611	R	2017	2017	1	5.23 C-31 : Physics World
 R-612	R	2018	2018	1	5.23 C-31 : Physics World
-R-613	R	2019	2019	1	5.23 C-31 : Physics World
+R-613	R	2019	2019	2	5.23 C-31 : Physics World
 R-614	R	2020	2020	2	5.23 C-31 : Physics World
 R-615	R	2021	2021	1	5.23 C-31 : Physics World
 R-620	R	2031	2031	1	5.24 C-32 : Collider Builder

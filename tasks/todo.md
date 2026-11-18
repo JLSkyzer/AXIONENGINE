@@ -3906,7 +3906,13 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            remorque qui freine avec la voiture ; corde molle posée sur le sol ; rétablissement d'une attache
            après que le natif a créé ses deux extrémités (course révélée par T-894) ; redressement en
            remorquage en 12 s.
-     - [ ] 8e — l'ensemble (CAP-37) : prédiction, sommeil et déchargement communs, poursuite.
+     - [ ] 8e — l'ensemble (CAP-37), décidé le 2026-11-18 (ADR-171 Q8 protocole 12, Q9 ticket de chunk) :
+       - [x] 8e1 (2026-11-18) — activité native par ensemble : sommeil, réveil, relevé et plafond sur la composante d'attaches.
+       - [ ] 8e2 — déchargement commun : ticket de chunk sur les chunks de tout l'ensemble.
+       - [ ] 8e3 — la poursuite cadre l'emprise de l'ensemble (graphe client des attaches répliquées).
+       - [ ] 8e4 — protocole 12 : réglages complets des attaches répliqués, correction à un état par membre.
+       - [ ] 8e5 — prédiction client de l'ensemble : monde prédit à plusieurs assemblies et leurs attaches,
+             rejeu de l'ensemble, proxies sans les membres ; essai à deux processus.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).
 - **Suite décidée par Killian, dans cet ordre** :
