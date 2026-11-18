@@ -3882,7 +3882,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            C-77 ; 52 au gel de l'API.
      - [x] CAP-42 (2026-11-18) : `ContentCheck` dit non vérifiés, sans les refuser, les contrôleurs, widgets et
            paramètres d'addon dont le code ne se charge pas hors jeu (`VehicleExtensions.withoutCode()`).
-     - [ ] En attente de Killian, propositions du 2026-11-18 : ADR-173 (CAP-43, CAP-45), ADR-174 (événements et
+     - [ ] **Acceptées par Killian le 2026-11-18, toutes questions comme recommandé** (amendements A24 à A28) : ADR-173 (CAP-43, CAP-45), ADR-174 (événements et
            déclencheurs : CAP-02, 04, 05, 11, 16), ADR-175 (CAP-38, CAP-33 ; sa tranche 10a a commencé : le siège non
            retrouvé se journalise), ADR-176 (CAP-12, CAP-20), ADR-177 (CAP-13, CAP-56, direction de CAP-14). Restent
            ensuite l'ADR de CAP-14 (cible Mixin à accepter), CAP-53 avec C-77, CAP-52 au gel de l'API.
