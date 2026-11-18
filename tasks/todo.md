@@ -4117,6 +4117,22 @@ du monde), précisions de CAP-01 à 04, 07, 11, 18 et 27, six axes de plus à la
 
 ---
 
+## Demandes de Killian du 2026-11-18 — inscrites au CDC par ADR-172 (accepté, amendement A22)
+
+- **Gaz progressif, au choix du moddeur** : une entrée qui s'accumule — Z monte la manette, S la descend, elle reste
+  où on la laisse — à côté de l'entrée tout-ou-rien d'une voiture (Z avance, S freine). Pour avion, hélicoptère
+  (collectif), bateau, vaisseau ; déclarable par entrée dans la definition, et par l'API. Lien : CAP-17 (M5b).
+- **Un jalon spatial**, M13 (A22) : vol à 6 degrés de liberté
+  (glisser latéralement, propulseurs de manœuvre), gravité nulle par zone, étagement d'une fusée, amarrage d'un
+  vaisseau à un autre, très grands vaisseaux avec intérieur, transitions sol / atmosphère / espace. Vaisseaux type
+  Star Wars, Star Citizen, No Man's Sky ; fusées.
+- **Les autres véhicules, demandés aussi** (à vérifier contre le CDC, puis à inscrire) : chenilles (tanks, engins de
+  chantier), sous-marins (flottabilité variable, plongée), dirigeables et montgolfières (portance de flottaison dans
+  l'air), robots marcheurs (pattes animées qui portent le corps).
+- **Un jalon d'optimisation client et serveur**, M12 (A22) : TPS, FPS, RAM ; ce qu'on peut accélérer, changer de manière, pour
+  apporter un plus des deux côtés. Comprend de relever le plafond de 64 corps par assembly (R-190), contraignant pour
+  les grands vaisseaux, avec mesures avant/après (aucun chiffre inventé).
+
 ## Jalons suivants
 
 Fiches complètes : `sed -n '7180,7319p' docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md`
@@ -4130,6 +4146,7 @@ Fiches complètes : `sed -n '7180,7319p' docs/spec/AXIONENGINE_Cahier_des_Charge
 - [ ] **M5** Véhicules, sièges, attaches, gouverneur, overlay — C-33, C-48, C-53, C-73, C-77
       · reprend l'étape 14 côté serveur (C-30), avec C-48 et C-53 (ADR-156 D6)
 - [ ] **M5b** Véhicules hors roues — C-33 : bateaux, avions, hélicoptères, deux-roues, rails (CAP-17 à CAP-19) ;
+      chenilles, sous-marins, plus léger que l'air, marcheurs, entrées progressives (CAP-60 à CAP-64, A22) ;
       scindé de M5 par Killian le 2026-11-10 (CDC 37.2, amendement A5)
 - [ ] **M6** Impacts et déformation continue *(jalon central)* — C-28, C-41, C-42, C-45, C-68
       · **`[EFFORT MAX]`** sur tout le jalon, prévenir avant de commencer
@@ -4147,7 +4164,12 @@ Fiches complètes : `sed -n '7180,7319p' docs/spec/AXIONENGINE_Cahier_des_Charge
 - [ ] **M11** Compatibilité, coexistence, durcissement — C-76, testmod, fuzzing
       · CAP-57 et CAP-58 face aux autres mods : rendus d'armure ou du joueur tiers, items déjà rendus par leur mod,
         deux addons qui remplacent le même objet, packs de ressources, shaderpacks — dans la matrice
-- [ ] **M12** Release 1.0.0 — documentation, benchmarks B-01..B-30, SBOM, packaging
+- [ ] **M12** Optimisation client et serveur — TPS, FPS, RAM mesurés ; plafonds de R-190 relevés sur mesure
+      (CAP-72 à CAP-75 ; ADR-172, amendement A22, 2026-11-18)
+- [ ] **M13** Espace — six degrés de liberté, gravité par zone et apesanteur, étagement, amarrage, grands
+      vaisseaux habitables, du sol à l'espace (CAP-65 à CAP-71 ; ADR-172, A22)
+- [ ] **M14** Release 1.0.0 — documentation, benchmarks B-01..B-30, SBOM, packaging (l'ancien M12 ; un ADR
+      antérieur à A22 qui dit « M12 » pour la Release la désigne)
 
 Règles de jalon (R-2390..R-2393) : chaque jalon se termine par un **JAR
 installable et jouable**, préserve intégralement les jalons précédents, et voit

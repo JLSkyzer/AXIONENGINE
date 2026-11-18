@@ -938,7 +938,7 @@ pub enum AssemblyKind {
 }
 ```
 
-- R-190 : plafonds par assembly : 64 bodies, 128 joints, 64 parts, 32 régions de déformation, 16 sièges, 8 ensembles de particules, 64 décalques. Dépassement = `E-3050` à la compilation.
+- R-190 : plafonds par assembly : 64 bodies, 128 joints, 64 parts, 32 régions de déformation, 16 sièges, 8 ensembles de particules, 64 décalques. Dépassement = `E-3050` à la compilation. Ces plafonds se relèvent sur mesure en M12 (CAP-72, amendement A22).
 - R-191 : `Structure` et `Machine` sont des variantes de `Articulated` avec des défauts différents (sommeil agressif, pas de sommeil) ; elles n'introduisent **aucune** logique spécifique.
 
 ## 3.10 DM-10 : Skeleton et Animation
@@ -7213,7 +7213,7 @@ COMPATIBILITÉ
 ```text
 - machine à états d'animation (arbres de blend, conditions)
 - import Collada et PLY
-- roues par corps rigides (chenilles, pneus déformables)
+- pneus déformables (les chenilles sont passées en M5b, CAP-61, amendement A22)
 - pathfinding vanilla prenant réellement en compte les assemblies
 - éditeur en jeu de definitions et de régions
 - streaming d'assets depuis le serveur
@@ -7359,10 +7359,13 @@ Et les capacités de l'ANNEXE A.7 affectées à M5 (R-2394).
 
 ### M5b — Véhicules hors roues (amendement A5)
 ```text
-C-33 (propulsion hors roues, flottabilité, deux-roues, rails)
-Livrable : bateaux, avions, hélicoptères, deux-roues et véhicules sur rails
-           pilotables en multijoueur avec prédiction.
+C-33 (propulsion hors roues, flottabilité, deux-roues, rails, chenilles,
+pattes, entrées progressives)
+Livrable : bateaux, sous-marins, avions, hélicoptères, dirigeables et
+           montgolfières, deux-roues, véhicules sur rails, à chenilles et
+           marcheurs pilotables en multijoueur avec prédiction (amendement A22).
 Acceptance : les capacités de l'ANNEXE A.7 affectées à M5b (CAP-17 à CAP-19,
+             CAP-60 à CAP-64,
              R-2394), à la grille transversale d'ADR-160 D7.
 ```
 
@@ -7434,7 +7437,31 @@ Acceptance : T-660..T-671 et T-676 inconditionnels ; T-672..T-675 si artefact
 Tests : T-650..T-656, T-660..T-676, T-680..T-691
 ```
 
-### M12 — Release 1.0.0
+### M12 — Optimisation client et serveur (amendement A22)
+```text
+Tous les composants (ADR-172)
+Livrable : TPS, FPS, temps d'image, RAM et mémoire native mesurés sous charge
+           réelle, avant et après chaque amélioration ; les plafonds par
+           assembly de R-190 relevés sur mesure ; chaque goulot mesuré
+           interrogé : plus vite, ou autrement.
+Acceptance : les capacités de l'ANNEXE A.7 affectées à M12 (CAP-72 à CAP-75,
+             R-2394), à la grille transversale d'ADR-160 D7 ; aucun chiffre
+             sans sa mesure.
+```
+
+### M13 — Espace (amendement A22)
+```text
+C-33 (six degrés de liberté, gravité par zone, transitions), C-48 (amarrage,
+étagement) (ADR-172)
+Livrable : vaisseaux et fusées pilotables en multijoueur avec prédiction :
+           vol à six degrés de liberté, gravité par zone et joueur en
+           apesanteur, étagement, amarrage, grands vaisseaux habitables, du sol
+           à l'espace, grandes distances et grandes vitesses.
+Acceptance : les capacités de l'ANNEXE A.7 affectées à M13 (CAP-65 à CAP-71,
+             R-2394), à la grille transversale d'ADR-160 D7.
+```
+
+### M14 — Release 1.0.0
 ```text
 Documentation complète, benchmarks archivés (B-01..B-30), SBOM, packaging.
 Acceptance : checklist PARTIE 38 intégralement cochée ; build reproductible ;
@@ -7912,6 +7939,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A19 | 2026-11-14 | ADR-168 précision 6e (preuves) | R-1642 : `prediction_enabled` du handshake ; 21.4 : la fréquence et le contenu de `S2C_Correction` et de `C2S_Input` tels que livrés ; R-1682 : le lissage de la reprise ; R-1683 : le taux de corrections sur 100 et son nouvel essai ; R-1684 : la file des entrées au serveur ; ANNEXE A.3 : `net.prediction_max_corrections`, son défaut tiré d'une mesure (D10) |
 | A20 | 2026-11-15 | ADR-170, accepté par Killian | 12.10 : R-1111 à R-1115, les vues du véhicule, le tableau de bord et ses widgets ; R-910 : le rôle `camera` ; 5.25 : renvoi de C-33 ; R-1640 : le mod d'un widget nommé exigé des clients ; R-1770 : le budget d'un widget ; 23.3 : le widget du tableau de bord ; 23.4 : schéma de definition 5, `cameras` et `dashboard`, R-1783 ; A.1 : `E-1011` couvre un widget ; A.3 : section `[hud]` ; A.7 : CAP-10 tenue, CAP-11 tenue pour les widgets du tableau de bord ; CAP-37 : le cadrage de l'ensemble par la poursuite ; C-71 : `/axion defs info` dit les vues et le tableau de bord |
 | A21 | 2026-11-15 | ADR-171, accepté par Killian (en cours, tranche par tranche) | 5.40 et DM-17 : `SEATED` retiré ; la definition déclare ses sockets au schéma 6 ; R-1783 : `definition-6.json` ; T-895 passe en M6 (8a) ; DM-17 : la commande `ATTACH`, `DETACH`, `SET_ATTACHMENT_LENGTH`, la section `AttachmentReport` de `SIM_OUT` (schéma 7) et les causes de `DETACH_ATTACHMENT` (8b) ; R-691 : le plus long chemin ; 23.2 : `Attachments attachments()` ; 23.3 : l'écouteur des attaches ; ANNEXE A.3 : `attachment.snap_distance` (8c) ; 22.2 : `axion:atts` ; R-692 précisée (8d) ; 21.5 : descripteur 7 et protocole 11, les attaches répliquées ; A.4 : `attach.<n>` et `socket.<n>` nomment un socket (8d) ; R-613 : l'ensemble attaché, unité d'activité (8e1) ; R-692 : l'ensemble se décharge entier (8e2) |
+| A22 | 2026-11-18 | ADR-172, accepté par Killian | ANNEXE A.7 : CAP-60 à CAP-75 ; 37.2 : M5b reçoit chenilles, sous-marins, plus léger que l'air, marcheurs et entrées progressives ; M12 Optimisation client et serveur et M13 Espace, la Release passe en M14 ; 36.2 : les chenilles quittent les extensions V1.x ; R-190 : les plafonds se relèvent sur mesure en M12 ; CAP-36 complète en M14 |
 
 ---
 
@@ -8349,7 +8377,7 @@ ses trouvailles s'ajoutent ici.
 | CAP-33 | Rechargement à chaud des assemblies déjà au monde (elles gardent leur definition compilée, ADR-156) | M5 |
 | CAP-34 | Joints engrenage et crémaillère ; commandes d'administration (téléporter, échelle, renommer, figer) ; masse variable (aux garanties de D6 ; tenue par le paramètre `mass`, R-1084, amendement A15) ; échelle par definition | M5 |
 | CAP-35 | Chunks non chargés (traversée, chargement par un véhicule) et changement de dimension (R-023). un véhicule piloté charge les chunks de sa trajectoire dans un rayon borné, au budget du gouverneur (Q5, amendement A5) | M11 |
-| CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M12 |
+| CAP-36 | Documentation créateur : les fichiers de la PARTIE 33, chaque jalon pour ce qu'il livre | chaque jalon, complète en M14 |
 | CAP-37 | Ensemble attaché et périmètre de la prédiction : un ensemble attaché (remorque, voiture remorquée) se prédit, se cadence, s'endort et se décharge comme un tout ; les rivaux proches sont avancés au temps prédit, ou leurs contacts ne sont pas prédits (R-1680 amendé, Q7, A5) ; la vue de poursuite cadre l'emprise de l'ensemble, pas du seul véhicule (ADR-170 D1, amendement A20) | M5 |
 | CAP-38 | Le contenu évolue sous des assemblies sauvegardées : identités par nom (corps, joint, pièce, région), version de definition, migrations déclarées, restauration partielle et nommée plutôt que tout abandonner | M5 |
 | CAP-39 | Plusieurs causes sur une même valeur (definition, amélioration, dommage, usure, météo, variable, addon) : ordre et opération définis, chaque cause retirable seule, valeur et origines lisibles — tenue (R-1084, amendement A15) ; les causes du moteur (dommage, usure, météo, énergie) s'y brancheront avec leur composant | M5 |
@@ -8373,6 +8401,22 @@ ses trouvailles s'ajoutent ici.
 | CAP-57 | Armure à modèle AXION, **en GLB obligatoirement** (elle suit les os du porteur : hiérarchie et articulations, qu'OBJ et STL ne portent pas — un autre format est refusé, la cause dite au journal) : pièces en haute définition venues de Blender, portées par le joueur et les entités humanoïdes, accrochées aux os de leur modèle aux cotes du mannequin (CAP-56), modèles large et fin ; elles **remplacent** le rendu de l'armure vanilla de la pièce ; état de dommage visible (R-732), LOD, plafond de triangles. **M10** : la fonction, de bout en bout. **M11** : la cohabitation — mods qui posent leur propre rendu d'armure ou du joueur (animations du joueur, calques de peau, armures GeckoLib), shaderpacks — dans la matrice de compatibilité, chaque conflit tranché par une règle dite au journal — demande de Killian, 2026-11-14 | M10 (fonction) et M11 (cohabitation), confirmé par Killian le 2026-11-14 |
 | CAP-58 | Rendu AXION des objets existants, par données seules : un addon associe un item ou une armure de Minecraft ou d'un autre mod (outils, armes, armures) à un modèle AXION en haute définition qui en remplace le rendu, comme un pack de ressources en 3D ; transformations en main à la première et à la troisième personne, dans l'inventaire, posé au sol et dans un cadre, animations d'usage ; aucun nom d'objet dans le code ; repli sur le rendu d'origine quand le client n'a pas le modèle. Formats de C-21 : GLB pour une pièce animée ou une armure (CAP-57), OBJ et STL admis pour un item statique. Les items neufs d'un addon restent C-55. **M10** : la fonction. **M11** : deux addons qui remplacent le même objet (règle de priorité dite, comme les surcharges d'ADR-160 D5), un mod tiers qui rend déjà cet item lui-même, les packs de ressources — dans la matrice de compatibilité — demande de Killian, 2026-11-14 | M10 (fonction) et M11 (cohabitation), confirmé par Killian le 2026-11-14 |
 | CAP-59 | Addon Blender (C-75) à la façon de Blockbench pour l'affichage des items et des armures : régler et voir en direct le rendu en main à la première et à la troisième personne, dans l'inventaire, sur la tête, au sol, dans un cadre, sur le mannequin (CAP-56) ; réglages exportés dans le GLB (`extras`) et lus par le moteur au même format, aperçu identique au jeu vérifié par un test. Et l'addon entier **pilotable par un agent** qui conduit Blender par un plugin MCP (BlenderMCP ou un autre) : chaque action est une opération Python documentée, appelable sans clic et sans fenêtre modale, qui rend un résultat lisible ; un test le pilote sans interface. **M9** : l'addon naît pilotable par script. **M10** : l'aperçu et le réglage des positions d'affichage, avec les items 3D (C-55, CAP-58) — demande de Killian, 2026-11-14 | M9 (addon pilotable par script) et M10 (aperçu et réglage de l'affichage), confirmé par Killian le 2026-11-14 |
+| CAP-60 | Entrées progressives : une entrée de véhicule se déclare directe (la touche pose la valeur, relâchée elle revient), progressive (une touche la monte à une vitesse déclarée, une autre la descend, elle reste où on la laisse) ou à rappel (progressive, et revient d'elle-même vers un neutre) ; bornes, inversion, crans et vitesse déclarés ; dans le flux d'entrées prédit, lisible comme source et posée par l'API — manette des gaz, collectif, barre (ADR-172, demande de Killian) | M5b |
+| CAP-61 | Chenilles : bande continue, barbotin, galets et tendeur ; adhérence sur toute la surface en contact ; pivot sur place par vitesses opposées ; la bande défile au rendu. Quitte les extensions V1.x de 36.2 (ADR-172) | M5b |
+| CAP-62 | Sous-marins : flottabilité pilotée par des ballasts (une variable les remplit et les vide), plongée, assiette et profondeur ; densité du fluide et profondeur lisibles comme sources ; prolonge CAP-18 (ADR-172) | M5b |
+| CAP-63 | Plus léger que l'air : flottabilité dans l'air d'une enveloppe déclarée (volume, densité du gaz porteur ; température pilotée pour une montgolfière) ; densité de l'air selon l'altitude ; prolonge CAP-18 et 10.6 (ADR-172) | M5b |
+| CAP-64 | Marcheurs : locomotion à pattes pilotée — pieds en contact avec le sol, placement des pieds par cinématique inverse, cycle de marche piloté par les entrées, équilibre du corps porté ; un véhicule, pas une créature à IA (CAP-29) (ADR-172) | M5b |
+| CAP-65 | Vol à six degrés de liberté : translation sur trois axes et rotation sur trois ; propulseurs de manœuvre déclarés, chacun sa poussée et son repère ; stabilisation assistée débrayable, en contrôleur (ADR-167) ; s'appuie sur CAP-17 et CAP-60 (ADR-172) | M13 |
+| CAP-66 | Gravité par zone : champs déclarés, nuls, uniformes ou centrés sur un astre, par dimension et par volume, et leurs transitions ; les assemblies les subissent, et les joueurs aussi : un joueur en apesanteur flotte et se déplace, dans un vaisseau ou dehors (cible Mixin acceptée dans son principe, décidée dans l'ADR de M13) (ADR-172 Q4) | M13 |
+| CAP-67 | Étagement : un étage se sépare (une attache qui se défait, ou une pièce détachée, M7) et devient une assembly à part ; masse et centre de masse suivent le carburant brûlé (CAP-12, CAP-34) (ADR-172) | M13 |
+| CAP-68 | Amarrage : deux vaisseaux en mouvement s'amarrent par un sas ou un port déclaré, avec un guidage d'alignement, puis une attache (C-48) ; l'ensemble amarré se prédit et se cadence comme un tout (CAP-37) ; on passe à pied de l'un à l'autre (CAP-14) (ADR-172) | M13 |
+| CAP-69 | Grands vaisseaux habitables : un vaisseau ou un avion de ligne avec intérieur où l'on marche (CAP-14), portes, sièges et consoles ; plafonds de R-190 relevés pour lui (CAP-72) ; collisions intérieures fiables à toute vitesse ; niveaux de détail de l'intérieur vu de dehors (R-950) (ADR-172) | M13 |
+| CAP-70 | Du sol à l'espace : la densité de l'air décroît avec l'altitude (traînée et portance de 10.6) ; on passe de l'atmosphère à l'espace et d'une dimension à l'autre (CAP-35) sans perdre le véhicule, ses occupants ni son ensemble ; la rentrée échauffe (CAP-23). L'espace n'est pas au-dessus du monde, que borne la hauteur de construction : il est une dimension, ou une zone déclarée spatiale (ADR-172) | M13 |
+| CAP-71 | Grandes distances et grandes vitesses : l'origine flottante (R-462) éprouvée aux vitesses et distances spatiales — précision des poses, prédiction et réseau, CCD et sommeil à très haute vitesse (ADR-172) | M13 |
+| CAP-72 | Plafonds par assembly relevés sur mesure : ce que coûtent 128, 256 et 512 corps (simulation, réseau, rendu, sauvegarde) est mesuré, puis Killian choisit les plafonds de R-190 ; chaque plafond relevé a son budget, son LOD ou son repli (ADR-172 Q6) | M12 |
+| CAP-73 | Campagne de performance serveur : TPS sous charge réelle (assemblies, joueurs, attaches, corps actifs), part du thread principal, mémoire native et Java, débit réseau ; chaque amélioration mesurée avant et après, aucun chiffre inventé ; prolonge CAP-53 (ADR-172) | M12 |
+| CAP-74 | Campagne de performance client : FPS et temps d'image, rendu (lots, instanciation, LOD, culling), interpolation et prédiction, mémoire GPU et RAM, chargement des assets, sous shaders comme sans (ADR-172) | M12 |
+| CAP-75 | Changer de manière : pour chaque goulot mesuré, « faut-il le faire autrement ? » — autre algorithme, autre découpage entre threads ou entre natif et Java, autre fréquence (CAP-53) — et pas seulement plus vite ; rien n'est retiré pour raison de coût (ADR-172) | M12 |
 
 Hors périmètre, par décision de Killian du 2026-11-10 : construire en jeu des véhicules ou des objets à partir
 de blocs de Minecraft. AXION importe des modèles 3D (ADR-160 D2).
