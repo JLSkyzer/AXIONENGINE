@@ -3916,7 +3916,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            (centre de masse déclaré → physics.mass non répartie, 1954 kg au lieu de 340 ; correctif de D2
            d'ADR-151). Test du limiteur au tiers des gaz ; remorqueuse avec antipatinage ; film en remorquage
            plafonné à la vitesse du slalom. Reste : point mort à la demande d'une boîte automatique, absent ; les
-           autres films (vehicule, vues, roues, paramètres, sport, limiteur) à rejouer au buggy allégé.
+           autres films (vehicule, vues, roues, paramètres, sport, limiteur) rejoués le 2026-11-18 : tous réussis,
+           après deux corrections des films eux-mêmes (la file des entrées, ADR-168 D3).
            2026-11-17 : corde `rope` élastique à 3 Hz (choc de retension 9-17 kN → 3,5 kN au film ; treuil rigide) ;
            passager mesuré à son point d'assise (le décalage de monture glissait au tangage : 0,030 → 0,0000) ;
            remorque qui freine avec la voiture ; corde molle posée sur le sol ; rétablissement d'une attache

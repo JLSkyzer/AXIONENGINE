@@ -313,6 +313,9 @@ public final class FilmDesParametres {
                 }
             }
             case REGLAGE -> {
+                if (!regle && tickDuSport >= 0) {
+                    auServeur(minecraft, () -> verifierLeSport(minecraft.getSingleplayerServer()));
+                }
                 // D8 : le client a reçu les modificateurs et les variables, et compose ; on ne filme qu'une fois
                 // qu'il lit les valeurs du serveur.
                 if (regle && depuis(1.0)) {
@@ -430,35 +433,36 @@ public final class FilmDesParametres {
                             + VARIABLE_SPORT));
             regleServeur.receiveInput(piloteRegle, siege,
                     new VehicleInput(0f, 0f, 0f, 0f, 1f, (byte) 0, 1 << (commandeSport - 1)));
-            // ADR-168 D3 : l'entrée attend son tick dans la file du siège ; le mode sport se juge quand elle est jouée.
-            verifierLeSport(serveur, 0);
+            // ADR-168 D3 : l'entrée attend son tick dans la file du siège ; le mode sport se juge quand elle est jouée,
+            // tick après tick du serveur (verifierLeSport, depuis la phase REGLAGE).
+            tickDuSport = serveur.getTickCount();
             return;
         }
         regle = true;
     }
 
-    /** Ticks qu'attend le mode sport avant d'être déclaré manqué : la file du siège joue une entrée par tick. */
+    /** Ticks du serveur qu'attend le mode sport avant d'être déclaré manqué : la file joue une entrée par tick. */
     private static final int TICKS_DU_SPORT = 20;
 
-    /** Juge, tick après tick, que la commande du mode sport a été jouée ; au-delà de {@link #TICKS_DU_SPORT}, échoue. */
-    private static void verifierLeSport(MinecraftServer serveur, int attendus) {
+    /** Le tick du serveur où la commande du mode sport est partie ; -1 avant. */
+    private static volatile int tickDuSport = -1;
+
+    /**
+     * Juge que la commande du mode sport a été jouée ; au-delà de {@link #TICKS_DU_SPORT} ticks du serveur, échoue.
+     * Appelé une fois par tick du client : une {@code TickTask} ne garantit pas qu'un tick passe, le serveur la joue
+     * plus tôt quand il a du temps.
+     */
+    private static void verifierLeSport(MinecraftServer serveur) {
         AssemblyParameters table = regleServeur.parameters();
         int couple = table.tuning().indexOf(Parameters.ENGINE_TORQUE);
         if (table.value(couple) > table.tuning().get(couple).base()) {
             regle = true;
             return;
         }
-        if (attendus >= TICKS_DU_SPORT) {
+        if (serveur.getTickCount() - tickDuSport > TICKS_DU_SPORT) {
             throw new IllegalStateException("la commande " + commandeSport + " n'a pas mis le mode sport en "
-                    + TICKS_DU_SPORT + " ticks : " + table.applied());
+                    + TICKS_DU_SPORT + " ticks du serveur : " + table.applied());
         }
-        serveur.tell(new net.minecraft.server.TickTask(serveur.getTickCount() + 1, () -> {
-            try {
-                verifierLeSport(serveur, attendus + 1);
-            } catch (RuntimeException faute) {
-                fauteServeur = faute;
-            }
-        }));
     }
 
     /**
