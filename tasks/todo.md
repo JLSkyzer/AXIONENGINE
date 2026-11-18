@@ -3911,8 +3911,13 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
        - [x] 8e2 (2026-11-18) — déchargement commun : ticket de chunk sur les chunks de tout l'ensemble.
        - [x] 8e3 (2026-11-18) — la poursuite cadre l'emprise de l'ensemble (graphe client des attaches répliquées).
        - [x] 8e4 (2026-11-18) — protocole 12 : réglages complets des attaches répliqués, correction à un état par membre.
-       - [ ] 8e5 — prédiction client de l'ensemble : monde prédit à plusieurs assemblies et leurs attaches,
-             rejeu de l'ensemble, proxies sans les membres ; essai à deux processus.
+       - [ ] 8e5 — prédiction client de l'ensemble :
+         - [x] 8e5a (2026-11-18) — l'état d'un ensemble (net.EnsembleState) et sa tolérance, membre à membre.
+         - [ ] 8e5b — monde prédit à plusieurs assemblies : membres ajoutés et retirés, leurs attaches posées avec
+               les réglages répliqués, export et restauration de chacun.
+         - [ ] 8e5c — le client : membres synchronisés sur la correction, retirés des proxies cinématiques, une piste
+               prédite par membre (la remorque dessinée au même instant que la voiture).
+         - [ ] 8e5d — essai à deux processus et film ; débit des corrections mesuré contre 21.10.
   9. C-77 gouverneur, C-73 overlay.
   10. Definition of Done de M5, prononcée par Killian (R-2394 : toutes ses capacités fermées).
 - **Suite décidée par Killian, dans cet ordre** :
