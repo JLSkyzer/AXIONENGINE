@@ -3884,7 +3884,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            paramètres d'addon dont le code ne se charge pas hors jeu (`VehicleExtensions.withoutCode()`).
      - [ ] En attente de Killian, propositions du 2026-11-18 : ADR-173 (CAP-43, CAP-45), ADR-174 (événements et
            déclencheurs : CAP-02, 04, 05, 11, 16), ADR-175 (CAP-38, CAP-33 ; sa tranche 10a a commencé : le siège non
-           retrouvé se journalise), ADR-176 (CAP-12, CAP-20). Restent ensuite CAP-13, CAP-56 puis CAP-14, CAP-53, CAP-52.
+           retrouvé se journalise), ADR-176 (CAP-12, CAP-20), ADR-177 (CAP-13, CAP-56, direction de CAP-14). Restent
+           ensuite l'ADR de CAP-14 (cible Mixin à accepter), CAP-53 avec C-77, CAP-52 au gel de l'API.
      - [ ] CAP-10, caméra de véhicule et tableau de bord : **ADR-170 accepté par Killian le 2026-11-15** (F5 fait
            défiler les vues, vues et nodes `camera` déclarés, tableau de bord par défaut + jauges + widgets d'API ;
            sans Mixin). Branche `wip/cap-10`.
