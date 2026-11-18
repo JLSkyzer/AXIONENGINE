@@ -144,6 +144,9 @@ final class DebugOverlayRenderer {
     private int lodDrawn;
     private int cullingDrawn;
 
+    /** Sockets que {@code sockets} a dessinés à la dernière image. */
+    private int socketsDrawn;
+
     /** Couleur de l'emprise d'une assembly retenue, dans {@code culling} (RGB). */
     static final int CULLING_KEPT = 0x40E040;
 
@@ -263,6 +266,7 @@ final class DebugOverlayRenderer {
         networkDrawn = 0;
         lodDrawn = 0;
         cullingDrawn = 0;
+        socketsDrawn = 0;
         boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
         boolean lod = overlays.isOn(DebugOverlays.Overlay.LOD);
         boolean culled = overlays.isOn(DebugOverlays.Overlay.CULLING);
@@ -393,6 +397,7 @@ final class DebugOverlayRenderer {
                 for (int axis = 0; axis < 3; axis++) {
                     emit(out, last.pose(), last.normal(), scratch, axes[axis], AXIS_COLORS[axis]);
                 }
+                socketsDrawn++;
             }
         }
         return out;
@@ -532,6 +537,11 @@ final class DebugOverlayRenderer {
     /** {@return le nombre d'assemblies que {@code culling} a dessinées à la dernière image} */
     int cullingDrawn() {
         return cullingDrawn;
+    }
+
+    /** {@return le nombre de sockets que {@code sockets} a dessinés à la dernière image} */
+    int socketsDrawn() {
+        return socketsDrawn;
     }
 
     /** {@return le nombre d'assemblies que {@code network} a dessinées à la dernière image} */

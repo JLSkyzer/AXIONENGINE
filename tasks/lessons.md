@@ -2512,3 +2512,16 @@ nom existe.
 **Règle.** Avant d'implémenter un overlay, une commande ou un identifiant du CDC, chercher son nom **et** son rang dans
 `src/test` (`grep -rn 'sockets\|, 13,'`) et déplacer les tests qui s'en servaient comme exemple d'absence vers un
 nom encore absent.
+
+## 2026-11-18 | Un overlay neuf fusionné sans le banc de rendu : test-render rouge sur master
+
+**Ce qui a mal tourné.** La clôture de C-48 a ajouté l'overlay `sockets` (`DebugOverlayRenderer`) et a été fusionnée
+après une CI locale « verte hors test-render ». Sur master, le banc de rendu a jugé T-550 rouge : il exige une plage
+de chaque overlay allumé, et `sockets` n'en comptait aucune — ni compteur dans `debugRangesByOverlay`, ni socket dans
+la scène.
+
+**Cause.** Le banc qui ouvre le jeu est sauté par défaut ; je l'ai sauté alors que le rendu était touché.
+
+**Règle.** Un changement dans `forge/client/*Render*`, `DebugOverlay*` ou `AxionRenderPass` lance `local_ci.py
+test-render` (sous le verrou) avant de fusionner. Un overlay en Java seul se compte dans `debugRangesByOverlay`, et la
+scène du banc doit contenir de quoi le dessiner.

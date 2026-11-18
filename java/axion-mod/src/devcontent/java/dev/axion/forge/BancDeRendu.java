@@ -157,7 +157,9 @@ public final class BancDeRendu {
             "axion:test/materiaux/panneau_emissif",
             "axion:test/materiaux/ressource",
             "axion:test/materiaux/sol_repete",
-            "axion:test/materiaux/vitre");
+            "axion:test/materiaux/vitre",
+            // Ses deux sockets : l'overlay sockets a de quoi dessiner (ADR-171, axe Diagnostic).
+            "axion:test/maillon");
 
     private static final String CUBE = "axion:test_cube";
 

@@ -549,8 +549,9 @@ public final class AxionRenderPass {
     }
 
     /**
-     * {@return les plages reçues au dernier tick, comptées par rang d'overlay au §31.4} L'overlay {@code network},
-     * en Java seul, y compte les assemblies qu'il a dessinées à la dernière image.
+     * {@return les plages reçues au dernier tick, comptées par rang d'overlay au §31.4} Les overlays en Java seul
+     * y comptent ce qu'ils ont dessiné à la dernière image : {@code network}, {@code lod} et {@code culling} leurs
+     * assemblies, {@code sockets} ses sockets.
      */
     public static Map<Integer, Integer> debugRangesByOverlay() {
         Map<Integer, Integer> counts = new TreeMap<>();
@@ -568,6 +569,9 @@ public final class AxionRenderPass {
         }
         if (DEBUG.cullingDrawn() > 0) {
             counts.merge(DebugOverlays.Overlay.CULLING.rank(), DEBUG.cullingDrawn(), Integer::sum);
+        }
+        if (DEBUG.socketsDrawn() > 0) {
+            counts.merge(DebugOverlays.Overlay.SOCKETS.rank(), DEBUG.socketsDrawn(), Integer::sum);
         }
         return counts;
     }
