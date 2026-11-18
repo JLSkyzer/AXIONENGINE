@@ -1441,12 +1441,23 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return false;
         }
         int seat = SeatPlacement.seatFor(seating, occupancy(seating), seatName);
+        // R-1742 : ce qui ne revient pas comme il était se dit — un siège que la definition ne déclare plus, ou pris.
+        String cause = seating.seats().stream().anyMatch(declared -> declared.name().equals(seatName))
+                ? "occupé" : "absent de la definition";
         if (seat == SeatOccupancy.FREE) {
+            LOGGER.info("AXION : {} ne retrouve pas son siège « {} » de {} ({}) : aucun siège libre, il reste à côté",
+                    passenger.getName().getString(), seatName, definitionId, cause);
             return false;
         }
         mountingSeat = seat;
         try {
-            return passenger.startRiding(this, true) && seatOf(passenger) == seat;
+            boolean seated = passenger.startRiding(this, true) && seatOf(passenger) == seat;
+            String now = seating.seats().get(seat).name();
+            if (seated && !now.equals(seatName)) {
+                LOGGER.info("AXION : {} ne retrouve pas son siège « {} » de {} ({}) : assis au siège « {} »",
+                        passenger.getName().getString(), seatName, definitionId, cause, now);
+            }
+            return seated;
         } finally {
             mountingSeat = SeatOccupancy.FREE;
         }
