@@ -713,6 +713,23 @@ class DefinitionSchemaTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D4 : au schéma 7, trigger suit sa grammaire et nomme ce qui existe ; avant, un texte libre")
+    void lesDeclencheursDuSchemaSept() {
+        JsonObject ok = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+        ok.add("events", JsonParser.parseString("{\"klaxon\": {}}"));
+        ok.add("animations", JsonParser.parseString("{\"a\": {\"trigger\": \"interact:door\"},"
+                + " \"b\": {\"trigger\": \"event:klaxon\"}}"));
+        assertDoesNotThrow(() -> read(ok));
+        for (String faux : java.util.List.of("clic:door", "interact:capot", "event:sirene", "var:phares",
+                "seat:conducteur:enter", "stage:capot:DESTROYED")) {
+            JsonObject refuse = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+            refuse.add("animations", JsonParser.parseString("{\"a\": {\"trigger\": \"" + faux + "\"}}"));
+            assertEquals("$.animations.a.trigger", assertThrows(DefinitionException.class, () -> read(refuse)).path(),
+                    faux);
+        }
+    }
+
+    @Test
     @DisplayName("ADR-174 D3 : une action à deux clés, une émission ou une teinte hors bornes, une liste absente : refusées")
     void lesActionsMalFormeesSontRefusees() {
         DefinitionException deuxCles = assertThrows(DefinitionException.class, () -> read(septAvec(

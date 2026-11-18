@@ -543,6 +543,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
         ContentListeners.notify(ContentListeners.interactions(),
                 listener -> listener.interacted(view, node, player, action), "l'interaction " + action + " sur " + node);
+        fireTriggers(dev.axion.definition.AnimationTriggers.Kind.INTERACT, node);
         return InteractionResult.CONSUME;
     }
 
@@ -712,6 +713,85 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         nodeStates = next;
     }
 
+    /** Les déclencheurs des animations de la definition, relus quand elle change (ADR-174 D4). */
+    private dev.axion.definition.AnimationTriggers animationTriggers = dev.axion.definition.AnimationTriggers.NONE;
+    private Definition triggersOf;
+    /** Les variables que des déclencheurs {@code var:} suivent : non nulle au tick d'avant. */
+    private final java.util.Map<String, Boolean> triggerVariables = new java.util.HashMap<>();
+
+    /** {@return les déclencheurs des animations que la definition de l'assembly déclare (ADR-174 D4)} */
+    public dev.axion.definition.AnimationTriggers animationTriggers() {
+        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        if (definition == null) {
+            return dev.axion.definition.AnimationTriggers.NONE;
+        }
+        if (definition != triggersOf) {
+            animationTriggers = dev.axion.definition.AnimationTriggers.of(definition.root());
+            triggersOf = definition;
+            triggerVariables.clear();
+        }
+        return animationTriggers;
+    }
+
+    /**
+     * Joue le clip de chaque animation que ce fait déclenche (serveur, ADR-174 D4), depuis son début. Un clip refusé —
+     * R-200 — se journalise.
+     *
+     * @param kind ce qui a eu lieu
+     * @param key ce qu'il nomme
+     */
+    void fireTriggers(dev.axion.definition.AnimationTriggers.Kind kind, String key) {
+        if (level().isClientSide()) {
+            return;
+        }
+        for (dev.axion.definition.AnimationTriggers.Trigger trigger : animationTriggers().matching(kind, key)) {
+            try {
+                animation.setSpeed(trigger.layer(), 1f);
+                animation.play(trigger.clip(), trigger.layer(), 1f, 0f);
+            } catch (IllegalArgumentException refused) {
+                LOGGER.warn("AXION : assembly {}, déclencheur de l'animation {} refusé — {}", getUUID(),
+                        trigger.animation(), refused.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Les déclencheurs {@code var:} (serveur, ADR-174 D4) : une variable qui devient non nulle joue le clip, revenue à 0
+     * elle l'arrête. Relevé une fois par tick, après les entrées.
+     */
+    private void watchTriggerVariables() {
+        dev.axion.definition.AnimationTriggers triggers = animationTriggers();
+        AssemblyVariables held = triggers.triggers().isEmpty() ? null : variables();
+        if (held == null) {
+            return;
+        }
+        for (String name : triggers.watchedVariables()) {
+            int index = held.declared().indexOf(name);
+            if (index < 0) {
+                continue;
+            }
+            boolean on = held.values()[index] != 0.0;
+            Boolean before = triggerVariables.put(name, on);
+            if (before == null || before == on) {
+                continue;
+            }
+            for (dev.axion.definition.AnimationTriggers.Trigger trigger
+                    : triggers.matching(dev.axion.definition.AnimationTriggers.Kind.VAR, name)) {
+                try {
+                    if (on) {
+                        animation.setSpeed(trigger.layer(), 1f);
+                        animation.play(trigger.clip(), trigger.layer(), 1f, 0f);
+                    } else {
+                        animation.stop(trigger.layer(), 0f);
+                    }
+                } catch (IllegalArgumentException refused) {
+                    LOGGER.warn("AXION : assembly {}, déclencheur de l'animation {} refusé — {}", getUUID(),
+                            trigger.animation(), refused.getMessage());
+                }
+            }
+        }
+    }
+
     /** Les événements que la definition déclare, relus quand elle change. */
     private dev.axion.definition.ContentEvents contentEvents = dev.axion.definition.ContentEvents.NONE;
     private Definition eventsOf;
@@ -752,6 +832,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
         ContentListeners.notify(ContentListeners.events(), listener -> listener.onEvent(view, event, value),
                 "l'événement " + event + " de " + writer);
+        fireTriggers(dev.axion.definition.AnimationTriggers.Kind.EVENT, event);
         dev.axion.definition.ContentEvents.Replicate replicate = declared.declared().get(rank).replicate();
         if (replicate != dev.axion.definition.ContentEvents.Replicate.NONE) {
             dev.axion.forge.net.AxionNetwork.queueEvent(this, rank, value,
@@ -1764,6 +1845,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
             ContentListeners.notify(ContentListeners.seats(), listener -> listener.entered(view, name, passenger),
                     "la montée au siège " + name);
+            fireTriggers(dev.axion.definition.AnimationTriggers.Kind.SEAT_ENTER, name);
         }
     }
 
@@ -1813,6 +1895,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             modDrive = null;
         }
         tickInputs(seating);
+        watchTriggerVariables();
         tickVariables(seating);
     }
 
@@ -2032,6 +2115,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
                 ContentListeners.notify(ContentListeners.seats(),
                         listener -> listener.exited(view, name, passenger, cause), "la descente du siège " + name);
+                fireTriggers(dev.axion.definition.AnimationTriggers.Kind.SEAT_EXIT, name);
             }
         }
         exitRefusedUntil.remove(passenger.getId());

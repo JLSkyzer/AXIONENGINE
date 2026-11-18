@@ -105,4 +105,38 @@ public final class ActionsGameTests {
                         "relu tel quel : " + relue[0].nodeStates() + ", attendu " + attendu[0]))
                 .thenSucceed();
     }
+
+    /**
+     * ADR-174 D4 : le {@code trigger} d'une animation, évalué au serveur — une interaction et l'événement qu'elle émet
+     * jouent chacun leur clip ; une variable qui devient non nulle joue le sien, revenue à 0 elle l'arrête.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr174_LesDeclencheursJouentLeurClip(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/anime/glissiere_declenchee",
+                new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        ServerPlayer joueur = SiegesGameTests.joueur(helper, "declencheur");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.animationTriggers().triggers().size() == 3,
+                            "trois déclencheurs : " + assembly.animationTriggers());
+                    helper.assertTrue(SiegesGameTests.cliquer(assembly, joueur, 0f, 0.5f, 0f) == InteractionResult.CONSUME,
+                            "le socle émet son événement");
+                    helper.assertTrue(assembly.animation().state().layer(2).playing(), "event:sonne joue la couche 2");
+                    helper.assertTrue(assembly.animation().state().layer(3).playing(), "interact:socle joue la couche 3");
+                    helper.assertTrue(!assembly.animation().state().layer(1).playing(), "la variable n'a pas bougé");
+                    assembly.variables().set(assembly.variables().declared().indexOf("ouverte"), 1, "test");
+                })
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.animation().state().layer(1).playing(), "var:ouverte non nulle joue la couche 1");
+                    assembly.variables().set(assembly.variables().declared().indexOf("ouverte"), 0, "test");
+                })
+                .thenIdle(2)
+                .thenExecute(() -> helper.assertTrue(!assembly.animation().state().layer(1).playing(),
+                        "revenue à 0, elle l'arrête : " + assembly.animation().state().layer(1)))
+                .thenSucceed();
+    }
 }

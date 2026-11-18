@@ -94,6 +94,30 @@ par sommet, et se pose à la racine de l'assembly :
 
 La déformation continue, qui s'y ajoute, vient avec la M6.
 
+## Déclencher un clip sans Java
+
+Au schéma 7, une animation déclare ce qui la joue (`trigger`), dans une grammaire fermée que le serveur évalue
+([ADR-174](../decisions/ADR-174.md)) :
+
+| `trigger` | Le clip joue quand… |
+|---|---|
+| `interact:<node>` | une interaction de ce node a eu son effet |
+| `event:<événement>` | cet événement de contenu est émis |
+| `var:<variable>` | la variable devient non nulle ; revenue à 0, le clip s'arrête |
+| `seat:<siège>:enter`, `seat:<siège>:exit` | une entité s'assoit dans ce siège, ou le quitte |
+| `stage:<part>:<étape>` | la part atteint cette étape de dommage (accepté, effectif en M6) |
+
+```json
+"animations": {
+  "gyrophare": { "clip": "tourne", "layer": 1, "trigger": "var:gyrophare" },
+  "portiere": { "clip": "ouvre", "layer": 2, "trigger": "interact:poignee" }
+}
+```
+
+Le clip joue depuis son début, sur la couche de l'animation. Ce que le déclencheur nomme doit exister dans la
+definition, sinon elle est refusée. Un déclencheur ne lit qu'un fait, jamais l'état d'un autre clip : pas de machine
+à états (R-1440).
+
 ## Cacher un node, poser son émission ou sa teinte
 
 Une interaction peut, au schéma 7, jouer une liste d'actions sur l'état de ses nodes

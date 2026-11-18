@@ -93,6 +93,29 @@ bones per vertex, and is placed at the assembly's root:
 
 Continuous deformation, which adds to this, comes with M6.
 
+## Triggering a clip without Java
+
+From schema 7, an animation declares what plays it (`trigger`), in a closed grammar the server evaluates
+([ADR-174](../decisions/ADR-174.md)):
+
+| `trigger` | The clip plays when… |
+|---|---|
+| `interact:<node>` | an interaction of this node had its effect |
+| `event:<event>` | this content event is emitted |
+| `var:<variable>` | the variable becomes non-zero; back to 0, the clip stops |
+| `seat:<seat>:enter`, `seat:<seat>:exit` | an entity sits in this seat, or leaves it |
+| `stage:<part>:<stage>` | the part reaches this damage stage (accepted, effective in M6) |
+
+```json
+"animations": {
+  "beacon": { "clip": "spin", "layer": 1, "trigger": "var:beacon" },
+  "door": { "clip": "open", "layer": 2, "trigger": "interact:handle" }
+}
+```
+
+The clip plays from its start, on the animation's layer. What the trigger names must exist in the definition,
+otherwise it is refused. A trigger reads only a fact, never the state of another clip: no state machine (R-1440).
+
 ## Hiding a node, setting its emission or its tint
 
 From schema 7, an interaction can play a list of actions on the state of its nodes

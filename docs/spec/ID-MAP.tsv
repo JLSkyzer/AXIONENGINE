@@ -63,7 +63,7 @@ ADR-170	ADR		2040	11	5.25 C-33 : Vehicle System
 ADR-171	ADR		1156	21	3.17 DM-17 : Attache entre assemblies
 ADR-172	ADR		7454	19	M12 — Optimisation client et serveur (amendement A22)
 ADR-173	ADR		7956	4	38.9 Registre des amendements postérieurs au gel
-ADR-174	ADR		5116	10	21.4 Paquets
+ADR-174	ADR		4542	11	18.2 Échantillonnage et blending
 ADR-175	ADR		7958	1	38.9 Registre des amendements postérieurs au gel
 ADR-176	ADR		7959	1	38.9 Registre des amendements postérieurs au gel
 ADR-177	ADR		5944	3	26.2 Empreinte Mixin (liste fermée)
@@ -808,7 +808,7 @@ R-1402	R	4474	4474	1	17.6 Cordes et câbles physiques
 R-1410	R	4478	4478	1	17.7 Interaction avec la déformation
 R-1420	R	4479	152	2	17.7 Interaction avec la déformation
 R-1430	R	4529	4529	1	18.1 Types d'animation
-R-1440	R	4542	4542	1	18.2 Échantillonnage et blending
+R-1440	R	4542	4542	2	18.2 Échantillonnage et blending
 R-1450	R	4561	4561	1	18.3 Animation procédurale déclarative
 R-1460	R	4565	4565	1	18.4 Palettes de skinning et ordre d'application
 R-1461	R	4566	4566	2	18.4 Palettes de skinning et ordre d'application

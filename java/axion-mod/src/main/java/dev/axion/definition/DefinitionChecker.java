@@ -87,6 +87,7 @@ final class DefinitionChecker {
         checker.checkZoneParents(root);
         checker.checkSeats(root);
         checker.checkInteractions(root);
+        checker.checkTriggers(root);
         if (checker.version >= 2 && checker.issues.isEmpty()) {
             checker.checkJoints(root);
         }
@@ -490,6 +491,66 @@ final class DefinitionChecker {
      * ADR-158 D6 : une interaction est portée par un node, où le joueur clique ; {@code sit} nomme son
      * siège, {@code toggle_animation} et {@code play_animation} leur clip.
      */
+    /**
+     * ADR-174 D4 : au schéma 7, le {@code trigger} d'une animation suit une grammaire fermée, et ce qu'il nomme existe :
+     * un node qui porte une interaction, un événement, une variable, un siège, une part et son étape.
+     */
+    private void checkTriggers(JsonObject root) {
+        if (version < 7 || !(root.get("animations") instanceof JsonObject animations)) {
+            return;
+        }
+        for (Map.Entry<String, JsonElement> entry : animations.entrySet()) {
+            if (!(entry.getValue() instanceof JsonObject animation)
+                    || !(animation.get("trigger") instanceof JsonPrimitive text)) {
+                continue;
+            }
+            String path = "$.animations." + entry.getKey() + ".trigger";
+            AnimationTriggers.Parsed parsed = AnimationTriggers.parse(text.getAsString());
+            if (parsed == null) {
+                invalid(path, "« " + text.getAsString() + " » hors de la grammaire : interact:<node>, event:<événement>,"
+                        + " var:<variable>, seat:<siège>:enter, seat:<siège>:exit ou stage:<part>:<étape>");
+                continue;
+            }
+            String key = parsed.key();
+            switch (parsed.kind()) {
+                case INTERACT -> known(path, key, "node qui porte une interaction", names(root, "interaction", "node"));
+                case EVENT -> known(path, key, "événement", keys(root, "events"));
+                case VAR -> known(path, key, "variable", keys(root, "variables"));
+                case SEAT_ENTER, SEAT_EXIT -> known(path, key, "siège", names(root, "seats", "name"));
+                case STAGE -> {
+                    int colon = key.lastIndexOf(':');
+                    known(path, key.substring(0, colon), "part", names(root, "parts", "name"));
+                    if (!SchemaOne.STAGES.contains(key.substring(colon + 1))) {
+                        invalid(path, "étape « " + key.substring(colon + 1) + " » inconnue ; admises : "
+                                + String.join(", ", new java.util.TreeSet<>(SchemaOne.STAGES)));
+                    }
+                }
+            }
+        }
+    }
+
+    private void known(String path, String name, String what, Set<String> declared) {
+        if (!declared.contains(name)) {
+            invalid(path, what + " « " + name + " » inconnu de la definition");
+        }
+    }
+
+    private static Set<String> keys(JsonObject root, String member) {
+        return root.get(member) instanceof JsonObject table ? table.keySet() : Set.of();
+    }
+
+    private static Set<String> names(JsonObject root, String list, String member) {
+        Set<String> found = new HashSet<>();
+        if (root.get(list) instanceof JsonArray entries) {
+            for (JsonElement entry : entries) {
+                if (entry instanceof JsonObject object && object.get(member) instanceof JsonPrimitive name) {
+                    found.add(name.getAsString());
+                }
+            }
+        }
+        return found;
+    }
+
     private void checkInteractions(JsonObject root) {
         if (!(root.get("interaction") instanceof JsonArray interactions)) {
             return;

@@ -1,0 +1,19 @@
+{
+  "schema": 7,
+  "asset": "axion:models/test/anime/glissiere.gltf",
+  "kind": "rigid_object",
+  "variables": {
+    "ouverte": { "type": "bool" }
+  },
+  "events": {
+    "sonne": {}
+  },
+  "animations": {
+    "par_variable": { "clip": "glisse", "layer": 1, "trigger": "var:ouverte" },
+    "par_evenement": { "clip": "glisse", "layer": 2, "trigger": "event:sonne" },
+    "par_interaction": { "clip": "glisse", "layer": 3, "trigger": "interact:socle" }
+  },
+  "interaction": [
+    { "node": "socle", "action": "emit_event", "event": "sonne" }
+  ]
+}
