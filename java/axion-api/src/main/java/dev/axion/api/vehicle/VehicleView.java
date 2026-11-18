@@ -48,4 +48,18 @@ public interface VehicleView {
      * @param name son nom
      */
     boolean hasParameter(String name);
+
+    /**
+     * {@return la valeur d'une source procédurale (ANNEXE A.4), au début du tick} — {@code world.time},
+     * {@code world.rain}, {@code vehicle.speed}, {@code var.phares}… Le nom et la valeur sont ceux d'une piste
+     * procédurale de la definition : le même code les évalue. Au serveur, le monde se lit au point de l'assembly ; au
+     * client qui prédit, dans son propre niveau (ADR-173 D1). Thread : celui du contrôleur.
+     *
+     * @param name le nom de la source
+     * @throws IllegalArgumentException si le nom n'est pas une source de l'ANNEXE A.4, ou nomme une roue, un siège, un
+     *     socket ou une variable que la definition n'a pas
+     */
+    default double source(String name) {
+        throw new UnsupportedOperationException("source : cette vue ne lit pas les sources procédurales");
+    }
 }

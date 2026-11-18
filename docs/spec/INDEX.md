@@ -1,6 +1,6 @@
 # Index du cahier des charges AXION ENGINE
 
-Genere par `tools/spec/spec_index.py`. Source : `docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8587 lignes).
+Genere par `tools/spec/spec_index.py`. Source : `docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8590 lignes).
 
 Le CDC est **gele (FROZEN)** et constitue la source de verite unique.
 Il ne doit jamais etre lu en entier : lire la plage de lignes de la
@@ -460,19 +460,19 @@ grep -P '^C-42	' docs/spec/ID-MAP.tsv
 | `7891,7898p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ADR modifiés |
 | `7899,7916p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Vérification de non-régression |
 | `7917,7957p` | 41 | &nbsp;&nbsp;&nbsp;&nbsp;38.9 Registre des amendements postérieurs au gel |
-| `7958,8435p` | 478 | ANNEXES |
+| `7958,8438p` | 481 | ANNEXES |
 | `7960,8006p` | 47 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.1 — Codes d'erreur |
 | `8007,8034p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.2 — Index des invariants |
 | `8035,8268p` | 234 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.3 — Configuration complète (référence normative) |
-| `8269,8298p` | 30 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9) |
-| `8299,8321p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
-| `8322,8343p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
-| `8344,8435p` | 92 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160) |
-| `8436,8587p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
-| `8438,8460p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
-| `8461,8476p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
-| `8477,8515p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
-| `8516,8534p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
-| `8535,8540p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
-| `8541,8554p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
-| `8555,8587p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |
+| `8269,8301p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9) |
+| `8302,8324p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
+| `8325,8346p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
+| `8347,8438p` | 92 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160) |
+| `8439,8590p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
+| `8441,8463p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
+| `8464,8479p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
+| `8480,8518p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
+| `8519,8537p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
+| `8538,8543p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
+| `8544,8557p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
+| `8558,8590p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |

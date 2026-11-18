@@ -44,6 +44,7 @@ public final class VehicleSnapshot implements VehicleView {
     private final double[] variableValues;
     private final List<String> parameterNames;
     private final double[] parameterValues;
+    private final java.util.function.ToDoubleFunction<String> sources;
 
     /**
      * @param speed sa vitesse le long de son avant, en m/s
@@ -71,6 +72,30 @@ public final class VehicleSnapshot implements VehicleView {
         this.variableValues = variableValues.clone();
         this.parameterNames = List.copyOf(parameterNames);
         this.parameterValues = parameterValues.clone();
+        this.sources = null;
+    }
+
+    private VehicleSnapshot(VehicleSnapshot from, java.util.function.ToDoubleFunction<String> sources) {
+        this.speed = from.speed;
+        this.rpm = from.rpm;
+        this.gear = from.gear;
+        this.input = from.input;
+        this.wheels = from.wheels;
+        this.variableNames = from.variableNames;
+        this.variableValues = from.variableValues;
+        this.parameterNames = from.parameterNames;
+        this.parameterValues = from.parameterValues;
+        this.sources = Objects.requireNonNull(sources, "sources");
+    }
+
+    /**
+     * {@return la même vue, qui lit les sources procédurales par {@code sources}} (ADR-173 D1).
+     *
+     * @param sources lit une source de l'ANNEXE A.4 par son nom, au début du tick ; lève
+     *     {@link IllegalArgumentException} pour un nom inconnu
+     */
+    public VehicleSnapshot withSources(java.util.function.ToDoubleFunction<String> sources) {
+        return new VehicleSnapshot(this, sources);
     }
 
     @Override
@@ -126,5 +151,14 @@ public final class VehicleSnapshot implements VehicleView {
     @Override
     public boolean hasParameter(String name) {
         return parameterNames.contains(name);
+    }
+
+    @Override
+    public double source(String name) {
+        Objects.requireNonNull(name, "name");
+        if (sources == null) {
+            throw new UnsupportedOperationException("source « " + name + " » : cette vue n'a pas de trame");
+        }
+        return sources.applyAsDouble(name);
     }
 }

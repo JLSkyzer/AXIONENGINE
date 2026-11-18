@@ -932,6 +932,39 @@ public final class ClientPrediction {
      * @param input l'entrée du tick
      * @return l'envoi des couples de roue, s'ils ont changé ; vide sinon
      */
+    /**
+     * La trame des sources lues par un contrôleur prédit (ADR-173 D1) : l'état du tick prédit — roues, régime, vitesse,
+     * entrée, variables —, ce que le client sait du reste du véhicule — charge et drapeaux dessinés, sièges, attaches —
+     * et son propre niveau au point du véhicule. Un écart avec le serveur est une fausse prédiction ordinaire.
+     */
+    private static dev.axion.render.ProceduralTracks.Frame predictedFrame(dev.axion.entity.VehicleSnapshot view,
+            double[] values, VehicleInput input) {
+        List<dev.axion.net.Interpolation.WheelPose> wheels = new java.util.ArrayList<>(view.wheels().size());
+        for (dev.axion.api.vehicle.WheelView wheel : view.wheels()) {
+            wheels.add(new dev.axion.net.Interpolation.WheelPose((float) wheel.compression(), (float) wheel.spin(),
+                    (float) wheel.steer(), wheel.grounded()));
+        }
+        dev.axion.net.Interpolation.VehiclePose shown = vehicle.renderPose(1f).vehicle();
+        dev.axion.net.Interpolation.VehiclePose pose = new dev.axion.net.Interpolation.VehiclePose((float) view.rpm(),
+                shown.load(), view.gear(), shown.flags(), input.throttle(), input.brake(), input.steer(),
+                input.handbrake(), (float) Math.abs(view.speed()), (float) view.speed());
+        float[] floats = new float[values.length];
+        for (int i = 0; i < values.length; i++) {
+            floats[i] = (float) values[i];
+        }
+        long mask = values.length == 64 ? -1L : (1L << values.length) - 1L;
+        net.minecraft.world.level.Level level = vehicle.level();
+        net.minecraft.core.BlockPos at = net.minecraft.core.BlockPos.containing(vehicle.getX(), vehicle.getY(),
+                vehicle.getZ());
+        long tick = level.getGameTime();
+        return new dev.axion.render.ProceduralTracks.Frame(wheels, vehicle.wheelSpin().angles(), pose,
+                new dev.axion.net.AssemblyState.VariableValues(values.length, mask, floats), vehicle.seatsOccupied(),
+                tick * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0,
+                dev.axion.render.ProceduralTracks.worldTime(level.getDayTime()),
+                level.getBrightness(net.minecraft.world.level.LightLayer.SKY, at), level.getRainLevel(1f),
+                vehicle.socketReadings());
+    }
+
     private static SimCommandStream control(VehicleInput input) {
         SimCommandStream out = new SimCommandStream();
         double[] values = tickVariables();
@@ -954,6 +987,8 @@ public final class ClientPrediction {
         if (view == null) {
             return out;
         }
+        dev.axion.entity.VehicleSnapshot seen = view;
+        view = view.withSources(vehicle.sources(() -> predictedFrame(seen, values, input)));
         vehicle.predictView(view);
         dev.axion.entity.ControllerRunner.Outcome outcome = control.run(attached, view);
         if (variables != null) {

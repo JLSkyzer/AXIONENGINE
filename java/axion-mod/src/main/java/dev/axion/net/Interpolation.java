@@ -487,6 +487,27 @@ public final class Interpolation {
         return List.copyOf(bodies);
     }
 
+    /**
+     * {@return les roues d'un état, telles que l'interpolation les lit} : la trame d'une source lue au serveur
+     * (ADR-173 D1) les prend de l'état qu'il réplique.
+     *
+     * @param state l'état
+     */
+    public static List<WheelPose> wheelsOf(AssemblyState state) {
+        return wheels(state);
+    }
+
+    /**
+     * {@return le véhicule d'un état, tel que l'interpolation le lit, sans interpoler} ; {@link VehiclePose#NONE} sans
+     * véhicule.
+     *
+     * @param state l'état
+     */
+    public static VehiclePose vehicleOf(AssemblyState state) {
+        return state.vehicle() == null ? VehiclePose.NONE
+                : vehicle(state.vehicle(), state.vehicle(), 1.0, state.linearVelocity(), state.quaternion());
+    }
+
     /** Les roues d'un snapshot ; une assembly endormie a des roues immobiles. */
     private static List<WheelPose> wheels(AssemblyState state) {
         AssemblyState.Wheels wheels = state.wheels();

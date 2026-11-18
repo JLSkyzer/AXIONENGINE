@@ -476,5 +476,11 @@ public final class ForgeAxionApi implements AxionApi {
                 entity.discard();
             }
         }
+
+        @Override
+        public double source(String name) {
+            AuthoritativeThread.require();
+            return entity.sources().applyAsDouble(name);
+        }
     }
 }

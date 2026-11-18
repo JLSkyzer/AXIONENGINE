@@ -179,6 +179,20 @@ What it **reads** (`VehicleView`): speed, engine speed, gear, the driver's input
 spin, steering, slips), the variables and the parameters. Parameters are composed **without** the controllers'
 outputs: two controllers of the same vehicle read the same value, whatever their order.
 
+It also reads **any procedural source** by name, as a track of the sheet reads it: `view.source("world.time")`,
+`view.source("world.rain")`, `view.source("var.phares")`… The list of sources is that of the tracks. The world is read
+at the vehicle's position, at the start of the tick. An automatic headlight, for instance, switches on at dusk:
+
+```java
+double time = view.source("world.time");           // 0 at midnight, 0.5 at noon
+boolean night = time < 0.27 || time > 0.77;
+out.variable("phares", night ? 1 : 0);
+```
+
+A name that is not a source, or that names a wheel, a seat or a variable the sheet does not have, throws an
+`IllegalArgumentException` that says so. A mod that only reads goes through the assembly: `assembly.source(name)`, on
+the server thread.
+
 What it **writes** (`ControllerOutput`), for this tick only:
 
 | Method | Effect |
@@ -219,8 +233,9 @@ vehicles then drive without it. An exception also discards everything the call h
 **Its rules**:
 
 - a function of what it reads, with no hidden state: its state lives in the vehicle's variables;
-- it runs on the server, between two physics steps; it will also run on the client once prediction comes, hence the
-  previous rule;
+- it runs on the server, between two physics steps, and on the client that predicts its vehicle, hence the previous
+  rule. On that client, world sources are read from its own level: time and rain are copied there from the server,
+  and a rare gap is corrected like any misprediction;
 - the mod registering it is required from players as soon as a sheet names it.
 
 The witness's GameTest attaches the limiter to the example buggy, tunes its top speed and drives it at a third throttle.

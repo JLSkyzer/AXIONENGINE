@@ -75,4 +75,20 @@ public interface Assembly {
      * sans effet si déjà invalide.
      */
     void remove();
+
+    /**
+     * {@return la valeur d'une source procédurale (ANNEXE A.4) à cet instant} — {@code world.time},
+     * {@code world.rain}, {@code var.phares}… Le nom et la valeur sont ceux d'une piste procédurale de la definition :
+     * le même code les évalue, et le monde se lit au point de l'assembly (ADR-173 D1).
+     *
+     * <p>Thread : autoritatif uniquement (R-1755). Coût : la première lecture d'un tick construit la trame, les
+     * suivantes la relisent.
+     *
+     * @param name le nom de la source
+     * @throws IllegalArgumentException si le nom n'est pas une source de l'ANNEXE A.4, ou nomme une roue, un siège, un
+     *     socket ou une variable que la definition n'a pas
+     */
+    default double source(String name) {
+        throw new UnsupportedOperationException("source : cette assembly ne lit pas les sources procédurales");
+    }
 }

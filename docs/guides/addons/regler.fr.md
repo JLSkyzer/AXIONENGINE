@@ -183,6 +183,20 @@ Ce qu'il **lit** (`VehicleView`) : la vitesse, le régime, le rapport, l'entrée
 compression, rotation, braquage, glissements), les variables et les paramètres. Les paramètres y sont composés **sans**
 les sorties des contrôleurs : deux contrôleurs d'un même véhicule lisent la même valeur, quel que soit leur ordre.
 
+Il lit aussi **toute source procédurale** par son nom, comme une piste de la fiche la lit : `view.source("world.time")`,
+`view.source("world.rain")`, `view.source("var.phares")`… La liste des sources est celle des pistes. Le monde se lit au
+point du véhicule, au début du tick. Un phare automatique, par exemple, allume ses feux à la tombée du jour :
+
+```java
+double heure = view.source("world.time");          // 0 à minuit, 0,5 à midi
+boolean nuit = heure < 0.27 || heure > 0.77;
+out.variable("phares", nuit ? 1 : 0);
+```
+
+Un nom qui n'est pas une source, ou qui nomme une roue, un siège ou une variable que la fiche n'a pas, lève une
+`IllegalArgumentException` qui le dit. Un mod qui ne fait que lire passe par l'assembly : `assembly.source(nom)`, sur
+le thread du serveur.
+
 Ce qu'il **écrit** (`ControllerOutput`), pour ce tick seulement :
 
 | Méthode | Effet |
@@ -224,8 +238,9 @@ véhicules, et le journal le dit en nommant ton mod (`E-1011`) : les véhicules 
 **Ses règles** :
 
 - une fonction de ce qu'il lit, sans état caché : son état vit dans les variables du véhicule ;
-- il tourne sur le serveur, entre deux pas de la physique ; il tournera aussi chez le client quand la prédiction
-  viendra, d'où la règle précédente ;
+- il tourne sur le serveur, entre deux pas de la physique, et chez le client qui prédit son véhicule, d'où la règle
+  précédente. Chez ce client, les sources du monde se lisent dans son propre niveau : l'heure et la pluie y sont
+  recopiées du serveur, et un rare écart se corrige comme toute fausse prédiction ;
 - le mod qui l'enregistre est exigé des joueurs dès qu'une fiche le nomme.
 
 Le GameTest du témoin attache le limiteur au buggy d'exemple, règle sa vitesse maximale et le conduit au tiers des gaz.

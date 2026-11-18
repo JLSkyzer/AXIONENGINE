@@ -934,7 +934,67 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                         driver.input().gear());
         return new dev.axion.entity.VehicleSnapshot(speed, vehicleReport == null ? 0.0 : vehicleReport.rpm(),
                 vehicleReport == null ? 0 : vehicleReport.gear(), input, wheels, variableNames, variableValues,
-                table.tuning().names(), parameterValues);
+                table.tuning().names(), parameterValues).withSources(sources());
+    }
+
+    /**
+     * {@return les sources procédurales de l'assembly à cet instant, lues au serveur (ADR-173 D1)} : la trame se
+     * construit à la première source lue, de l'état que le serveur réplique au début du tick, de toutes ses
+     * variables, et du monde au point de l'assembly. Un nom inconnu lève {@link IllegalArgumentException} ; sans
+     * definition, toute lecture lève {@link IllegalStateException}.
+     */
+    public java.util.function.ToDoubleFunction<String> sources() {
+        return sources(this::sourceFrame);
+    }
+
+    /**
+     * {@return les sources procédurales de l'assembly, lues dans la trame que {@code frame} construit} : la même
+     * résolution des noms au serveur et au client qui prédit (ADR-173 D1).
+     *
+     * @param frame construit la trame, à la première source lue
+     */
+    public java.util.function.ToDoubleFunction<String> sources(
+            java.util.function.Supplier<ProceduralTracks.Frame> frame) {
+        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        if (definition == null) {
+            return name -> {
+                throw new IllegalStateException("source « " + name + " » : l'assembly " + getUUID()
+                        + " n'a pas de definition chargée");
+            };
+        }
+        if (sourceReader == null || sourceDefinition != definition) {
+            sourceReader = new dev.axion.render.SourceReader(definition.root());
+            sourceDefinition = definition;
+        }
+        return sourceReader.at(frame);
+    }
+
+    private dev.axion.render.SourceReader sourceReader;
+    private Definition sourceDefinition;
+    /** L'angle des roues pour les sources {@code wheel.<n>.spin_angle} lues au serveur, intégré à chaque lecture. */
+    private final ProceduralTracks.Spin sourceSpin = new ProceduralTracks.Spin();
+
+    /** La trame des sources au serveur : l'état répliqué du début du tick, toutes les variables, le monde ici. */
+    private ProceduralTracks.Frame sourceFrame() {
+        AssemblyState state = netState();
+        List<Interpolation.WheelPose> wheels = state == null ? List.of() : Interpolation.wheelsOf(state);
+        Interpolation.VehiclePose vehicle = state == null ? Interpolation.VehiclePose.NONE
+                : Interpolation.vehicleOf(state);
+        AssemblyVariables held = variables();
+        double[] values = held == null ? new double[0] : held.values();
+        float[] floats = new float[values.length];
+        for (int i = 0; i < values.length; i++) {
+            floats[i] = (float) values[i];
+        }
+        long mask = values.length == 64 ? -1L : (1L << values.length) - 1L;
+        Level here = level();
+        BlockPos at = BlockPos.containing(getX(), getY(), getZ());
+        long tick = here.getGameTime();
+        return new ProceduralTracks.Frame(wheels, sourceSpin.advance(tick, wheels).clone(), vehicle,
+                new AssemblyState.VariableValues(values.length, mask, floats), seatsOccupied(),
+                tick * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0, ProceduralTracks.worldTime(here.getDayTime()),
+                here.getBrightness(net.minecraft.world.level.LightLayer.SKY, at), here.getRainLevel(1f),
+                socketReadings());
     }
 
     /**

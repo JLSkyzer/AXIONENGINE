@@ -85,4 +85,43 @@ public final class ApiPubliqueGameTests {
         assembly.remove();
         helper.succeed();
     }
+
+    /**
+     * ADR-173 D1 (CAP-43) : au serveur, un mod lit les sources procédurales d'une assembly par leur nom
+     * ({@code Assembly.source}), et un contrôleur de même ({@code VehicleView.source}) — le monde au point de
+     * l'assembly, son véhicule, ses variables ; un nom inconnu lève.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr173_LesSourcesSeLisentAuServeur(GameTestHelper helper) {
+        Assembly assembly = AxionApi.get().assemblies().spawn(helper.getLevel(),
+                new DefinitionRef(new ResourceLocation("axion", "test/vehicule_controle")),
+                helper.absoluteVec(new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5)), new Quaternionf());
+        AxionEntity entity = (AxionEntity) assembly.entity();
+        helper.succeedWhen(() -> {
+            dev.axion.entity.VehicleSnapshot vue = entity.vehicleSnapshot();
+            helper.assertTrue(vue != null && entity.netState() != null, "le véhicule n'est pas encore simulé");
+            net.minecraft.server.level.ServerLevel monde = helper.getLevel();
+            float heure = dev.axion.render.ProceduralTracks.worldTime(monde.getDayTime());
+            helper.assertTrue(Math.abs(assembly.source("world.time") - heure) < 1e-6,
+                    "world.time " + assembly.source("world.time") + ", attendu " + heure);
+            helper.assertTrue(Math.abs(assembly.source("world.rain") - monde.getRainLevel(1f)) < 1e-6,
+                    "world.rain " + assembly.source("world.rain"));
+            int ciel = monde.getBrightness(net.minecraft.world.level.LightLayer.SKY, entity.blockPosition());
+            helper.assertTrue(assembly.source("world.sky_light") == ciel,
+                    "world.sky_light " + assembly.source("world.sky_light") + ", attendu " + ciel);
+            helper.assertTrue(assembly.source("var.compteur") == vue.variable("compteur"),
+                    "var.compteur " + assembly.source("var.compteur") + ", attendu " + vue.variable("compteur"));
+            helper.assertTrue(vue.source("world.time") == assembly.source("world.time"),
+                    "le contrôleur et le mod lisent la même heure");
+            helper.assertTrue(Math.abs(vue.source("engine.rpm") - vue.rpm()) < 5.0,
+                    "engine.rpm " + vue.source("engine.rpm") + ", régime de la vue " + vue.rpm());
+            boolean refusee = false;
+            try {
+                assembly.source("meteo.pluie");
+            } catch (IllegalArgumentException attendu) {
+                refusee = attendu.getMessage().contains("meteo.pluie");
+            }
+            helper.assertTrue(refusee, "un nom inconnu ne lève pas IllegalArgumentException en se nommant");
+        });
+    }
 }
