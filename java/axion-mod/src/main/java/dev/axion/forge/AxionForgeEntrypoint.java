@@ -377,6 +377,8 @@ public final class AxionForgeEntrypoint {
             int perTick = (int) runtime.outcome().config().getInt("world.tiles_per_tick");
             // C-40 ↔ C-50 : les entités liées deviennent des corps natifs et reçoivent leur état ;
             // les tuiles passent d'abord, ce que ces corps occupent en tête.
+            // ADR-174 D1 : l'isolement des écouteurs des mods.
+            ContentListeners.limit((int) runtime.outcome().config().getInt("content.listener_strikes"));
             assemblyRuntime = new AssemblyRuntime(
                     runtime::definitions,
                     runtime::compiledDefinition,

@@ -76,6 +76,30 @@ public final class ContentRegistry {
      * @param listener l'écouteur
      */
     public record AttachmentListenerEntry(String modId, dev.axion.api.attach.AttachmentListener listener) {}
+
+    /** Les écouteurs des sièges et des interactions (ADR-174 D1), avec leur mod, dans l'ordre d'enregistrement. */
+    private final List<ListenerEntry<dev.axion.api.assembly.SeatListener>> seatListeners = new ArrayList<>();
+    private final List<ListenerEntry<dev.axion.api.assembly.InteractionListener>> interactionListeners =
+            new ArrayList<>();
+
+    /**
+     * Un écouteur et le mod qui l'a enregistré.
+     *
+     * @param modId le mod
+     * @param listener l'écouteur
+     * @param <T> son type
+     */
+    public record ListenerEntry<T>(String modId, T listener) {}
+
+    /** {@return les écouteurs des sièges enregistrés, dans l'ordre (ADR-174 D1)} */
+    public List<ListenerEntry<dev.axion.api.assembly.SeatListener>> seatListeners() {
+        return List.copyOf(seatListeners);
+    }
+
+    /** {@return les écouteurs des interactions enregistrés, dans l'ordre (ADR-174 D1)} */
+    public List<ListenerEntry<dev.axion.api.assembly.InteractionListener>> interactionListeners() {
+        return List.copyOf(interactionListeners);
+    }
     private final List<Replacement> replacements = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
 
@@ -382,6 +406,18 @@ public final class ContentRegistry {
         public void registerAttachmentListener(dev.axion.api.attach.AttachmentListener listener) {
             ensureOpen();
             attachmentListeners.add(new AttachmentListenerEntry(modId, Objects.requireNonNull(listener, "listener")));
+        }
+
+        @Override
+        public void registerSeatListener(dev.axion.api.assembly.SeatListener listener) {
+            ensureOpen();
+            seatListeners.add(new ListenerEntry<>(modId, Objects.requireNonNull(listener, "listener")));
+        }
+
+        @Override
+        public void registerInteractionListener(dev.axion.api.assembly.InteractionListener listener) {
+            ensureOpen();
+            interactionListeners.add(new ListenerEntry<>(modId, Objects.requireNonNull(listener, "listener")));
         }
 
         @Override

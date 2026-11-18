@@ -1170,6 +1170,14 @@ public final class ConfigSchema {
                     false,
                     "Autorise `/axion dev reload` (opérateur) : rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients (ADR-162 D9). Réservé au développement."),
             new Option(
+                    "content.listener_strikes",
+                    Kind.INTEGER,
+                    20L,
+                    new Domain(DomainKind.INT_RANGE, 1.0, 1200.0, List.of()),
+                    false,
+                    false,
+                    "Exceptions de suite d'un écouteur des sièges ou des interactions d'un mod qui le désactivent pour la session."),
+            new Option(
                     "integration.rustforgex.mode",
                     Kind.STRING,
                     "auto",

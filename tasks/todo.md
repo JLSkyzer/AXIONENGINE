@@ -3885,6 +3885,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [x] ADR-174, tranches 9a1 et 9a2 (2026-11-18) : schéma 7, `actions` d'une interaction (`hide_node`,
            `show_node`, `swap_mesh` par node, `set_material_param`), état des nodes sauvegardé (`axion:nodes`) et
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
+     - [x] ADR-174, tranche 9c (2026-11-18, avant 9b) : `SeatListener`, `InteractionListener`, refus au joueur,
+           isolement par `content.listener_strikes` (`E-1012`), guide « Écouter et refuser un geste ».
      - [x] ADR-173 tenu (2026-11-18) : `source(String)` sur `VehicleView` et `Assembly`, des deux côtés ; CAP-43 et
            CAP-45 tenues. Films : le harnais relaie les fautes du serveur (`auServeur`), le film sport attend que la
            file joue la commande, le film véhicule que la bascule revienne.

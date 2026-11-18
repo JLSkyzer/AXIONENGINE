@@ -5590,6 +5590,7 @@ public interface PartView {
 | Paramètre d'addon | `ContentRegistrar.registerParameter` : il existe là où un contrôleur de son mod est attaché (ADR-167 D1, Q6) | — |
 | Widget du tableau de bord | `DashboardWidget`, `ContentRegistrar.registerDashboardWidget` ; nommé par `dashboard.widgets` (R-1115, ADR-170 D6, amendement A20) | `axion:dashboard_widget` |
 | Écouteur des attaches | `AttachmentListener`, `ContentRegistrar.registerAttachmentListener` : suit chaque attache posée ou défaite, et peut en refuser (ADR-171 D4, amendement A21) | — |
+| Écouteurs des sièges et des interactions | `SeatListener`, `InteractionListener`, `ContentRegistrar.registerSeatListener` et `registerInteractionListener` : jugent une montée, une descente voulue ou une interaction avant qu'elle ait lieu — le premier refus l'emporte, sa clé de traduction dite au joueur —, suivent après coup ; une éjection ne se refuse pas (R-712) ; isolés par `content.listener_strikes` (R-1770, `E-1012`, ADR-174 D1, amendement A25) | — |
 | **Modèle de dommage** | `DamageDistributor` (remplace la répartition 13.3) | `axion:damage_distributor` |
 | **Noyau de déformation** | `DeformationKernel` (`@Experimental`, doit rester déterministe) | `axion:deformation_kernel` |
 | Hook de rendu | `AssemblyRenderHook` (client) | `axion:render_hook` |
@@ -7951,7 +7952,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A22 | 2026-11-18 | ADR-172, accepté par Killian | ANNEXE A.7 : CAP-60 à CAP-75 ; 37.2 : M5b reçoit chenilles, sous-marins, plus léger que l'air, marcheurs et entrées progressives ; M12 Optimisation client et serveur et M13 Espace, la Release passe en M14 ; 36.2 : les chenilles quittent les extensions V1.x ; R-190 : les plafonds se relèvent sur mesure en M12 ; CAP-36 complète en M14 |
 | A23 | 2026-11-18 | audit de M5 (ADR-160 D8), constat sans règle changée | ANNEXE A.7 : CAP-01, CAP-40 (registres existants), CAP-44, CAP-46 à CAP-51 tenues, preuves vérifiées au code ; CAP-42 n'est **pas** tenue malgré A14 : `ContentCheck` refusait une definition qui nomme un contrôleur d'addon sans dire ce qu'il n'avait pas pu juger — corrigé le même jour, R-1757 précisée, CAP-42 tenue ; CAP-04 n'est pas tenue malgré ADR-163 : `hide_node`, `show_node`, `swap_mesh` et `set_material_param` ne s'exécutent pas |
 | A24 | 2026-11-18 | ADR-173, accepté par Killian (tenu le 2026-11-18) | les sources procédurales de l'ANNEXE A.4 se lisent par l'API, des deux côtés (`source(String)` sur `VehicleView` et `Assembly`, CAP-43) ; la phase d'enregistrement du client naît avec son premier registre (CAP-45) ; ANNEXE A.4 : la lecture par l'API ; A.7 : CAP-43 et CAP-45 tenues |
-| A25 | 2026-11-18 | ADR-174, accepté par Killian (en cours, tranche par tranche ; 9a1 et 9a2 le 2026-11-18 : schéma 7, R-1782 avec `swap_mesh` par node, R-1783, descripteur 9 au 21.5, `axion:nodes` au 22.2) | événements de contenu déclarés, message `EVENT` (protocole 13), écouteurs typés et refusables, état des nodes sauvegardé et répliqué, `trigger` à grammaire fermée, poids et masque d'une couche, capteurs déclarables, registres des actions et des interactions (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) |
+| A25 | 2026-11-18 | ADR-174, accepté par Killian (en cours, tranche par tranche ; 9a1, 9a2 et 9c le 2026-11-18 : schéma 7, R-1782 avec `swap_mesh` par node, R-1783, descripteur 9 au 21.5, `axion:nodes` au 22.2 ; 23.3 : les écouteurs des sièges et des interactions, `E-1012`, A.3 : `content.listener_strikes`) | événements de contenu déclarés, message `EVENT` (protocole 13), écouteurs typés et refusables, état des nodes sauvegardé et répliqué, `trigger` à grammaire fermée, poids et masque d'une couche, capteurs déclarables, registres des actions et des interactions (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) |
 | A26 | 2026-11-18 | ADR-175, accepté par Killian (en cours, tranche par tranche) | corps et joints sauvegardés par nom (NBT 6), restauration partielle nommée (`E-7012`), `revision`, `migrations` et `replaces`, une instance tient sa definition, reliure à chaud après une recompilation (CAP-38, CAP-33) |
 | A27 | 2026-11-18 | ADR-176, accepté par Killian (en cours, tranche par tranche) | état natif du moteur et démarreur (`IGNITION`), énergie déclarée et simulée, usure des pneus par roue, mouillé par véhicule et facteur par matériau et par pneu, causes `axion` du moteur ouvertes (CAP-12, CAP-20) |
 | A28 | 2026-11-18 | ADR-177, accepté par Killian (en cours, tranche par tranche) | `seats[].occupant` (pose, échelle, œil), mannequin du joueur généré et vérifié, `axion.mixins.json` non obligatoire (R-1921) ; 26.2 : la cible `Entity.collide`, acceptée pour CAP-14 (ADR-177 D4), son injection exacte décidée par l'ADR de CAP-14 (CAP-13, CAP-56, CAP-14) |
@@ -7972,6 +7973,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | `E-1004` | natif | double initialisation | refusé | défaut interne |
 | `E-1010` | forge | hook désactivé après 5 échecs | fonctionnalité réduite | consulter le log |
 | `E-1011` | véhicule | contrôleur de véhicule désactivé : `vehicle.controller_strikes` fautes consécutives, dépassements de `vehicle.controller_budget_ns` ou exceptions (ADR-167 D9) ; de même un widget du tableau de bord, vingt fautes au-delà de `hud.widget_budget_ns` (ADR-170 D6) | désactivé pour la session sur tous les véhicules, qui roulent sans ses sorties ou s'affichent sans lui ; le message le nomme ainsi que son mod | corriger le contrôleur ou le widget, ou relever le budget |
+| `E-1012` | contenu | écouteur des sièges ou des interactions d'un mod désactivé : `content.listener_strikes` exceptions de suite (ADR-174 D1, amendement A25) | désactivé pour la session ; les gestes ont lieu sans lui, le journal nomme son mod |
 | `E-1050` | arrêt | thread non terminé | abandon | rapporter avec le dump |
 | `E-2000` | runtime | panic capturée | opération annulée | rapporter |
 | `E-2001` | runtime | handle invalide | refusé | défaut interne |
@@ -8200,6 +8202,7 @@ animation = true ; attachments = true ; blocks = true
 [content]
 examples = false
 dev_reload = false                # /axion dev reload (ADR-162 D9, amendement A13)
+listener_strikes = 20             # 1..1200 ; écouteurs des sièges et des interactions d'un mod (ADR-174 D1, amendement A25)
 
 [integration.rustforgex]
 mode = "auto"                     # auto | off

@@ -237,6 +237,7 @@ ignored (R-1830).
 |---|---|---|---|---|---|---|
 | `examples` | boolean | `false` | `true \| false` | no | yes | Loads the five built-in demonstration definitions (R-1790), stored under `axion/definitions/example/` at the root of the JAR and registered by AXION like an addon (ADR-162). |
 | `dev_reload` | boolean | `false` | `true \| false` | yes | no | Allows `/axion dev reload` (operator): calls each mod's registration again, rereads its folder from disk when it runs from its sources, and sends the registry back to clients (ADR-162 D9). For development only. |
+| `listener_strikes` | integer | `20` | `1..1200` | no | no | Consecutive exceptions of a mod's seat or interaction listener that disable it for the session. |
 
 ### `[integration.rustforgex]`
 

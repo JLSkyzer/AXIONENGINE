@@ -125,4 +125,28 @@ public interface ContentRegistrar {
      * @throws IllegalStateException hors de la phase d'enregistrement
      */
     void registerAttachmentListener(dev.axion.api.attach.AttachmentListener listener);
+
+    /**
+     * Enregistre un écouteur des sièges (ADR-174 D1, CAP-11) : il suit chaque montée et chaque descente sur le serveur,
+     * et peut refuser une montée ou une descente voulue. Les écouteurs sont appelés dans l'ordre des mods, puis de leur
+     * enregistrement.
+     *
+     * @param listener l'écouteur
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void registerSeatListener(dev.axion.api.assembly.SeatListener listener) {
+        throw new UnsupportedOperationException("registerSeatListener : ce registraire ne suit pas les sièges");
+    }
+
+    /**
+     * Enregistre un écouteur des interactions (ADR-174 D1, CAP-11) : il suit chaque interaction d'un joueur sur le
+     * serveur, et peut en refuser. Les écouteurs sont appelés dans l'ordre des mods, puis de leur enregistrement.
+     *
+     * @param listener l'écouteur
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void registerInteractionListener(dev.axion.api.assembly.InteractionListener listener) {
+        throw new UnsupportedOperationException("registerInteractionListener : ce registraire ne suit pas les"
+                + " interactions");
+    }
 }

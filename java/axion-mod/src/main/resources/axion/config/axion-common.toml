@@ -167,6 +167,7 @@ blocks = true
 [content]
 examples = false
 dev_reload = false
+listener_strikes = 20             # 1..1200
 
 [integration.rustforgex]
 mode = "auto"                     # auto | off

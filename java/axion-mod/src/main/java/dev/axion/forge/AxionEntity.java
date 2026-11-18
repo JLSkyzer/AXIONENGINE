@@ -524,8 +524,46 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (target.seat() >= 0) {
             return sit(player, target.seat()) ? InteractionResult.CONSUME : InteractionResult.PASS;
         }
-        return target.interaction() >= 0 && play(seating.interactions().get(target.interaction()), player)
-                ? InteractionResult.CONSUME : InteractionResult.PASS;
+        if (target.interaction() < 0) {
+            return InteractionResult.PASS;
+        }
+        // ADR-174 D1 : les écouteurs des interactions jugent d'abord ; le premier refus l'emporte, et se dit au joueur.
+        Seating.Interaction interaction = seating.interactions().get(target.interaction());
+        String node = interactionNode(target.interaction());
+        dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+        String action = interaction.action().key();
+        ContentListeners.Refusal refused = ContentListeners.firstRefusal(ContentListeners.interactions(),
+                listener -> listener.allow(view, node, player, action), "l'interaction " + action + " sur " + node);
+        if (refused != null) {
+            refuse(player, refused);
+            return InteractionResult.CONSUME;
+        }
+        if (!play(interaction, player)) {
+            return InteractionResult.PASS;
+        }
+        ContentListeners.notify(ContentListeners.interactions(),
+                listener -> listener.interacted(view, node, player, action), "l'interaction " + action + " sur " + node);
+        return InteractionResult.CONSUME;
+    }
+
+    /** {@return le nom du node qui porte une interaction, tel que la definition le déclare ; vide sans} */
+    private String interactionNode(int rank) {
+        Definition definition = AxionEntities.definitions().get(definitionId).orElse(null);
+        if (definition != null && definition.root().get("interaction") instanceof com.google.gson.JsonArray list
+                && rank < list.size() && list.get(rank) instanceof com.google.gson.JsonObject declared
+                && declared.get("node") != null) {
+            return declared.get("node").getAsString();
+        }
+        return "";
+    }
+
+    /** Dit au joueur pourquoi son geste est refusé, et le journalise (ADR-174 D1). */
+    private void refuse(Entity who, ContentListeners.Refusal refused) {
+        if (who instanceof Player player) {
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable(refused.reason()), true);
+        }
+        LOGGER.info("AXION : assembly {}, geste de {} refusé par {} ({})", getUUID(), who.getName().getString(),
+                refused.modId(), refused.reason());
     }
 
     /**
@@ -1552,6 +1590,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (occupancy.occupant(seat) != SeatOccupancy.FREE) {
             return false;
         }
+        // ADR-174 D1 : les écouteurs des sièges jugent la montée.
+        String name = seating.seats().get(seat).name();
+        dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+        ContentListeners.Refusal refused = ContentListeners.firstRefusal(ContentListeners.seats(),
+                listener -> listener.allowEnter(view, name, passenger), "la montée au siège " + name);
+        if (refused != null) {
+            refuse(passenger, refused);
+            return false;
+        }
         mountingSeat = seat;
         try {
             return passenger.startRiding(this);
@@ -1657,6 +1704,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (seat != SeatOccupancy.FREE && occupancy.sit(passenger.getId(), seat)) {
             storeOccupancy(occupancy);
             remember(passenger, seating.seats().get(seat));
+            String name = seating.seats().get(seat).name();
+            dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+            ContentListeners.notify(ContentListeners.seats(), listener -> listener.entered(view, name, passenger),
+                    "la montée au siège " + name);
         }
     }
 
@@ -1816,6 +1867,20 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return false;
         }
         int seat = seatOf(passenger);
+        Seating seating = seating();
+        if (seating != null && seat >= 0 && seat < seating.seats().size()) {
+            // ADR-174 D1 : une descente voulue se juge ; une éjection, non (R-712).
+            String name = seating.seats().get(seat).name();
+            dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+            ContentListeners.Refusal refused = ContentListeners.firstRefusal(ContentListeners.seats(),
+                    listener -> listener.allowExit(view, name, passenger), "la descente du siège " + name);
+            if (refused != null) {
+                exitRefusedUntil.put(id, tickCount + EXIT_RETRY_TICKS);
+                refuse(passenger, refused);
+                positionRider(passenger);
+                return false;
+            }
+        }
         SeatExit.Spot spot = exitSpot(passenger, seat, false);
         if (spot == null) {
             exitRefusedUntil.put(id, tickCount + EXIT_RETRY_TICKS);
@@ -1905,6 +1970,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (seat != SeatOccupancy.FREE) {
             storeOccupancy(occupancy);
             seatInputs.remove(seat);
+            if (seat < seating.seats().size()) {
+                String name = seating.seats().get(seat).name();
+                String cause = ejecting ? "ejected" : "dismounted";
+                dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+                ContentListeners.notify(ContentListeners.seats(),
+                        listener -> listener.exited(view, name, passenger, cause), "la descente du siège " + name);
+            }
         }
         exitRefusedUntil.remove(passenger.getId());
         forgetSeat(passenger);
