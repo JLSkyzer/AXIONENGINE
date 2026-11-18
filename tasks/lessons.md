@@ -2499,3 +2499,16 @@ Stop-Process, puis relister quelques secondes plus tard avant d'annoncer que rie
 [2026-11-18] | Trois GameTests d'attaches rouges, puis seulement un à la passe suivante ; et un « tête-à-queue » du film qui n'en était pas un | la CI tournait en parallèle d'un film sous Gradle et d'une JVM d'un autre projet ; cap_slalom_deg est une amplitude (max − min), pas un cap | ne jamais lancer la CI locale en même temps qu'un film ; devant un GameTest rouge, le rejouer seul et contre la version d'avant (variable d'essai) avant de conclure ; lire le relevé par tick (serveur.csv) plutôt que le bilan
 
 [2026-11-18] | Un échec intermittent de GameTest a été attribué tour à tour à la charge de la machine, à la corde souple, au sommeil, au plafond de corps actifs | aucune de ces pistes ; la trace native a montré que le natif recevait ATTACH mais ne rapportait jamais l'attache — retirée en silence avec le corps d'une assembly mise de côté par la fin de suivi, et recréée à l'envers quand le retrait et la recréation tombaient dans le même flux (la frontière applique les créations d'abord) | devant un état Java qui ne reçoit plus rien du natif, tracer les deux bouts (commande reçue, rapport produit) avant toute hypothèse physique ; et une trace par tick peut masquer une course : la garder légère
+
+## 2026-11-18 | Deux tests prenaient l'overlay qu'on implémentait pour exemple d'overlay absent
+
+**Ce qui a mal tourné.** En implémentant l'overlay `sockets` (rang 13), deux tests ont échoué : l'un passait le
+rang 13 comme « rang inconnu » au rendu, l'autre `/axion debug sockets on` comme « overlay non implémenté ». Le
+premier s'est vu aux tests ciblés, le second seulement à la CI locale complète.
+
+**Cause.** Un test qui illustre « ce qui n'existe pas encore » choisit un nom réel du CDC ; il casse le jour où ce
+nom existe.
+
+**Règle.** Avant d'implémenter un overlay, une commande ou un identifiant du CDC, chercher son nom **et** son rang dans
+`src/test` (`grep -rn 'sockets\|, 13,'`) et déplacer les tests qui s'en servaient comme exemple d'absence vers un
+nom encore absent.
