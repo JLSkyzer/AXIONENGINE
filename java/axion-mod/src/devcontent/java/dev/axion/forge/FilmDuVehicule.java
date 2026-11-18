@@ -238,6 +238,11 @@ public final class FilmDuVehicule {
         }
         dansUneEtape = true;
         try {
+            RuntimeException auServeur = fauteServeur;
+            if (auServeur != null) {
+                fauteServeur = null;
+                throw new IllegalStateException("au serveur : " + auServeur.getMessage(), auServeur);
+            }
             jouer(minecraft);
         } catch (RuntimeException faute) {
             LOGGER.error("le film a échoué en phase {}", phase, faute);
@@ -293,7 +298,7 @@ public final class FilmDuVehicule {
                         && minecraft.getSingleplayerServer() != null
                         && minecraft.getSingleplayerServer().isReady()
                         && System.nanoTime() - debutPhase > TimeUnit.SECONDS.toNanos(3)) {
-                    minecraft.getSingleplayerServer().execute(() -> poserLeDecor(minecraft));
+                    auServeur(minecraft, () -> poserLeDecor(minecraft));
                     passer(Phase.DECOR);
                 }
             }
@@ -310,10 +315,10 @@ public final class FilmDuVehicule {
                     throw new IllegalStateException("definition " + DEFINITION + " indisponible : voir le journal");
                 }
                 minecraft.player.getAbilities().flying = true;
-                minecraft.getSingleplayerServer().execute(() -> poserLeVehicule(minecraft));
+                auServeur(minecraft, () -> poserLeVehicule(minecraft));
                 if (idVehicule >= 0 && minecraft.level.getEntity(idVehicule) != null
                         && System.nanoTime() - debutPhase > TimeUnit.SECONDS.toNanos(3)) {
-                    minecraft.getSingleplayerServer().execute(() -> asseoirLeJoueur(minecraft));
+                    auServeur(minecraft, () -> asseoirLeJoueur(minecraft));
                     passer(Phase.ASSEOIR);
                 }
             }
@@ -843,8 +848,12 @@ public final class FilmDuVehicule {
         } else {
             arreteDepuis = Double.NaN;
         }
+        // La bascule de la commande 1, pressée au début de FIN, doit être revenue chez le client avant la fin : l'entrée
+        // attend son tick dans la file du serveur (ADR-168 D3), puis le snapshot revient. Une seconde à l'arrêt n'y
+        // suffisait pas toujours sous charge (2026-11-18).
+        boolean revenue = varBascule < 0 || basculeFinale == 0f;
         boolean acheve = etape == Etape.FIN
-                && (secondes - arreteDepuis >= 1.0 || secondes - debutEtape >= 6.0);
+                && ((secondes - arreteDepuis >= 1.0 && revenue) || secondes - debutEtape >= 6.0);
         if (secondes >= DUREE || acheve) {
             touches(minecraft, false, false, false, false, false);
             terminer(minecraft, tournage.echec() != null ? tournage.echec() : jugement());
@@ -978,6 +987,24 @@ public final class FilmDuVehicule {
         return null;
     }
 
+
+    /**
+     * Une faute levée au serveur, dans une tâche du film : le tick du client la relève et termine le film. Sans elle,
+     * l'exception se perdait dans la boucle du serveur et le client tournait à vide en tenant le verrou des lancements
+     * (2026-11-18, 48 min).
+     */
+    private static volatile RuntimeException fauteServeur;
+
+    /** Confie une tâche au serveur ; sa faute termine le film au tick suivant du client. */
+    private static void auServeur(Minecraft minecraft, Runnable tache) {
+        minecraft.getSingleplayerServer().execute(() -> {
+            try {
+                tache.run();
+            } catch (RuntimeException faute) {
+                fauteServeur = faute;
+            }
+        });
+    }
     private static void terminer(Minecraft minecraft, String motif) {
         if (phase == Phase.FIN) {
             return;

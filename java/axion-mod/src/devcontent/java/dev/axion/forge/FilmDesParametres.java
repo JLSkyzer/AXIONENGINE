@@ -225,6 +225,11 @@ public final class FilmDesParametres {
         }
         dansUneEtape = true;
         try {
+            RuntimeException auServeur = fauteServeur;
+            if (auServeur != null) {
+                fauteServeur = null;
+                throw new IllegalStateException("au serveur : " + auServeur.getMessage(), auServeur);
+            }
             jouer(minecraft);
         } catch (RuntimeException faute) {
             LOGGER.error("le film a échoué en phase {}", phase, faute);
@@ -278,7 +283,7 @@ public final class FilmDesParametres {
             case MONDE -> {
                 if (minecraft.level != null && minecraft.player != null && minecraft.getSingleplayerServer() != null
                         && minecraft.getSingleplayerServer().isReady() && depuis(3.0)) {
-                    minecraft.getSingleplayerServer().execute(() -> poserLeDecor(minecraft.getSingleplayerServer()));
+                    auServeur(minecraft, () -> poserLeDecor(minecraft.getSingleplayerServer()));
                     passer(Phase.DECOR);
                 }
             }
@@ -294,16 +299,16 @@ public final class FilmDesParametres {
                     throw new IllegalStateException("definition " + DEFINITION + " indisponible : voir le journal");
                 }
                 minecraft.player.getAbilities().flying = true;
-                minecraft.getSingleplayerServer().execute(() -> poserLesVehicules(minecraft.getSingleplayerServer()));
+                auServeur(minecraft, () -> poserLesVehicules(minecraft.getSingleplayerServer()));
                 if (idRegle >= 0 && idTemoin >= 0 && minecraft.level.getEntity(idRegle) != null
                         && minecraft.level.getEntity(idTemoin) != null && depuis(3.0)) {
-                    minecraft.getSingleplayerServer().execute(() -> asseoir(minecraft.getSingleplayerServer()));
+                    auServeur(minecraft, () -> asseoir(minecraft.getSingleplayerServer()));
                     passer(Phase.ASSEOIR);
                 }
             }
             case ASSEOIR -> {
                 if (assis && depuis(2.0)) {
-                    minecraft.getSingleplayerServer().execute(() -> regler(minecraft.getSingleplayerServer()));
+                    auServeur(minecraft, () -> regler(minecraft.getSingleplayerServer()));
                     passer(Phase.REGLAGE);
                 }
             }
@@ -425,14 +430,35 @@ public final class FilmDesParametres {
                             + VARIABLE_SPORT));
             regleServeur.receiveInput(piloteRegle, siege,
                     new VehicleInput(0f, 0f, 0f, 0f, 1f, (byte) 0, 1 << (commandeSport - 1)));
-            table = regleServeur.parameters();
-            int couple = table.tuning().indexOf(Parameters.ENGINE_TORQUE);
-            if (!(table.value(couple) > table.tuning().get(couple).base())) {
-                throw new IllegalStateException("la commande " + commandeSport + " n'a pas mis le mode sport : "
-                        + table.applied());
-            }
+            // ADR-168 D3 : l'entrée attend son tick dans la file du siège ; le mode sport se juge quand elle est jouée.
+            verifierLeSport(serveur, 0);
+            return;
         }
         regle = true;
+    }
+
+    /** Ticks qu'attend le mode sport avant d'être déclaré manqué : la file du siège joue une entrée par tick. */
+    private static final int TICKS_DU_SPORT = 20;
+
+    /** Juge, tick après tick, que la commande du mode sport a été jouée ; au-delà de {@link #TICKS_DU_SPORT}, échoue. */
+    private static void verifierLeSport(MinecraftServer serveur, int attendus) {
+        AssemblyParameters table = regleServeur.parameters();
+        int couple = table.tuning().indexOf(Parameters.ENGINE_TORQUE);
+        if (table.value(couple) > table.tuning().get(couple).base()) {
+            regle = true;
+            return;
+        }
+        if (attendus >= TICKS_DU_SPORT) {
+            throw new IllegalStateException("la commande " + commandeSport + " n'a pas mis le mode sport en "
+                    + TICKS_DU_SPORT + " ticks : " + table.applied());
+        }
+        serveur.tell(new net.minecraft.server.TickTask(serveur.getTickCount() + 1, () -> {
+            try {
+                verifierLeSport(serveur, attendus + 1);
+            } catch (RuntimeException faute) {
+                fauteServeur = faute;
+            }
+        }));
     }
 
     /**
@@ -721,6 +747,24 @@ public final class FilmDesParametres {
         return null;
     }
 
+
+    /**
+     * Une faute levée au serveur, dans une tâche du film : le tick du client la relève et termine le film. Sans elle,
+     * l'exception se perdait dans la boucle du serveur et le client tournait à vide en tenant le verrou des lancements
+     * (2026-11-18, 48 min).
+     */
+    private static volatile RuntimeException fauteServeur;
+
+    /** Confie une tâche au serveur ; sa faute termine le film au tick suivant du client. */
+    private static void auServeur(Minecraft minecraft, Runnable tache) {
+        minecraft.getSingleplayerServer().execute(() -> {
+            try {
+                tache.run();
+            } catch (RuntimeException faute) {
+                fauteServeur = faute;
+            }
+        });
+    }
     private static void terminer(Minecraft minecraft, String motif) {
         if (phase == Phase.FIN) {
             return;

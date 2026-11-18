@@ -2525,3 +2525,17 @@ la scène.
 **Règle.** Un changement dans `forge/client/*Render*`, `DebugOverlay*` ou `AxionRenderPass` lance `local_ci.py
 test-render` (sous le verrou) avant de fusionner. Un overlay en Java seul se compte dans `debugRangesByOverlay`, et la
 scène du banc doit contenir de quoi le dessiner.
+
+## 2026-11-18 | Un film bloqué a tenu le verrou partagé 48 minutes
+
+**Ce qui a mal tourné.** Le film `sport` a levé une exception dans une tâche confiée au serveur
+(`getSingleplayerServer().execute`) : elle s'est perdue dans la boucle du serveur, le client a tourné à vide de
+09:32 à 10:20 en tenant le verrou des lancements, pendant qu'une autre session attendait. Puis `TaskStop` sur le
+script n'a pas arrêté sa boucle bash, qui a repris le verrou pour le film suivant.
+
+**Cause.** Le harnais des films ne relevait que les fautes du client ; le script n'avait pas de délai maximal ; tuer la
+tâche de fond ne tue pas forcément le `bash.exe` qu'elle a lancé sous Windows.
+
+**Règle.** Toute tâche d'un film confiée au serveur passe par `auServeur`, qui relaie sa faute au client et termine le
+film. Un script qui enchaîne des lancements sous le verrou porte un délai par lancement (`timeout`), et pour l'arrêter
+on vérifie ensuite qu'aucun `bash.exe` ni `java.exe` du projet ne reste (`Win32_Process`), et que le verrou est vide.
