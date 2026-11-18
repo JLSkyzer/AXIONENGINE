@@ -45,8 +45,12 @@ public final class ActionsGameTests {
                 .thenExecute(() -> {
                     Seating seating = AxionEntities.seating(DEFINITION).orElseThrow();
                     Map<String, Integer> nodes = seating.actionNodes();
-                    helper.assertTrue(nodes.keySet().equals(Set.of("caisse_vue", "siege_g")), "nodes : " + nodes);
-                    helper.assertTrue(assembly.nodeStates().states().isEmpty(), "aucun node changé au départ");
+                    helper.assertTrue(nodes.keySet().equals(Set.of("caisse_vue", "siege_g", "porte_d_collideur")),
+                            "nodes : " + nodes);
+                    int remplacant = nodes.get("porte_d_collideur");
+                    helper.assertTrue(assembly.nodeStates().equals(new NodeStates(java.util.List.of(
+                            new NodeStates.State(remplacant, true, Float.NaN, null)))),
+                            "au départ, seul le remplaçant d'un swap_mesh est caché : " + assembly.nodeStates());
 
                     helper.assertTrue(SiegesGameTests.cliquer(assembly, joueur, 2f, 0.5f, 0f) == InteractionResult.CONSUME,
                             "le clic sur la portière joue ses actions");
@@ -64,21 +68,39 @@ public final class ActionsGameTests {
                     assembly.runActions(seating.interactions().get(1).actions(), "test");
                     helper.assertTrue(assembly.nodeStates().of(nodes.get("caisse_vue")) == null,
                             "caisse_vue montrée : " + assembly.nodeStates());
+
+                    // swap_mesh : l'original se cache, le remplaçant se montre ; sans « with », l'inverse.
+                    assembly.runActions(seating.interactions().get(2).actions(), "test");
+                    NodeStates.State echange = assembly.nodeStates().of(nodes.get("caisse_vue"));
+                    helper.assertTrue(echange != null && echange.hidden() && echange.swapped() == remplacant,
+                            "caisse_vue remplacée : " + echange);
+                    helper.assertTrue(assembly.nodeStates().of(remplacant) == null, "le remplaçant se montre");
+                    assembly.runActions(seating.interactions().get(3).actions(), "test");
+                    helper.assertTrue(assembly.nodeStates().of(nodes.get("caisse_vue")) == null,
+                            "l'original revient : " + assembly.nodeStates());
+                    helper.assertTrue(assembly.nodeStates().of(remplacant) != null
+                            && assembly.nodeStates().of(remplacant).hidden(), "le remplaçant retourne à l'ombre");
+
                     assembly.runActions(seating.interactions().get(0).actions(), "test");
+                    assembly.runActions(seating.interactions().get(2).actions(), "test");
                     attendu[0] = assembly.nodeStates();
 
                     CompoundTag sauvegarde = new CompoundTag();
                     helper.assertTrue(assembly.save(sauvegarde), "sauvegarde refusée");
                     CompoundTag gardes = sauvegarde.getCompound(AssemblyTags.NODES);
-                    helper.assertTrue(gardes.getAllKeys().equals(Set.of("caisse_vue", "siege_g")),
-                            "l'état se garde par nom : " + gardes);
+                    helper.assertTrue(gardes.getAllKeys().equals(Set.of("caisse_vue", "siege_g", "porte_d_collideur")),
+                            "l'état se garde par nom, le remplaçant montré compris : " + gardes);
+                    helper.assertTrue("porte_d_collideur".equals(gardes.getCompound("caisse_vue").getString("swap")),
+                            "le remplaçant se garde par nom : " + gardes);
                     assembly.discard();
                     Entity entite = EntityType.loadEntityRecursive(sauvegarde, helper.getLevel(), e -> e);
                     helper.assertTrue(entite instanceof AxionEntity, "la sauvegarde ne rend pas une assembly");
                     helper.assertTrue(helper.getLevel().addFreshEntity(entite), "l'assembly relue n'entre pas");
                     relue[0] = (AxionEntity) entite;
                 })
-                .thenWaitUntil(() -> helper.assertTrue(!relue[0].nodeStates().states().isEmpty(), "état relu"))
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].nodeStates().of(
+                        AxionEntities.seating(DEFINITION).orElseThrow().actionNodes().get("siege_g")) != null,
+                        "état relu"))
                 .thenExecute(() -> helper.assertTrue(relue[0].nodeStates().equals(attendu[0]),
                         "relu tel quel : " + relue[0].nodeStates() + ", attendu " + attendu[0]))
                 .thenSucceed();

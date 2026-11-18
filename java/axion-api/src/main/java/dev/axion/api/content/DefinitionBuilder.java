@@ -1896,6 +1896,39 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code interaction[].actions[].swap_mesh}. */
+    @Experimental
+    public static final class InteractionActionSwapMesh {
+
+        private final Map<String, Object> values;
+
+        private InteractionActionSwapMesh(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code interaction[].actions[].swap_mesh.node} : nom (node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSwapMesh node(String value) {
+            values.put("node", Objects.requireNonNull(value, "node"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].swap_mesh.with} : nom (node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSwapMesh with(String value) {
+            values.put("with", Objects.requireNonNull(value, "with"));
+            return this;
+        }
+    }
+
     /** {@code interaction[].actions[]}. */
     @Experimental
     public static final class InteractionAction {
@@ -1937,6 +1970,18 @@ public final class DefinitionBuilder {
          */
         public InteractionAction showNode(String value) {
             values.put("show_node", Objects.requireNonNull(value, "show_node"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].swap_mesh}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionAction swapMesh(Consumer<InteractionActionSwapMesh> config) {
+            Map<String, Object> nested = object(values, "swap_mesh");
+            Objects.requireNonNull(config, "config").accept(new InteractionActionSwapMesh(nested));
             return this;
         }
     }

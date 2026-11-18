@@ -13,13 +13,13 @@ class NodeStatesTest {
 
     private static final NodeStates ETATS = new NodeStates(List.of(
             new NodeStates.State(300, false, 2.5f, new float[] {1f, 0.25f, 0.25f}),
-            new NodeStates.State(4, true, Float.NaN, null)));
+            new NodeStates.State(4, true, Float.NaN, null, 9)));
 
     @Test
     @DisplayName("ADR-174 D3 : rangés par node ; un état neutre retire son node ; un node se remplace")
     void lesEtatsSeRemplacent() {
         assertEquals(List.of(4, 300), ETATS.states().stream().map(NodeStates.State::node).toList());
-        NodeStates montre = ETATS.with(new NodeStates.State(4, false, Float.NaN, null));
+        NodeStates montre = ETATS.with(new NodeStates.State(4, false, Float.NaN, null, -1));
         assertNull(montre.of(4), "montré, il sort de l'état");
         assertEquals(1, montre.states().size());
         assertEquals(3.0f, ETATS.with(new NodeStates.State(300, false, 3f, null)).of(300).emissive());
@@ -29,6 +29,9 @@ class NodeStatesTest {
                 new NodeStates.State(1, false, Float.NaN, null))), "neutre");
         assertThrows(IllegalArgumentException.class, () -> new NodeStates.State(0, false, Float.POSITIVE_INFINITY,
                 null));
+        assertThrows(IllegalArgumentException.class, () -> new NodeStates.State(3, true, Float.NaN, null, 3),
+                "un node ne se remplace pas par lui-même");
+        assertEquals(9, ETATS.of(4).swapped(), "le remplaçant se porte");
     }
 
     @Test

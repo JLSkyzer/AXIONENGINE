@@ -13,6 +13,12 @@
     ] },
     { "node": "siege_g_collideur", "action": "actions", "actions": [
         { "show_node": "caisse_vue" }
+    ] },
+    { "node": "caisse_collideur", "action": "actions", "actions": [
+        { "swap_mesh": { "node": "caisse_vue", "with": "porte_d_collideur" } }
+    ] },
+    { "node": "caisse", "action": "actions", "actions": [
+        { "swap_mesh": { "node": "caisse_vue" } }
     ] }
   ]
 }

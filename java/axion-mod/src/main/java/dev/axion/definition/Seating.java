@@ -389,14 +389,30 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param name le nom de ce node dans la definition
      * @param emissive l'émission posée par {@code set_material_param}, {@code NaN} sans
      * @param color la teinte posée par {@code set_material_param}, {@code null} sans
+     * @param with l'index du node dont {@code swap_mesh} montre les maillages à la place, {@code -1} : l'original
+     * @param withName le nom de ce node, {@code null} sans
      */
-    public record NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color) {
+    public record NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color, int with,
+            String withName) {
 
         /** Copie la teinte. */
         public NodeAction {
             java.util.Objects.requireNonNull(kind, "kind");
             java.util.Objects.requireNonNull(name, "name");
             color = color == null ? null : color.clone();
+        }
+
+        /**
+         * Une action qui ne remplace pas de maillage.
+         *
+         * @param kind ce qu'elle fait
+         * @param node l'index du node visé
+         * @param name son nom
+         * @param emissive l'émission posée, {@code NaN} sans
+         * @param color la teinte posée, {@code null} sans
+         */
+        public NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color) {
+            this(kind, node, name, emissive, color, -1, null);
         }
     }
 
@@ -407,7 +423,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         /** Lever le masque d'un {@code hide_node}. */
         SHOW,
         /** Poser son émission ou sa teinte. */
-        MATERIAL
+        MATERIAL,
+        /** Montrer à sa place les maillages d'un autre node, ou revenir à l'original. */
+        SWAP
     }
 
     /**
@@ -469,9 +487,28 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         for (Interaction interaction : interactions) {
             for (NodeAction action : interaction.actions()) {
                 named.putIfAbsent(action.name(), action.node());
+                if (action.withName() != null) {
+                    named.putIfAbsent(action.withName(), action.with());
+                }
             }
         }
         return named;
+    }
+
+    /**
+     * {@return l'index de chaque node qu'un {@code swap_mesh} montre à la place d'un autre, par son nom (ADR-174 D3)} :
+     * un node de remplacement n'est pas dessiné à sa propre place tant qu'aucune action ne l'y appelle.
+     */
+    public Map<String, Integer> swapTargets() {
+        Map<String, Integer> targets = new java.util.LinkedHashMap<>();
+        for (Interaction interaction : interactions) {
+            for (NodeAction action : interaction.actions()) {
+                if (action.withName() != null) {
+                    targets.putIfAbsent(action.withName(), action.with());
+                }
+            }
+        }
+        return targets;
     }
 
     /**
@@ -492,6 +529,11 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
             } else if (step.get("show_node") != null) {
                 actions.add(new NodeAction(NodeActionKind.SHOW, node(byPath, at + ".show_node"),
                         step.get("show_node").getAsString(), Float.NaN, null));
+            } else if (step.get("swap_mesh") instanceof JsonObject swap) {
+                String with = swap.get("with") == null ? null : swap.get("with").getAsString();
+                actions.add(new NodeAction(NodeActionKind.SWAP, node(byPath, at + ".swap_mesh.node"),
+                        swap.get("node").getAsString(), Float.NaN, null,
+                        with == null ? -1 : node(byPath, at + ".swap_mesh.with"), with));
             } else if (step.get("set_material_param") instanceof JsonObject param) {
                 JsonElement value = param.get("value");
                 boolean emissive = "emissive".equals(param.get("param").getAsString());

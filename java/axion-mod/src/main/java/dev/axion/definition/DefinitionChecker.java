@@ -535,9 +535,14 @@ final class DefinitionChecker {
      */
     private void checkNodeAction(JsonObject step, String path) {
         if (step.size() != 1) {
-            invalid(path, "une action est un objet à une seule clé — hide_node, show_node ou set_material_param —, pour"
-                    + " que la liste garde son ordre ; " + step.size() + " clés ici");
+            invalid(path, "une action est un objet à une seule clé — hide_node, show_node, swap_mesh ou"
+                    + " set_material_param —, pour que la liste garde son ordre ; " + step.size() + " clés ici");
             return;
+        }
+        if (step.get("swap_mesh") instanceof JsonObject swap && swap.get("with") != null
+                && swap.get("with").equals(swap.get("node"))) {
+            invalid(path + ".swap_mesh.with", "un node ne se remplace pas par lui-même ; sans « with », l'original"
+                    + " revient");
         }
         if (!(step.get("set_material_param") instanceof JsonObject param)) {
             return;

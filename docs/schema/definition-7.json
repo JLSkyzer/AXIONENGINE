@@ -1676,6 +1676,25 @@
                   "pattern": "^[ -~]{1,64}$",
                   "x-axion-refers": "node"
                 },
+                "swap_mesh": {
+                  "type": "object",
+                  "properties": {
+                    "node": {
+                      "type": "string",
+                      "pattern": "^[ -~]{1,64}$",
+                      "x-axion-refers": "node"
+                    },
+                    "with": {
+                      "type": "string",
+                      "pattern": "^[ -~]{1,64}$",
+                      "x-axion-refers": "node"
+                    }
+                  },
+                  "required": [
+                    "node"
+                  ],
+                  "additionalProperties": false
+                },
                 "set_material_param": {
                   "type": "object",
                   "properties": {

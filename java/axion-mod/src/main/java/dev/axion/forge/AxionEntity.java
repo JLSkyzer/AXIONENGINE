@@ -591,13 +591,23 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             if (seating != null) {
                 nodesRestored = true;
                 java.util.Map<String, Integer> named = seating.actionNodes();
+                java.util.Map<String, AssemblyTags.SavedNode> kept = AssemblyTags.nodes(stored);
                 dev.axion.net.NodeStates restored = dev.axion.net.NodeStates.NONE;
-                for (java.util.Map.Entry<String, AssemblyTags.SavedNode> saved : AssemblyTags.nodes(stored).entrySet()) {
+                for (java.util.Map.Entry<String, AssemblyTags.SavedNode> saved : kept.entrySet()) {
                     Integer node = named.get(saved.getKey());
                     if (node != null) {
                         AssemblyTags.SavedNode state = saved.getValue();
+                        Integer swapped = state.swap() == null ? null : named.get(state.swap());
                         restored = restored.with(new dev.axion.net.NodeStates.State(node, state.hidden(),
-                                state.emissive(), state.color()));
+                                state.emissive(), state.color(), swapped == null ? -1 : swapped));
+                    }
+                }
+                // Un node de remplacement n'est pas dessiné à sa place tant qu'aucun swap_mesh ne l'y appelle ; ce que
+                // le NBT gardait de lui l'emporte (il le garde aussi montré, pour ce cas).
+                for (java.util.Map.Entry<String, Integer> target : seating.swapTargets().entrySet()) {
+                    if (!kept.containsKey(target.getKey())) {
+                        restored = restored.with(new dev.axion.net.NodeStates.State(target.getValue(), true,
+                                Float.NaN, null));
                     }
                 }
                 nodeStates = restored;
@@ -621,6 +631,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 boolean hidden = current != null && current.hidden();
                 float emissive = current == null ? Float.NaN : current.emissive();
                 float[] color = current == null ? null : current.color();
+                int swapped = current == null ? -1 : current.swapped();
                 switch (action.kind()) {
                     case HIDE -> hidden = true;
                     case SHOW -> hidden = false;
@@ -632,8 +643,19 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                             color = action.color();
                         }
                     }
+                    case SWAP -> {
+                        // Le remplaçant d'avant retourne à l'ombre ; le nouveau se montre, l'original se cache.
+                        if (swapped >= 0) {
+                            next = next.with(visibility(next, swapped, true));
+                        }
+                        swapped = action.with();
+                        hidden = swapped >= 0;
+                        if (swapped >= 0) {
+                            next = next.with(visibility(next, swapped, false));
+                        }
+                    }
                 }
-                next = next.with(new dev.axion.net.NodeStates.State(action.node(), hidden, emissive, color));
+                next = next.with(new dev.axion.net.NodeStates.State(action.node(), hidden, emissive, color, swapped));
             }
         } catch (IllegalArgumentException refused) {
             // Plus de nodes touchés que le snapshot n'en porte : rien ne change, et le journal le dit.
@@ -641,6 +663,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return;
         }
         nodeStates = next;
+    }
+
+    /** {@return l'état d'un node, caché ou montré, le reste gardé} */
+    private static dev.axion.net.NodeStates.State visibility(dev.axion.net.NodeStates states, int node, boolean hidden) {
+        dev.axion.net.NodeStates.State current = states.of(node);
+        return current == null ? new dev.axion.net.NodeStates.State(node, hidden, Float.NaN, null)
+                : new dev.axion.net.NodeStates.State(node, hidden, current.emissive(), current.color(),
+                        current.swapped());
     }
 
     private boolean playAction(Seating.Interaction interaction, Player player) {
@@ -2863,11 +2893,18 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             Seating seating = seating();
             if (seating != null) {
                 java.util.Map<String, Integer> named = seating.actionNodes();
+                java.util.Map<String, String> names = new java.util.HashMap<>();
+                named.forEach((name, node) -> names.putIfAbsent(String.valueOf(node), name));
+                java.util.Set<String> targets = seating.swapTargets().keySet();
                 java.util.Map<String, AssemblyTags.SavedNode> current = new java.util.LinkedHashMap<>();
                 named.forEach((name, node) -> {
                     dev.axion.net.NodeStates.State state = nodeStates.of(node);
                     if (state != null) {
-                        current.put(name, new AssemblyTags.SavedNode(state.hidden(), state.emissive(), state.color()));
+                        current.put(name, new AssemblyTags.SavedNode(state.hidden(), state.emissive(), state.color(),
+                                state.swapped() < 0 ? null : names.get(String.valueOf(state.swapped()))));
+                    } else if (targets.contains(name)) {
+                        // Un remplaçant montré : gardé tel, pour que la relecture ne le recache pas.
+                        current.put(name, new AssemblyTags.SavedNode(false, Float.NaN, null, null));
                     }
                 });
                 AssemblyTags.putNodes(stored, current, named.keySet());

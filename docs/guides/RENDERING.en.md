@@ -118,7 +118,11 @@ snapshot.
   channel. `show_node` lifts the mask; the channel takes over again.
 - **Bounds**: an emission from 0 to 16, a tint of three components from 0 to 4. Out of bounds, the definition is
   refused and the log gives the path.
-- `swap_mesh` (a node draws another node's meshes) comes next, in its own slice.
+- **Swapping a mesh**: `{ "swap_mesh": { "node": "windshield", "with": "windshield_broken" } }` hides the original
+  and shows the replacement node in its place; `{ "swap_mesh": { "node": "windshield" } }`, without `with`, brings the
+  original back. In Blender, model the replacement **at the same place** as the original, preferably as its child: it
+  then follows its movements. A node named by a `with` is not drawn until a `swap_mesh` calls it; a node does not
+  replace itself.
 
 ## GPU resources
 

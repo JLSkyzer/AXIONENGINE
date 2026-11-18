@@ -119,7 +119,11 @@ joueur avec le snapshot.
   héritent, comme d'un canal. `show_node` lève le masque ; le canal reprend la main.
 - **Les bornes** : une émission de 0 à 16, une teinte de trois composantes de 0 à 4. Hors bornes, la definition est
   refusée et le journal dit le chemin.
-- `swap_mesh` (un node dessine les maillages d'un autre) vient ensuite, avec sa propre tranche.
+- **Remplacer un maillage** : `{ "swap_mesh": { "node": "pare_brise", "with": "pare_brise_casse" } }` cache
+  l'original et montre à sa place le node de remplacement ; `{ "swap_mesh": { "node": "pare_brise" } }`, sans `with`,
+  ramène l'original. Dans Blender, modélise le remplaçant **au même endroit** que l'original, de préférence comme son
+  enfant : il suit alors ses mouvements. Un node nommé par un `with` n'est pas dessiné tant qu'aucun `swap_mesh` ne
+  l'appelle ; un node ne se remplace pas par lui-même.
 
 ## Ressources GPU
 

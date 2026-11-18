@@ -683,8 +683,9 @@ class DefinitionSchemaTest {
     void lesActionsDuSchemaSept() {
         assertDoesNotThrow(() -> read(septAvec("[{\"hide_node\": \"lamp\"}, {\"show_node\": \"lamp\"},"
                 + " {\"set_material_param\": {\"node\": \"lamp\", \"param\": \"emissive\", \"value\": 3}},"
-                + " {\"set_material_param\": {\"node\": \"lamp\", \"param\": \"color\", \"value\": [1, 0.5, 0]}}]",
-                "actions")));
+                + " {\"set_material_param\": {\"node\": \"lamp\", \"param\": \"color\", \"value\": [1, 0.5, 0]}},"
+                + " {\"swap_mesh\": {\"node\": \"glass\", \"with\": \"glass_broken\"}}, {\"swap_mesh\": {\"node\":"
+                + " \"glass\"}}]", "actions")));
     }
 
     @Test
@@ -702,6 +703,9 @@ class DefinitionSchemaTest {
                         + " \"value\": [1, 1]}}]", "actions"))).path());
         assertEquals("$.interaction[0]", assertThrows(DefinitionException.class,
                 () -> read(septAvec(null, "actions"))).path(), "actions sans liste");
+        assertEquals("$.interaction[0].actions[0].swap_mesh.with", assertThrows(DefinitionException.class,
+                () -> read(septAvec("[{\"swap_mesh\": {\"node\": \"glass\", \"with\": \"glass\"}}]", "actions")))
+                .path(), "un node ne se remplace pas par lui-même");
         JsonObject six = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
         six.addProperty("schema", 6);
         assertThrows(DefinitionException.class, () -> read(six), "la liste n'existe qu'au schéma 7");

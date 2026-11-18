@@ -686,12 +686,17 @@ final class SchemaOne {
 
     /**
      * ADR-174 D3 : une action sur l'état d'un node, au schéma 7 — un objet à une seule clé, pour que la liste garde son
-     * ordre. {@code swap_mesh} viendra avec la tranche 9a2.
+     * ordre. {@code swap_mesh} désigne le maillage de remplacement par un node du même asset (décision de Killian,
+     * tranche 9a2) ; sans {@code with}, l'original revient.
      */
     private static SchemaNode nodeAction() {
         return obj()
                 .opt("hide_node", refers(NameCategory.NODE))
                 .opt("show_node", refers(NameCategory.NODE))
+                .opt("swap_mesh", obj()
+                        .req("node", refers(NameCategory.NODE))
+                        .opt("with", refers(NameCategory.NODE))
+                        .build())
                 .opt("set_material_param", obj()
                         .req("node", refers(NameCategory.NODE))
                         .req("param", oneOf("emissive", "color"))

@@ -359,8 +359,9 @@ final class AssemblyTags {
      * @param hidden caché
      * @param emissive émission posée, {@code NaN} sans
      * @param color teinte posée, {@code null} sans
+     * @param swap le nom du node montré à sa place, {@code null} sans
      */
-    record SavedNode(boolean hidden, float emissive, float[] color) {}
+    record SavedNode(boolean hidden, float emissive, float[] color, String swap) {}
 
     /**
      * {@return l'état gardé de chaque node, par nom ; vide sans {@code axion:nodes}} Une entrée mal formée est ignorée.
@@ -384,8 +385,9 @@ final class AssemblyTags {
                         color = new float[] {rgb.getFloat(0), rgb.getFloat(1), rgb.getFloat(2)};
                     }
                 }
+                String swap = node.contains("swap", Tag.TAG_STRING) ? node.getString("swap") : null;
                 if (Float.isFinite(emissive) || Float.isNaN(emissive)) {
-                    saved.put(name, new SavedNode(node.getBoolean("hidden"), emissive, color));
+                    saved.put(name, new SavedNode(node.getBoolean("hidden"), emissive, color, swap));
                 }
             }
         }
@@ -393,8 +395,8 @@ final class AssemblyTags {
     }
 
     /**
-     * Écrit l'état des nodes. Un node que la definition ne nomme plus garde l'état lu (R-1710) ; un node connu revenu
-     * à son état de départ est retiré ; sans aucun, la clé est retirée.
+     * Écrit l'état des nodes. Un node que la definition ne nomme plus garde l'état lu (R-1710) ; un node connu absent
+     * de {@code current} est retiré ; sans aucun, la clé est retirée.
      *
      * @param stored les clés gardées
      * @param current l'état de chaque node connu qui n'est pas à son état de départ, par nom
@@ -418,6 +420,9 @@ final class AssemblyTags {
                     rgb.add(net.minecraft.nbt.FloatTag.valueOf(channel));
                 }
                 node.put("color", rgb);
+            }
+            if (state.swap() != null) {
+                node.putString("swap", state.swap());
             }
             nodes.put(name, node);
         });

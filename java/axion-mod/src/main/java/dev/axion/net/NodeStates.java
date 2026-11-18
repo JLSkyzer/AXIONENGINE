@@ -23,6 +23,7 @@ public record NodeStates(List<State> states) {
     private static final int HIDDEN = 1;
     private static final int EMISSIVE = 2;
     private static final int COLOR = 4;
+    private static final int SWAPPED = 8;
 
     /**
      * L'état d'un node.
@@ -31,13 +32,26 @@ public record NodeStates(List<State> states) {
      * @param hidden caché, quel que soit son canal {@code visibility}
      * @param emissive l'émission posée, qui remplace celle de son canal ; {@code NaN} sans
      * @param color la teinte posée, {@code r, g, b}, qui remplace celle de son canal ; {@code null} sans
+     * @param swapped le node dont un {@code swap_mesh} montre les maillages à sa place, {@code -1} sans
      */
-    public record State(int node, boolean hidden, float emissive, float[] color) {
+    public record State(int node, boolean hidden, float emissive, float[] color, int swapped) {
+
+        /**
+         * L'état d'un node que rien ne remplace.
+         *
+         * @param node son index
+         * @param hidden caché
+         * @param emissive émission posée, {@code NaN} sans
+         * @param color teinte posée, {@code null} sans
+         */
+        public State(int node, boolean hidden, float emissive, float[] color) {
+            this(node, hidden, emissive, color, -1);
+        }
 
         /** Refuse un index négatif, une émission ou une teinte non finie ; copie la teinte. */
         public State {
-            if (node < 0) {
-                throw new IllegalArgumentException("node " + node);
+            if (node < 0 || swapped < -1 || swapped == node) {
+                throw new IllegalArgumentException("node " + node + ", remplacé par " + swapped);
             }
             if (Float.isInfinite(emissive)) {
                 throw new IllegalArgumentException("émission " + emissive);
@@ -57,19 +71,19 @@ public record NodeStates(List<State> states) {
 
         /** {@return vrai si l'état ne change rien : ni caché, ni émission, ni teinte} */
         public boolean neutral() {
-            return !hidden && Float.isNaN(emissive) && color == null;
+            return !hidden && Float.isNaN(emissive) && color == null && swapped < 0;
         }
 
         @Override
         public boolean equals(Object other) {
             return other instanceof State that && node == that.node && hidden == that.hidden
                     && Float.floatToIntBits(emissive) == Float.floatToIntBits(that.emissive)
-                    && Arrays.equals(color, that.color);
+                    && Arrays.equals(color, that.color) && swapped == that.swapped;
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(node, hidden, Float.floatToIntBits(emissive), Arrays.hashCode(color));
+            return Objects.hash(node, hidden, Float.floatToIntBits(emissive), Arrays.hashCode(color), swapped);
         }
     }
 
@@ -138,6 +152,7 @@ public record NodeStates(List<State> states) {
             size += varintSize(state.node()) + 1;
             size += Float.isNaN(state.emissive()) ? 0 : 4;
             size += state.color() == null ? 0 : 12;
+            size += state.swapped() < 0 ? 0 : varintSize(state.swapped());
         }
         return size;
     }
@@ -151,13 +166,16 @@ public record NodeStates(List<State> states) {
         writer.varUInt(states.size());
         for (State state : states) {
             int flags = (state.hidden() ? HIDDEN : 0) | (Float.isNaN(state.emissive()) ? 0 : EMISSIVE)
-                    | (state.color() == null ? 0 : COLOR);
+                    | (state.color() == null ? 0 : COLOR) | (state.swapped() < 0 ? 0 : SWAPPED);
             writer.varUInt(state.node()).u8(flags);
             if ((flags & EMISSIVE) != 0) {
                 writer.f32(state.emissive());
             }
             if ((flags & COLOR) != 0) {
                 writer.f32(state.color()[0]).f32(state.color()[1]).f32(state.color()[2]);
+            }
+            if ((flags & SWAPPED) != 0) {
+                writer.varUInt(state.swapped());
             }
         }
     }
@@ -180,15 +198,16 @@ public record NodeStates(List<State> states) {
             for (int i = 0; i < count; i++) {
                 int node = reader.varUInt();
                 int flags = reader.u8();
-                if ((flags & ~(HIDDEN | EMISSIVE | COLOR)) != 0) {
+                if ((flags & ~(HIDDEN | EMISSIVE | COLOR | SWAPPED)) != 0) {
                     throw new MalformedPacketException("entité " + handle + " : drapeaux de node " + flags);
                 }
                 float emissive = (flags & EMISSIVE) != 0 ? reader.f32() : Float.NaN;
                 float[] color = (flags & COLOR) != 0 ? new float[] {reader.f32(), reader.f32(), reader.f32()} : null;
+                int swapped = (flags & SWAPPED) != 0 ? reader.varUInt() : -1;
                 if ((flags & EMISSIVE) != 0 && !Float.isFinite(emissive)) {
                     throw new MalformedPacketException("entité " + handle + " : émission " + emissive);
                 }
-                states.add(new State(node, (flags & HIDDEN) != 0, emissive, color));
+                states.add(new State(node, (flags & HIDDEN) != 0, emissive, color, swapped));
             }
             return new NodeStates(states);
         } catch (IllegalArgumentException refused) {
