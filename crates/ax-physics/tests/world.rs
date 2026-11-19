@@ -2798,3 +2798,143 @@ fn adr158_une_boite_ne_compte_que_les_colliders_solides_des_assemblies() {
         "un capteur n'occupe pas la place"
     );
 }
+
+#[test]
+fn adr174_un_capteur_declare_dit_son_rang_et_ignore_sa_propre_assembly() {
+    // ADR-174 D5 : un capteur posé sur un corps, à un repère ; ce qui y entre et en sort donne SENSOR_ENTER
+    // puis SENSOR_EXIT, le capteur en `a` et son rang dans `data`. Un corps de sa propre assembly n'y compte pas.
+    let mut world = PhysicsWorld::new(config());
+    let socle = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::new(0.0, -10.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [0.5, 0.5, 0.5],
+            },
+        )
+        .expect("un socle est valide");
+    world.set_body_identity(socle, Handle::new(9, 1), 0);
+    assert!(world.set_declared_sensor(
+        Handle::new(9, 1),
+        socle,
+        3,
+        (Vec3::new(0.0, 10.0, 0.0), Quat::IDENTITY),
+        ax_model::dm::commands::sensor_shape::BOX,
+        [4.0, 1.0, 4.0],
+    ));
+    assert!(
+        !world.set_declared_sensor(
+            Handle::new(9, 1),
+            socle,
+            4,
+            (Vec3::ZERO, Quat::IDENTITY),
+            ax_model::dm::commands::sensor_shape::BOX,
+            [0.0, 1.0, 1.0],
+        ),
+        "une taille nulle est refusée"
+    );
+    let bille = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.3 },
+        )
+        .expect("une bille est valide");
+    world.set_body_identity(bille, Handle::new(4, 1), 0);
+    let soeur = world
+        .add_body(
+            BodyKind::Dynamic,
+            Vec3::new(1.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.3 },
+        )
+        .expect("une bille est valide");
+    world.set_body_identity(soeur, Handle::new(9, 1), 7);
+
+    let mut vus = Vec::new();
+    for _ in 0..180 {
+        world.advance(1.0 / 60.0);
+        for event in world.drain_events() {
+            if event.kind == event_kind::SENSOR_ENTER || event.kind == event_kind::SENSOR_EXIT {
+                vus.push(event);
+            }
+        }
+    }
+    assert_eq!(
+        vus.iter().map(|e| e.kind).collect::<Vec<_>>(),
+        vec![event_kind::SENSOR_ENTER, event_kind::SENSOR_EXIT],
+        "la bille entre puis sort ; la sœur de l'assembly ne compte pas"
+    );
+    for event in &vus {
+        assert_eq!(event.assembly_a, Handle::new(9, 1), "le capteur en a");
+        assert_eq!(event.assembly_b, Handle::new(4, 1), "la bille en b");
+        assert_ne!(event.data & event_data::SENSOR_DECLARED, 0);
+        assert_eq!(
+            event.data >> event_data::SENSOR_INDEX_SHIFT,
+            3,
+            "le rang du capteur"
+        );
+    }
+    assert!(
+        world.pose(bille).unwrap().translation.y < -1.0,
+        "le capteur ne l'arrête pas"
+    );
+}
+
+#[test]
+fn adr174_un_corps_retire_dans_un_capteur_en_sort_avec_son_identite() {
+    // ADR-174 D5 : une assembly retirée pendant qu'elle est dans un capteur en sort au pas qui suit, et la sortie
+    // dit encore qui c'était — sans quoi le compte du capteur resterait faux.
+    let mut world = PhysicsWorld::new(config());
+    let socle = world
+        .add_body(
+            BodyKind::Static,
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: [0.5, 0.5, 0.5],
+            },
+        )
+        .expect("un socle est valide");
+    world.set_body_identity(socle, Handle::new(9, 1), 0);
+    assert!(world.set_declared_sensor(
+        Handle::new(9, 1),
+        socle,
+        0,
+        (Vec3::new(0.0, 3.0, 0.0), Quat::IDENTITY),
+        ax_model::dm::commands::sensor_shape::SPHERE,
+        [2.0, 0.0, 0.0],
+    ));
+    let bille = world
+        .add_body(
+            BodyKind::Kinematic,
+            Vec3::new(0.0, 3.0, 0.0),
+            Quat::IDENTITY,
+            Shape::Ball { radius: 0.3 },
+        )
+        .expect("une bille est valide");
+    world.set_body_identity(bille, Handle::new(4, 2), 0);
+    let mut kinds = Vec::new();
+    for tick in 0..6 {
+        if tick == 3 {
+            assert!(world.remove_body(bille));
+        }
+        world.advance(1.0 / 60.0);
+        for event in world.drain_events() {
+            if event.kind == event_kind::SENSOR_ENTER || event.kind == event_kind::SENSOR_EXIT {
+                assert_eq!(
+                    event.assembly_b,
+                    Handle::new(4, 2),
+                    "qui entre ou sort : {event:?}"
+                );
+                kinds.push(event.kind);
+            }
+        }
+    }
+    assert_eq!(
+        kinds,
+        vec![event_kind::SENSOR_ENTER, event_kind::SENSOR_EXIT]
+    );
+}

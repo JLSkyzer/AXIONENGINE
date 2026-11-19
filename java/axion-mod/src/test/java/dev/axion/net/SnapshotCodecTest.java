@@ -226,7 +226,9 @@ class SnapshotCodecTest {
                 "descripteur 9, antérieur au masque des couches (ADR-174 D4)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(10).varUInt(0).toByteArray(),
                 "descripteur 10, antérieur aux variables par siège (ADR-174 D2)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(12).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(11).varUInt(0).toByteArray(),
+                "descripteur 11, antérieur au compte des capteurs (ADR-174 D5)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(13).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -675,6 +677,22 @@ class SnapshotCodecTest {
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(direction), "direction -128");
         byte[] tronque = Arrays.copyOf(sain, sain.length - 1);
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(tronque), "tronqué");
+    }
+
+    @Test
+    @DisplayName("ADR-174 D5 : le compte des capteurs fait l'aller-retour ; un delta ne le porte que s'il a changé")
+    void adr174CapteursComptes() throws MalformedPacketException {
+        AssemblyState etat = avecRoues(roues(0.5f, 10f)).withSensors(AssemblyState.SensorCounts.of(new int[] {2, 0}));
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 40L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        assertEquals(etat, SnapshotMessage.decode(octets).entries().get(0).resolve(null));
+        assertNull(SnapshotMessage.Entry.delta(5, 1, etat, etat).sensors(), "inchangés : tus");
+        AssemblyState change = etat.withSensors(AssemblyState.SensorCounts.of(new int[] {1, 0}));
+        byte[] enDelta = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.delta(5, 1, etat, change))).encode();
+        assertEquals(change, SnapshotMessage.decode(enDelta).entries().get(0).resolve(etat));
+        assertThrows(IllegalArgumentException.class, () -> AssemblyState.SensorCounts.of(new int[] {-1}));
     }
 
     @Test

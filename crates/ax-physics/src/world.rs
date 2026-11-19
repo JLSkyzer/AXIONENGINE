@@ -6,9 +6,9 @@ use rapier3d::parry::mass_properties::MassProperties;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{
-    ActiveEvents, ActiveHooks, CoefficientCombineRule, Collider, ColliderBuilder, ColliderHandle,
-    ColliderSet, CollisionEvent, CollisionEventFlags, ContactPair, EventHandler, PairFilterContext,
-    PhysicsHooks, PhysicsWorld as RapierWorld, Pose as RapierPose,
+    ActiveCollisionTypes, ActiveEvents, ActiveHooks, CoefficientCombineRule, Collider,
+    ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, CollisionEventFlags, ContactPair,
+    EventHandler, PairFilterContext, PhysicsHooks, PhysicsWorld as RapierWorld, Pose as RapierPose,
     QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray, Real, RigidBody, RigidBodyBuilder,
     RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, SolverFlags, Vector,
 };
@@ -158,6 +158,16 @@ impl PhysicsHooks for AssemblyPairFilter {
             Some(SolverFlags::COMPUTE_IMPULSES)
         }
     }
+}
+
+/// Ce qu'une paire de capteur donne (ADR-174 D5).
+enum SensorEvent {
+    /// L'événement d'un capteur déclaré.
+    Declared(PhysicsEvent),
+    /// Rien : deux capteurs, ou un capteur et sa propre assembly.
+    Ignored,
+    /// Un corps fait capteur sans déclaration : l'événement d'identité d'avant.
+    Undeclared,
 }
 
 /// Dernière pose finie et dans le monde d'un corps, mémorisée pour la
@@ -420,6 +430,14 @@ pub struct PhysicsWorld {
     /// suivante : la fin de leurs contacts, émise au pas qui suit, porte encore leur entité.
     /// Consultée par clé (R-1020).
     departed_proxy_colliders: HashMap<ColliderHandle, u32>,
+    /// Les capteurs déclarés (ADR-174 D5) : leur assembly et leur rang, pour l'identité de leurs événements.
+    /// Consultée par clé (R-1020) ; un collider retiré y reste jusqu'à la fin des événements du pas.
+    declared_sensors: HashMap<ColliderHandle, (Handle, u32)>,
+    /// Le collider de chaque capteur déclaré, par assembly et par rang : un second `SET_SENSOR` le remplace.
+    sensor_slots: BTreeMap<(u64, u32), ColliderHandle>,
+    /// L'identité des colliders d'un corps retiré, gardée jusqu'à la fin des événements du pas qui suit : la sortie
+    /// d'un capteur, émise après le retrait, dit encore qui en sort (ADR-174 D5). Consultée par clé (R-1020).
+    departed_colliders: HashMap<ColliderHandle, BodyIdentity>,
 }
 
 /// Le corps cinématique d'un proxy d'entité et la forme qu'il porte.
@@ -593,6 +611,9 @@ impl PhysicsWorld {
             proxies: BTreeMap::new(),
             proxy_colliders: HashMap::new(),
             departed_proxy_colliders: HashMap::new(),
+            declared_sensors: HashMap::new(),
+            sensor_slots: BTreeMap::new(),
+            departed_colliders: HashMap::new(),
         }
     }
 
@@ -1140,8 +1161,14 @@ impl PhysicsWorld {
     fn collect_contact_events(&mut self, collector: &ContactCollector) {
         for (a, b, sensor) in collector.take_started() {
             if sensor {
-                let event = self.build_identity_event(a, b, event_kind::SENSOR_ENTER);
-                self.push_event(event);
+                match self.build_sensor_event(a, b, event_kind::SENSOR_ENTER) {
+                    SensorEvent::Declared(event) => self.push_event(event),
+                    SensorEvent::Ignored => {}
+                    SensorEvent::Undeclared => {
+                        let event = self.build_identity_event(a, b, event_kind::SENSOR_ENTER);
+                        self.push_event(event);
+                    }
+                }
             } else if let Some(event) = self.build_contact_event(a, b, event_kind::CONTACT_START) {
                 self.push_event(event);
             }
@@ -1152,9 +1179,116 @@ impl PhysicsWorld {
             } else {
                 event_kind::CONTACT_END
             };
+            if sensor {
+                match self.build_sensor_event(a, b, kind) {
+                    SensorEvent::Declared(event) => {
+                        self.push_event(event);
+                        continue;
+                    }
+                    SensorEvent::Ignored => continue,
+                    SensorEvent::Undeclared => {}
+                }
+            }
             let event = self.build_identity_event(a, b, kind);
             self.push_event(event);
         }
+        // Les capteurs déclarés retirés avec leur corps : leurs sorties sont émises, ils s'oublient.
+        let colliders = &self.inner.colliders;
+        self.declared_sensors
+            .retain(|handle, _| colliders.get(*handle).is_some());
+        self.departed_colliders.clear();
+    }
+
+    /// L'événement d'un capteur déclaré (ADR-174 D5) : le capteur en `a`, son rang dans `data`, l'autre en `b`.
+    /// Deux capteurs entre eux, ou un capteur et un autre corps de sa propre assembly, ne font rien.
+    fn build_sensor_event(&self, a: ColliderHandle, b: ColliderHandle, kind: u32) -> SensorEvent {
+        let (sensor, other, mark) =
+            match (self.declared_sensors.get(&a), self.declared_sensors.get(&b)) {
+                (Some(_), Some(_)) => return SensorEvent::Ignored,
+                (Some(mark), None) => (a, b, *mark),
+                (None, Some(mark)) => (b, a, *mark),
+                (None, None) => return SensorEvent::Undeclared,
+            };
+        if self.proxy_entity(other).is_none() {
+            let identity = self
+                .departed_colliders
+                .get(&other)
+                .copied()
+                .unwrap_or_else(|| self.contact_body(other).0);
+            if identity.assembly == mark.0 || identity.assembly.is_absent() {
+                return SensorEvent::Ignored;
+            }
+        }
+        let mut event = self.build_identity_event(sensor, other, kind);
+        if let Some(departed) = self.departed_colliders.get(&other) {
+            // L'autre a été retiré : son identité est celle qu'il avait.
+            event.assembly_b = departed.assembly;
+            event.node_b = departed.node;
+        }
+        event.assembly_a = mark.0;
+        event.data |= event_data::SENSOR_DECLARED | (mark.1 << event_data::SENSOR_INDEX_SHIFT);
+        SensorEvent::Declared(event)
+    }
+
+    /// Pose un capteur déclaré (ADR-174 D5) sur un corps d'une assembly, à un repère dans ce corps ; celui de même
+    /// rang déjà posé est remplacé. Il ne résout aucun contact et n'a pas de masse ; il voit les autres assemblies
+    /// et les proxies d'entités, pas le monde. Faux pour un corps, une forme ou une taille invalides.
+    pub fn set_declared_sensor(
+        &mut self,
+        assembly: Handle,
+        body: BodyId,
+        index: u32,
+        frame: (Vec3, Quat),
+        shape: u32,
+        size: [f32; 3],
+    ) -> bool {
+        use ax_model::dm::commands::sensor_shape;
+        let positive = |value: f32| value.is_finite() && value > 0.0;
+        let shared = match shape {
+            sensor_shape::BOX if size.iter().all(|value| positive(*value)) => {
+                SharedShape::cuboid(size[0] * 0.5, size[1] * 0.5, size[2] * 0.5)
+            }
+            sensor_shape::SPHERE if positive(size[0]) => SharedShape::ball(size[0]),
+            _ => return false,
+        };
+        if !frame.0.is_finite()
+            || !frame.1.is_finite()
+            || self.inner.bodies.get(body.handle()).is_none()
+        {
+            return false;
+        }
+        let slot = (handle_key(assembly), index);
+        if let Some(previous) = self.sensor_slots.remove(&slot) {
+            self.inner.colliders.remove(
+                previous,
+                &mut self.inner.islands,
+                &mut self.inner.bodies,
+                true,
+            );
+        }
+        let groups = CollisionGroups::from_indices(
+            &[ReservedGroup::Sensor.bit(), ReservedGroup::Assembly.bit()],
+            &[
+                ReservedGroup::Assembly.bit(),
+                ReservedGroup::EntityProxy.bit(),
+            ],
+        );
+        let collider = ColliderBuilder::new(shared)
+            .sensor(true)
+            .density(0.0)
+            .collision_groups(groups.to_rapier())
+            .active_collision_types(ActiveCollisionTypes::all())
+            .position(RapierPose::from_parts(frame.0, frame.1.normalize()))
+            .active_events(ActiveEvents::COLLISION_EVENTS)
+            .build();
+        let inserted = self.inner.colliders.insert_with_parent(
+            collider,
+            body.handle(),
+            &mut self.inner.bodies,
+        );
+        self.declared_sensors.insert(inserted, (assembly, index));
+        self.sensor_slots.insert(slot, inserted);
+        true
     }
 
     /// Index du matériau d'un collider (ADR-149 D5), ou [`NO_MATERIAL`].
@@ -3049,6 +3183,12 @@ impl PhysicsWorld {
         self.aero.remove(&id);
         if let Some(identity) = self.identity.remove(&id) {
             self.forget_member(identity.assembly, id);
+            // ADR-174 D5 : la sortie d'un capteur, émise au pas qui suit le retrait, dit encore qui en sort.
+            if let Some(body) = self.inner.bodies.get(id.handle()) {
+                for collider in body.colliders() {
+                    self.departed_colliders.insert(*collider, identity);
+                }
+            }
         }
         self.sleep_state.remove(&id);
         self.velocity_limits.remove(&id);

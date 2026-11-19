@@ -85,6 +85,43 @@ pub mod opcode {
     pub const DETACH: u32 = 25;
     /// La longueur cible d'un treuil ([`super::super::attachments::SetAttachmentLength`]). ADR-171 D5.
     pub const SET_ATTACHMENT_LENGTH: u32 = 26;
+    /// Poser un capteur déclaré sur un corps d'une assembly ([`super::SetSensor`]). ADR-174 D5.
+    pub const SET_SENSOR: u32 = 27;
+}
+
+/// Les formes d'un capteur déclaré, champ `shape` de [`SetSensor`] (ADR-174 D5).
+pub mod sensor_shape {
+    /// Une boîte : `size` est sa taille entière sur chaque axe, en blocs.
+    pub const BOX: u32 = 0;
+    /// Une sphère : `size[0]` est son rayon, en blocs.
+    pub const SPHERE: u32 = 1;
+}
+
+/// Payload de `SET_SENSOR` (ADR-174 D5) : 60 octets. Un capteur déclaré par la definition, posé sur le corps de node
+/// racine `body_node`, au repère `frame` (position `x, y, z` puis rotation `x, y, z, w`) dans ce corps. Il ne résout
+/// aucun contact et n'a pas de masse ; il émet `SENSOR_ENTER` et `SENSOR_EXIT` quand une autre assembly ou le proxy
+/// d'une entité y entre ou en sort, `data` portant [`super::physics::event_data::SENSOR_DECLARED`] et son rang. Un
+/// capteur de même rang déjà posé est remplacé ; une assembly, un corps ou une forme inconnus ne changent rien.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetSensor {
+    /// L'assembly.
+    pub handle: Handle,
+    /// Le rang du capteur dans la definition.
+    pub index: u32,
+    /// Le node racine du corps qui le porte.
+    pub body_node: u32,
+    /// Son repère dans ce corps : position puis rotation.
+    pub frame: [f32; 7],
+    /// Sa forme ([`sensor_shape`]).
+    pub shape: u32,
+    /// Sa taille, en blocs : la boîte entière, ou le rayon de la sphère en premier.
+    pub size: [f32; 3],
+}
+
+impl SetSensor {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 60;
 }
 
 /// Les valeurs de [`SetSimMode`], champ `mode`.
@@ -1097,6 +1134,20 @@ mod tests {
         assert_eq!(offset_of!(EntityProxyDesc, entity), 48);
         assert_eq!(offset_of!(EntityProxyDesc, shape), 52);
         assert_eq!(offset_of!(EntityProxyDesc, _pad), 53);
+    }
+
+    #[test]
+    fn adr174_capteur_disposition_figee() {
+        assert_eq!(opcode::SET_SENSOR, 27);
+        assert_eq!(size_of::<SetSensor>(), SetSensor::BYTES);
+        assert_eq!(align_of::<SetSensor>(), 4);
+        assert_eq!(offset_of!(SetSensor, index), 8);
+        assert_eq!(offset_of!(SetSensor, body_node), 12);
+        assert_eq!(offset_of!(SetSensor, frame), 16);
+        assert_eq!(offset_of!(SetSensor, shape), 44);
+        assert_eq!(offset_of!(SetSensor, size), 48);
+        assert_eq!(sensor_shape::BOX, 0);
+        assert_eq!(sensor_shape::SPHERE, 1);
     }
 
     #[test]

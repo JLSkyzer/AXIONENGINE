@@ -79,3 +79,23 @@ registrar.registerContentEventListener(new ContentEventListener() {
   the server alone.
 - An event is an **instant**: it is not saved. For a lasting state, use a variable.
 - A player receives at most `net.events_per_player_tick` per tick (16).
+
+## Sensors
+
+A sensor is a volume placed at a node, which blocks nothing and sees other assemblies and entities (players,
+creatures) enter and leave. From schema 7 ([ADR-174](../../decisions/ADR-174.md) D5):
+
+```json
+"sensors": [
+  { "name": "door", "node": "threshold", "shape": "box", "size": [1.0, 2.0, 0.2] },
+  { "name": "airlock", "node": "threshold", "shape": "sphere", "radius": 1.5, "replicate": "occupants" }
+]
+```
+
+- A box has its full size (`size`), a sphere its radius (`radius`), in blocks; at most 16 sensors.
+- Each sensor declares two events, `sensor.door.enter` and `sensor.door.exit`, whose value is the number of things
+  inside after the change; `replicate` says who they are sent to, as for a declared event. A `trigger` names them
+  (`event:sensor.door.enter`), your listener receives them like the others.
+- The source `sensor.door.count` reads what the sensor counts, on the server as on the client.
+- The other bodies of the same assembly do not count, nor does the terrain. An assembly that disappears inside it
+  leaves it.

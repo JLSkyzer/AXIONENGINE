@@ -85,6 +85,7 @@ public final class AxionForgeEntrypoint {
     private AssemblyRuntime assemblyRuntime;
     /** Les attaches du serveur (ADR-171), le temps qu'il tourne. */
     private AttachmentRuntime attachmentRuntime;
+    private SensorEvents sensorEvents;
 
     /**
      * Construit le mod et abonne AXION aux événements de la plateforme.
@@ -409,6 +410,9 @@ public final class AxionForgeEntrypoint {
             AttachmentRuntime.install(attachmentRuntime);
             runtime.addCommandProvider(attachmentRuntime);
             runtime.addCollectListener(attachmentRuntime);
+            // ADR-174 D5 : les capteurs déclarés, que le natif pose à la création du corps.
+            sensorEvents = new SensorEvents(assemblyRuntime);
+            runtime.addCollectListener(sensorEvents);
             // ADR-123 : chaque tick, les joueurs (rayon de simulation, plafond, R-610) et les
             // entités vanilla qu'une assembly peut heurter (R-614).
             runtime.addCommandProvider(new EntityPresenceBridge(event.getServer(), assemblyRuntime));
@@ -463,6 +467,10 @@ public final class AxionForgeEntrypoint {
         if (worldTileBridge != null) {
             worldTileBridge.close();
             worldTileBridge = null;
+        }
+        if (sensorEvents != null) {
+            runtime.removeCollectListener(sensorEvents);
+            sensorEvents = null;
         }
         if (attachmentRuntime != null) {
             runtime.removeCollectListener(attachmentRuntime);

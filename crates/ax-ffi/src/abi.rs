@@ -57,7 +57,8 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 28 depuis le poids d'une couche réglé sans
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 29 depuis les capteurs déclarés
+/// (ADR-174 D5) : opcode `SET_SENSOR`, et le rang du capteur dans `data` de `SENSOR_ENTER` et `SENSOR_EXIT`. 28 depuis le poids d'une couche réglé sans
 /// relancer son clip (ADR-174 D4) : action `SET_WEIGHT` des commandes d'animation. 27 depuis les attaches entre assemblies (ADR-171
 /// D6) : opcodes `ATTACH`, `DETACH`, `SET_ATTACHMENT_LENGTH`, et la section `AttachmentReport` de `SIM_OUT` (schéma 7).
 /// 26 depuis le socket d'attache résolu contre le
@@ -82,7 +83,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 28;
+pub const AXION_ABI_VERSION: u32 = 29;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

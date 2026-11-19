@@ -92,5 +92,11 @@ public final class PhysicsEventCodes {
 
         /** {@code DETACH_ATTACHMENT}, dans {@code node_a} : le natif a refusé de la créer (ADR-171 D6). */
         public static final int DETACH_REFUSED = 2;
+
+        /** {@code SENSOR_ENTER}, {@code SENSOR_EXIT} : le capteur est déclaré par la definition, son rang dans {@code data >> SENSOR_INDEX_SHIFT} (ADR-174 D5). */
+        public static final int SENSOR_DECLARED = 2;
+
+        /** Décalage du rang d'un capteur déclaré dans {@code data} (ADR-174 D5). */
+        public static final int SENSOR_INDEX_SHIFT = 8;
     }
 }

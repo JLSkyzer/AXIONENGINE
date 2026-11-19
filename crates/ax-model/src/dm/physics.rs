@@ -488,6 +488,12 @@ pub mod event_data {
     pub const DETACH_BROKEN: u32 = 1;
     /// `DETACH_ATTACHMENT`, dans `node_a` : le natif a refusé de la créer (ADR-171 D6).
     pub const DETACH_REFUSED: u32 = 2;
+    /// `SENSOR_ENTER`, `SENSOR_EXIT` : bit 1 à 1 quand le capteur est déclaré par la definition (ADR-174 D5) ;
+    /// `assembly_a` est son assembly, son rang est `data >> SENSOR_INDEX_SHIFT`, et l'autre est en `b` — une
+    /// assembly, ou une entité avec [`CONTACT_OTHER_ENTITY`].
+    pub const SENSOR_DECLARED: u32 = 1 << 1;
+    /// Décalage du rang du capteur déclaré dans `data`.
+    pub const SENSOR_INDEX_SHIFT: u32 = 8;
 }
 
 /// Événement physique produit en natif (§10.7, DM).

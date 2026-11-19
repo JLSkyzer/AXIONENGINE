@@ -1614,6 +1614,38 @@ impl SimDriver {
         })
     }
 
+    /// Applique `SET_SENSOR` (ADR-174 D5) : le capteur déclaré de rang `index`, sur le corps de node racine
+    /// `body_node` de l'assembly. Faux pour une assembly, un corps ou une forme inconnus, ou une taille invalide.
+    pub fn apply_set_sensor(&mut self, sensor: &ax_model::dm::commands::SetSensor) -> bool {
+        let Some((dimension, bodies)) = self.routes.get(&handle_key(sensor.handle)) else {
+            return false;
+        };
+        let dimension = *dimension;
+        let bodies = bodies.clone();
+        let Some(sim) = self.dimensions.get_mut(&dimension) else {
+            return false;
+        };
+        let Some(body) = bodies
+            .iter()
+            .copied()
+            .find(|body| sim.world.body_node(*body) == Some(sensor.body_node))
+        else {
+            return false;
+        };
+        let f = sensor.frame;
+        sim.world.set_declared_sensor(
+            sensor.handle,
+            body,
+            sensor.index,
+            (
+                Vec3::new(f[0], f[1], f[2]),
+                Quat::from_xyzw(f[3], f[4], f[5], f[6]),
+            ),
+            sensor.shape,
+            sensor.size,
+        )
+    }
+
     /// Applique `ATTACH` (ADR-171 D6) : l'attache entre le corps de node racine `a_node` de `a` et
     /// celui de `b`, ou un point du monde quand `b` est absent. Les deux assemblies vivent dans la
     /// même dimension. Refusée — une extrémité inconnue, deux dimensions, un réglage invalide —, elle

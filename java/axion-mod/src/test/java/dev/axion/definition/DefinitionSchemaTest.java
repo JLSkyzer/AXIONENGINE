@@ -754,6 +754,36 @@ class DefinitionSchemaTest {
                 "avant le schéma 7, mask n'existe pas");
     }
 
+    @Test
+    @DisplayName("ADR-174 D5 : au schéma 7, une definition déclare ses capteurs ; leurs événements et leur compte se nomment")
+    void lesCapteursDuSchemaSept() {
+        JsonObject ok = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+        ok.add("sensors", JsonParser.parseString("[{\"name\": \"porte\", \"node\": \"seuil\", \"shape\": \"box\","
+                + " \"size\": [1, 2, 0.2]}, {\"name\": \"sas\", \"node\": \"seuil\", \"shape\": \"sphere\","
+                + " \"radius\": 1, \"replicate\": \"occupants\"}]"));
+        ok.add("animations", JsonParser.parseString("{\"a\": {\"clip\": \"x\", \"trigger\": \"event:sensor.porte.enter\"}}"));
+        ok.add("procedural", JsonParser.parseString("[{\"node\": \"n\", \"channel\": \"visibility\","
+                + " \"source\": \"sensor.sas.count\"}]"));
+        assertDoesNotThrow(() -> read(ok));
+        assertEquals(java.util.List.of("sensor.porte.enter", "sensor.porte.exit", "sensor.sas.enter", "sensor.sas.exit"),
+                ContentEvents.of(ok).names(), "chaque capteur déclare ses deux événements");
+        assertEquals(ContentEvents.Replicate.OCCUPANTS, ContentEvents.of(ok).declared().get(2).replicate());
+
+        for (String faux : java.util.List.of(
+                "[{\"name\": \"p\", \"node\": \"s\", \"shape\": \"sphere\", \"size\": [1, 1, 1]}]",
+                "[{\"name\": \"p\", \"node\": \"s\", \"shape\": \"box\"}]",
+                "[{\"name\": \"p\", \"node\": \"s\", \"size\": [1, 0, 1]}]")) {
+            JsonObject refuse = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+            refuse.add("sensors", JsonParser.parseString(faux));
+            assertThrows(DefinitionException.class, () -> read(refuse), faux);
+        }
+        JsonObject inconnu = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+        inconnu.add("procedural", JsonParser.parseString("[{\"node\": \"n\", \"channel\": \"visibility\","
+                + " \"source\": \"sensor.porte.count\"}]"));
+        assertEquals("$.procedural[0].source", assertThrows(DefinitionException.class, () -> read(inconnu)).path(),
+                "un capteur inconnu");
+    }
+
     /** Une definition au schéma 7, deux sièges et une variable par siège ; {@code extra} s'ajoute à la racine. */
     private static JsonObject parSiege(String extra) {
         return JsonParser.parseString("{\"schema\": 7, \"asset\": \"mymod:models/pickup.glb\", \"kind\":"

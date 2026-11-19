@@ -54,16 +54,20 @@ public record ContentEvents(List<Event> declared) {
      * @param root document de la definition
      */
     public static ContentEvents of(JsonObject root) {
-        if (!(root.get("events") instanceof JsonObject events) || events.size() == 0) {
-            return NONE;
+        List<Event> found = new ArrayList<>();
+        if (root.get("events") instanceof JsonObject events) {
+            for (Map.Entry<String, JsonElement> entry : events.entrySet()) {
+                String replicate = entry.getValue() instanceof JsonObject declared && declared.get("replicate") != null
+                        ? declared.get("replicate").getAsString() : null;
+                found.add(new Event(entry.getKey(), Replicate.of(replicate)));
+            }
         }
-        List<Event> found = new ArrayList<>(events.size());
-        for (Map.Entry<String, JsonElement> entry : events.entrySet()) {
-            String replicate = entry.getValue() instanceof JsonObject declared && declared.get("replicate") != null
-                    ? declared.get("replicate").getAsString() : null;
-            found.add(new Event(entry.getKey(), Replicate.of(replicate)));
+        // ADR-174 D5 : chaque capteur déclare ses deux événements, après ceux de la definition.
+        for (Sensors.Sensor sensor : Sensors.of(root).declared()) {
+            found.add(new Event(sensor.enterEvent(), sensor.replicate()));
+            found.add(new Event(sensor.exitEvent(), sensor.replicate()));
         }
-        return new ContentEvents(found);
+        return found.isEmpty() ? NONE : new ContentEvents(found);
     }
 
     /**

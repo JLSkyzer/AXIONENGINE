@@ -208,8 +208,8 @@ public final class SchemaExport {
             out.addProperty("x-axion-refers", refers.category().jsonName());
         } else if (rule instanceof TextRule.Id) {
             out.addProperty("pattern", ID_PATTERN);
-        } else if (rule instanceof TextRule.Source) {
-            out.addProperty("pattern", sourcePattern());
+        } else if (rule instanceof TextRule.Source source) {
+            out.addProperty("pattern", sourcePattern(source.version()));
         } else if (rule instanceof TextRule.CollisionGroup group) {
             JsonArray reserved = new JsonArray();
             group.reserved().forEach(reserved::add);
@@ -235,8 +235,20 @@ public final class SchemaExport {
      * s'écrivent donc tels quels dans l'expression.
      */
     static String sourcePattern() {
+        return sourcePattern(Integer.MAX_VALUE);
+    }
+
+    /**
+     * {@return l'expression des sources au schéma {@code version} : les familles qu'il connaît (R-2410)}
+     *
+     * @param version le schéma
+     */
+    static String sourcePattern(int version) {
         StringJoiner alternatives = new StringJoiner("|", "^(?:", ")$");
         for (SourceFamily family : SchemaOne.SOURCES) {
+            if (family.since() > version) {
+                continue;
+            }
             String fields = "(?:" + String.join("|", family.fields()) + ")";
             if (!family.named()) {
                 alternatives.add(family.prefix() + "\\." + fields);

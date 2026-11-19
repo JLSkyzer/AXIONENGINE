@@ -95,6 +95,7 @@ public final class ProceduralTracks {
         RPM, LOAD, RUNNING,
         GEAR, SHIFTING,
         SEAT_OCCUPIED,
+        SENSOR_COUNT,
         ATTACH_LENGTH, ATTACH_TENSION, ATTACHED, SOCKET_MISALIGNMENT,
         SECONDS,
         VARIABLE,
@@ -168,10 +169,33 @@ public final class ProceduralTracks {
      *     (0 ou 1), longueur de la corde en blocs, tension en newtons, désalignement en blocs (ADR-171 D7)
      * @param seat le siège du lecteur — celui qu'occupe le joueur local —, -1 sans : ce que lit {@code var.<nom>}
      *     d'une variable par siège (ADR-174 D2)
+     * @param sensors ce que compte chaque capteur déclaré : la source {@code sensor.<nom>.count} (ADR-174 D5)
      */
     public record Frame(List<Interpolation.WheelPose> wheels, double[] spinAngles, Interpolation.VehiclePose vehicle,
             AssemblyState.VariableValues variables, boolean[] seats, double seconds, float worldTime, float skyLight,
-            float rain, double[] sockets, int seat) {
+            float rain, double[] sockets, int seat, AssemblyState.SensorCounts sensors) {
+
+        /**
+         * Un cadre sans capteur compté.
+         *
+         * @param wheels état de chaque roue
+         * @param spinAngles angle de chaque roue
+         * @param vehicle état du véhicule
+         * @param variables variables reçues
+         * @param seats occupation de chaque siège
+         * @param seconds temps du serveur, en secondes
+         * @param worldTime heure du jour
+         * @param skyLight lumière du ciel
+         * @param rain pluie
+         * @param sockets lectures des sockets
+         * @param seat le siège du lecteur, -1 sans
+         */
+        public Frame(List<Interpolation.WheelPose> wheels, double[] spinAngles, Interpolation.VehiclePose vehicle,
+                AssemblyState.VariableValues variables, boolean[] seats, double seconds, float worldTime,
+                float skyLight, float rain, double[] sockets, int seat) {
+            this(wheels, spinAngles, vehicle, variables, seats, seconds, worldTime, skyLight, rain, sockets, seat,
+                    AssemblyState.SensorCounts.NONE);
+        }
 
         /**
          * Un cadre sans lecteur assis.
@@ -200,7 +224,17 @@ public final class ProceduralTracks {
          */
         public Frame from(int reader) {
             return new Frame(wheels, spinAngles, vehicle, variables, seats, seconds, worldTime, skyLight, rain, sockets,
-                    reader);
+                    reader, sensors);
+        }
+
+        /**
+         * {@return ce cadre, avec ce que comptent les capteurs (ADR-174 D5)}
+         *
+         * @param counts le compte de chaque capteur déclaré
+         */
+        public Frame withSensors(AssemblyState.SensorCounts counts) {
+            return new Frame(wheels, spinAngles, vehicle, variables, seats, seconds, worldTime, skyLight, rain, sockets,
+                    seat, counts);
         }
 
         /** Les lectures d'un socket dans {@link #sockets} : attaché, longueur, tension, désalignement. */
@@ -318,13 +352,14 @@ public final class ProceduralTracks {
         Map<String, Integer> wheels = ranks(root, "wheels", "node");
         Map<String, Integer> seats = ranks(root, "seats", "name");
         Map<String, Integer> sockets = ranks(root, "sockets", "name");
+        Map<String, Integer> sensors = ranks(root, "sensors", "name");
         Variables variables = Variables.of(root);
         Map<Integer, Integer> slots = new LinkedHashMap<>();
         List<Track> tracks = new ArrayList<>();
         Set<String> notes = new LinkedHashSet<>();
         for (JsonElement entry : entries) {
             if (entry instanceof JsonObject track) {
-                read(track, wheels, seats, sockets, variables, nodeNames, slots, tracks, notes);
+                read(track, wheels, seats, sockets, sensors, variables, nodeNames, slots, tracks, notes);
             }
         }
         notes.forEach(journal);
@@ -373,7 +408,7 @@ public final class ProceduralTracks {
     public static Probe probe(JsonObject root, String source) {
         Variables variables = Variables.of(root);
         Reading reading = reading(source, ranks(root, "wheels", "node"), ranks(root, "seats", "name"),
-                ranks(root, "sockets", "name"), variables);
+                ranks(root, "sockets", "name"), ranks(root, "sensors", "name"), variables);
         if (reading == null) {
             return null;
         }
@@ -398,18 +433,19 @@ public final class ProceduralTracks {
     }
 
     private static void read(JsonObject entry, Map<String, Integer> wheels, Map<String, Integer> seats,
-            Map<String, Integer> sockets, Variables variables, List<String> names, Map<Integer, Integer> slots,
+            Map<String, Integer> sockets, Map<String, Integer> sensors,
+            Variables variables, List<String> names, Map<Integer, Integer> slots,
             List<Track> tracks, Set<String> notes) {
         String source = text(entry, "source");
         String name = text(entry, "node") != null ? text(entry, "node") : text(entry, "bone");
-        Reading reading = reading(source, wheels, seats, sockets, variables);
+        Reading reading = reading(source, wheels, seats, sockets, sensors, variables);
         if (reading == null) {
             notes.add("piste procédurale ignorée : source « " + source + " » non prise en charge");
             return;
         }
         Reading gate = null;
         if (entry.has("gate")) {
-            gate = reading(text(entry, "gate"), wheels, seats, sockets, variables);
+            gate = reading(text(entry, "gate"), wheels, seats, sockets, sensors, variables);
             if (gate == null) {
                 notes.add("piste procédurale ignorée : gate « " + text(entry, "gate") + " » non prise en charge");
                 return;
@@ -446,9 +482,10 @@ public final class ProceduralTracks {
 
     /** {@return ce que lit une source, ou {@code null} si ce jeu ne la prend pas en charge ou que son élément manque} */
     private static Reading reading(String source, Map<String, Integer> wheels, Map<String, Integer> seats,
-            Map<String, Integer> sockets, Variables variables) {
+            Map<String, Integer> sockets, Map<String, Integer> sensors,
+            Variables variables) {
         Source kind = kind(source);
-        Integer index = kind == null ? null : index(kind, source, wheels, seats, sockets, variables);
+        Integer index = kind == null ? null : index(kind, source, wheels, seats, sockets, sensors, variables);
         if (kind == null || index == null) {
             return null;
         }
@@ -518,6 +555,8 @@ public final class ProceduralTracks {
                 default -> null;
             };
             case "seat" -> named && "occupied".equals(field) ? Source.SEAT_OCCUPIED : null;
+            // ADR-174 D5 : ce que compte un capteur déclaré.
+            case "sensor" -> named && "count".equals(field) ? Source.SENSOR_COUNT : null;
             // ADR-171 D7 : le nom est celui d'un socket de la definition.
             case "attach" -> !named ? null : switch (field) {
                 case "length" -> Source.ATTACH_LENGTH;
@@ -561,10 +600,12 @@ public final class ProceduralTracks {
 
     /** {@return le rang de la roue ou du siège qu'une source nomme, 0 pour une autre, {@code null} s'il manque} */
     private static Integer index(Source kind, String source, Map<String, Integer> wheels, Map<String, Integer> seats,
-            Map<String, Integer> sockets, Variables variables) {
+            Map<String, Integer> sockets, Map<String, Integer> sensors,
+            Variables variables) {
         return switch (kind) {
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheels.get(element(source));
             case SEAT_OCCUPIED -> seats.get(element(source));
+            case SENSOR_COUNT -> sensors.get(element(source));
             case ATTACH_LENGTH, ATTACH_TENSION, ATTACHED, SOCKET_MISALIGNMENT -> sockets.get(element(source));
             case VARIABLE -> {
                 Variables.Reading read = variables.resolve(source.substring(source.indexOf('.') + 1), names(seats));
@@ -698,6 +739,7 @@ public final class ProceduralTracks {
         return switch (track.source()) {
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheel(track, frame);
             case SEAT_OCCUPIED -> track.index() < frame.seats().length ? flag(frame.seats()[track.index()]) : null;
+            case SENSOR_COUNT -> (double) frame.sensors().count(track.index());
             case ATTACHED -> socket(frame, track.index(), 0);
             case ATTACH_LENGTH -> socket(frame, track.index(), 1);
             case ATTACH_TENSION -> socket(frame, track.index(), 2);

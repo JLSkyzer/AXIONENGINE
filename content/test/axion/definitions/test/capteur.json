@@ -1,0 +1,9 @@
+{
+  "schema": 7,
+  "asset": "axion:models/test/siege.gltf",
+  "kind": "rigid_object",
+  "sensors": [
+    { "name": "porte", "node": "caisse", "shape": "box", "size": [3.0, 6.0, 3.0], "replicate": "all" },
+    { "name": "sas", "node": "caisse", "shape": "sphere", "radius": 0.25, "replicate": "none" }
+  ]
+}

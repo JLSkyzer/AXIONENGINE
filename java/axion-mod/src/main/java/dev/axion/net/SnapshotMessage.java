@@ -58,14 +58,14 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 11 depuis les variables par siège (ADR-174 D2) ; 10 depuis le masque de nodes d'une couche d'animation
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 12 depuis le compte des capteurs (ADR-174 D5) ; 11 depuis les variables par siège (ADR-174 D2) ; 10 depuis le masque de nodes d'une couche d'animation
      * (ADR-174 D4) ; 9 depuis l'état des nodes (ADR-174 D3) ; 8 depuis les réglages
      * des attaches ; 7 depuis les attaches (ADR-171 D7) ; 6 depuis les
      * modificateurs des paramètres (ADR-167 D8), après
      * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
      * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 11;
+    public static final int DESCRIPTOR_VERSION = 12;
 
     /**
      * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}
@@ -89,9 +89,10 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     static final int FLAG_PARAMETERS = 1024;
     static final int FLAG_LINKS = 2048;
     static final int FLAG_NODES = 4096;
+    static final int FLAG_SENSORS = 8192;
     private static final int KNOWN_FLAGS = FLAG_FULL | FLAG_VELOCITY | FLAG_BOUNDS | FLAG_SLEEPING | FLAG_BODIES
             | FLAG_JOINTS | FLAG_ANIMATION | FLAG_WHEELS | FLAG_VEHICLE | FLAG_VARIABLES | FLAG_PARAMETERS
-            | FLAG_LINKS | FLAG_NODES;
+            | FLAG_LINKS | FLAG_NODES | FLAG_SENSORS;
 
     /** Copie les entrées. */
     public SnapshotMessage {
@@ -121,6 +122,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      *     complète
      * @param links attaches posées, ou {@code null} : celles de la base, aucune pour une entrée complète (ADR-171 D7)
      * @param nodes état des nodes, ou {@code null} : celui de la base, aucun pour une entrée complète (ADR-174 D3)
+     * @param sensors comptes des capteurs, ou {@code null} : ceux de la base, aucun pour une entrée complète
+     *     (ADR-174 D5)
      */
     public record Entry(
             int handle,
@@ -140,11 +143,22 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.VariableValues variables,
             AssemblyState.Modifiers parameters,
             AssemblyState.Links links,
-            NodeStates nodes) {
+            NodeStates nodes,
+            AssemblyState.SensorCounts sensors) {
 
         /** Copie les corps. */
         public Entry {
             bodies = bodies == null ? null : List.copyOf(bodies);
+        }
+
+        /** Une entrée sans compte de capteur dit : ceux de la base, aucun pour une entrée complète. */
+        public Entry(int handle, int base, long x, long y, long z, int rotation, AssemblyState.Velocity velocity,
+                AssemblyState.Bounds bounds, boolean sleeping, List<AssemblyState.Body> bodies,
+                AssemblyState.JointBits joints, AnimationLayers animation, AssemblyState.Wheels wheels,
+                AssemblyState.Vehicle vehicle, AssemblyState.VariableValues variables,
+                AssemblyState.Modifiers parameters, AssemblyState.Links links, NodeStates nodes) {
+            this(handle, base, x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                    vehicle, variables, parameters, links, nodes, null);
         }
 
         /**
@@ -174,7 +188,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 AssemblyState.Vehicle vehicle, AssemblyState.VariableValues variables,
                 AssemblyState.Modifiers parameters, AssemblyState.Links links) {
             this(handle, base, x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                    vehicle, variables, parameters, links, null);
+                    vehicle, variables, parameters, links, null, null);
         }
 
         /**
@@ -228,7 +242,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     state.variables().count() == 0 ? null : state.variables(),
                     AssemblyState.Modifiers.NONE.equals(state.parameters()) ? null : state.parameters(),
                     AssemblyState.Links.NONE.equals(state.links()) ? null : state.links(),
-                    NodeStates.NONE.equals(state.nodes()) ? null : state.nodes());
+                    NodeStates.NONE.equals(state.nodes()) ? null : state.nodes(),
+                    AssemblyState.SensorCounts.NONE.equals(state.sensors()) ? null : state.sensors());
         }
 
         /**
@@ -260,8 +275,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Modifiers parameters = state.parameters().equals(base.parameters()) ? null : state.parameters();
             AssemblyState.Links links = state.links().equals(base.links()) ? null : state.links();
             NodeStates nodes = state.nodes().equals(base.nodes()) ? null : state.nodes();
+            AssemblyState.SensorCounts sensors = state.sensors().equals(base.sensors()) ? null : state.sensors();
             return new Entry(handle, baseSequence, dx, dy, dz, state.rotation(), velocity, bounds, state.sleeping(),
-                    bodies, joints, animation, wheels, vehicle, variables, parameters, links, nodes);
+                    bodies, joints, animation, wheels, vehicle, variables, parameters, links, nodes, sensors);
         }
 
         /**
@@ -279,7 +295,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                         variables == null ? AssemblyState.VariableValues.NONE : variables,
                         parameters == null ? AssemblyState.Modifiers.NONE : parameters,
                         links == null ? AssemblyState.Links.NONE : links,
-                        nodes == null ? NodeStates.NONE : nodes);
+                        nodes == null ? NodeStates.NONE : nodes,
+                        sensors == null ? AssemblyState.SensorCounts.NONE : sensors);
             }
             return new AssemblyState(base.x() + x, base.y() + y, base.z() + z, rotation,
                     velocity == null ? base.velocity() : velocity, bounds == null ? base.bounds() : bounds, sleeping,
@@ -287,7 +304,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     animation == null ? base.animation() : animation, wheels == null ? base.wheels() : wheels,
                     vehicle == null ? base.vehicle() : vehicle, variables == null ? base.variables() : variables,
                     parameters == null ? base.parameters() : parameters,
-                    links == null ? base.links() : links, nodes == null ? base.nodes() : nodes);
+                    links == null ? base.links() : links, nodes == null ? base.nodes() : nodes,
+                    sensors == null ? base.sensors() : sensors);
         }
 
         private static boolean fitsInt(long value) {
@@ -319,7 +337,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                 + (entry.variables() != null ? variablesSize(entry.variables()) : 0)
                 + (entry.parameters() != null ? parametersSize(entry.parameters()) : 0)
                 + (entry.links() != null ? linksSize(entry.links()) : 0)
-                + (entry.nodes() != null ? entry.nodes().encodedSize() : 0);
+                + (entry.nodes() != null ? entry.nodes().encodedSize() : 0)
+                + (entry.sensors() != null ? sensorsSize(entry.sensors()) : 0);
     }
 
     private static int linksSize(AssemblyState.Links links) {
@@ -409,7 +428,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
                     | (entry.variables() != null ? FLAG_VARIABLES : 0)
                     | (entry.parameters() != null ? FLAG_PARAMETERS : 0)
                     | (entry.links() != null ? FLAG_LINKS : 0)
-                    | (entry.nodes() != null ? FLAG_NODES : 0);
+                    | (entry.nodes() != null ? FLAG_NODES : 0)
+                    | (entry.sensors() != null ? FLAG_SENSORS : 0);
             writer.varUInt(entry.handle()).u16(flags);
             if (entry.full()) {
                 writer.i64(entry.x()).i64(entry.y()).i64(entry.z());
@@ -454,6 +474,13 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             }
             if (entry.nodes() != null) {
                 entry.nodes().write(writer);
+            }
+            if (entry.sensors() != null) {
+                // ADR-174 D5 : le nombre de capteurs, puis le compte de chacun.
+                writer.varUInt(entry.sensors().counts().size());
+                for (int count : entry.sensors().counts()) {
+                    writer.varUInt(count);
+                }
             }
         }
         return writer.toByteArray();
@@ -526,8 +553,9 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             AssemblyState.Modifiers parameters = (flags & FLAG_PARAMETERS) == 0 ? null : readParameters(reader, handle);
             AssemblyState.Links links = (flags & FLAG_LINKS) == 0 ? null : readLinks(reader, handle);
             NodeStates nodes = (flags & FLAG_NODES) == 0 ? null : NodeStates.read(reader, handle);
+            AssemblyState.SensorCounts sensors = (flags & FLAG_SENSORS) == 0 ? null : readSensors(reader, handle);
             entries.add(new Entry(handle, base, x, y, z, rotation, velocity, bounds, (flags & FLAG_SLEEPING) != 0,
-                    bodies, joints, animation, wheels, vehicle, variables, parameters, links, nodes));
+                    bodies, joints, animation, wheels, vehicle, variables, parameters, links, nodes, sensors));
         }
         reader.expectEnd();
         return new SnapshotMessage(sequence, serverTick, descriptor, entries);
@@ -567,6 +595,33 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
             return new AssemblyState.Wheels(count, packed);
         } catch (IllegalArgumentException bounds) {
             throw new MalformedPacketException("entité " + handle + " : " + bounds.getMessage());
+        }
+    }
+
+    private static int sensorsSize(AssemblyState.SensorCounts sensors) {
+        int size = varintSize(sensors.counts().size());
+        for (int count : sensors.counts()) {
+            size += varintSize(count);
+        }
+        return size;
+    }
+
+    /** Les comptes des capteurs d'une entrée : au plus 16, aucun négatif (R-1650). */
+    private static AssemblyState.SensorCounts readSensors(WireReader reader, int handle)
+            throws MalformedPacketException {
+        int count = reader.varUInt();
+        if (count < 0 || count > AssemblyState.SensorCounts.MAX_SENSORS) {
+            throw new MalformedPacketException("entité " + handle + " : " + count + " capteurs, au-delà de "
+                    + AssemblyState.SensorCounts.MAX_SENSORS);
+        }
+        Integer[] counts = new Integer[count];
+        for (int sensor = 0; sensor < count; sensor++) {
+            counts[sensor] = reader.varUInt();
+        }
+        try {
+            return new AssemblyState.SensorCounts(List.of(counts));
+        } catch (IllegalArgumentException refused) {
+            throw new MalformedPacketException("entité " + handle + " : " + refused.getMessage());
         }
     }
 

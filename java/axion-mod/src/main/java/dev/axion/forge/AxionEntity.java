@@ -163,6 +163,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** Les variables du plus récent snapshot reçu (client), et celles dont le miroir est fait (ADR-167 D4). */
     private AssemblyState.VariableValues receivedVariables = AssemblyState.VariableValues.NONE;
+    /** Ce que compte chaque capteur au plus récent snapshot (client, ADR-174 D5). */
+    private AssemblyState.SensorCounts receivedSensors = AssemblyState.SensorCounts.NONE;
+
+    /** {@return ce que compte chaque capteur : au serveur, le compte courant ; au client, celui du snapshot} */
+    public AssemblyState.SensorCounts sensorState() {
+        return level().isClientSide() ? receivedSensors : AssemblyState.SensorCounts.of(sensorCounts());
+    }
 
     private AssemblyState.VariableValues mirroredVariables;
 
@@ -842,6 +849,57 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
     }
 
+    /** Ce qui est dans chaque capteur déclaré (ADR-174 D5) : une assembly, ou une entité, par une clé. */
+    private java.util.List<java.util.Set<Long>> sensorOccupants = java.util.List.of();
+
+    /**
+     * Le corps se crée : ses capteurs repartent vides (serveur, ADR-174 D5).
+     *
+     * @param count le nombre de capteurs que la definition déclare
+     */
+    void resetSensors(int count) {
+        java.util.List<java.util.Set<Long>> fresh = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            fresh.add(new java.util.LinkedHashSet<>());
+        }
+        sensorOccupants = fresh;
+    }
+
+    /**
+     * Quelque chose entre dans un capteur, ou en sort (serveur, ADR-174 D5) : le compte change, et l'événement
+     * {@code sensor.<nom>.enter} ou {@code sensor.<nom>.exit} part, de valeur le compte après.
+     *
+     * @param sensor le rang du capteur
+     * @param enter vrai pour une entrée
+     * @param other ce qui entre ou sort : une assembly ou une entité, par une clé
+     */
+    void sensorChanged(int sensor, boolean enter, long other) {
+        dev.axion.definition.Sensors declared = dev.axion.definition.Sensors.of(
+                AxionEntities.definitions().get(definitionId).map(Definition::root).orElse(new com.google.gson.JsonObject()));
+        if (sensor < 0 || sensor >= sensorOccupants.size() || sensor >= declared.declared().size()) {
+            return;
+        }
+        java.util.Set<Long> inside = sensorOccupants.get(sensor);
+        if (!(enter ? inside.add(other) : inside.remove(other))) {
+            return;
+        }
+        dev.axion.definition.Sensors.Sensor named = declared.declared().get(sensor);
+        try {
+            emitEvent(enter ? named.enterEvent() : named.exitEvent(), inside.size(), "capteur " + named.name());
+        } catch (IllegalArgumentException refused) {
+            LOGGER.warn("AXION : assembly {}, capteur {} — {}", getUUID(), named.name(), refused.getMessage());
+        }
+    }
+
+    /** {@return ce que compte chaque capteur déclaré, dans l'ordre de la definition (serveur, ADR-174 D5)} */
+    public int[] sensorCounts() {
+        int[] counts = new int[sensorOccupants.size()];
+        for (int i = 0; i < counts.length; i++) {
+            counts[i] = sensorOccupants.get(i).size();
+        }
+        return counts;
+    }
+
     /** {@return l'état d'un node, caché ou montré, le reste gardé} */
     private static dev.axion.net.NodeStates.State visibility(dev.axion.net.NodeStates states, int node, boolean hidden) {
         dev.axion.net.NodeStates.State current = states.of(node);
@@ -1297,7 +1355,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 AssemblyState.VariableValues.of(values, seats), seatsOccupied(),
                 tick * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0, ProceduralTracks.worldTime(here.getDayTime()),
                 here.getBrightness(net.minecraft.world.level.LightLayer.SKY, at), here.getRainLevel(1f),
-                socketReadings());
+                socketReadings(), -1, sensorState());
     }
 
     /**
@@ -2709,6 +2767,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (netState != null && !level().isClientSide() && !netState.nodes().equals(nodeStates())) {
             netState = netState.withNodes(nodeStates());
         }
+        // ADR-174 D5 : ce que compte chaque capteur.
+        if (netState != null && !level().isClientSide()) {
+            AssemblyState.SensorCounts counts = AssemblyState.SensorCounts.of(sensorCounts());
+            if (!counts.equals(netState.sensors())) {
+                netState = netState.withSensors(counts);
+            }
+        }
         // ADR-171 D7 : les attaches qu'elle a posées, vivantes, avec leur longueur, leur écart et leur tension.
         if (netState != null && !level().isClientSide()) {
             AttachmentRuntime attachments = AttachmentRuntime.current();
@@ -2829,6 +2894,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             receivedLinks = state.links();
             // ADR-174 D3 : l'état des nodes que ses actions ont changé, tel quel ; le rendu le compose aux pistes.
             nodeStates = state.nodes();
+            // ADR-174 D5 : ce que compte chaque capteur, que lit sensor.<nom>.count.
+            receivedSensors = state.sensors();
             if (receivedLinks.links().isEmpty()) {
                 RECEIVED_LINKS.remove(getId());
             } else {

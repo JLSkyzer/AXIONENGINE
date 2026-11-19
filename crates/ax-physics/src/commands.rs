@@ -15,9 +15,9 @@ use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, opcode, sim_mode, vehicle_input_flags, ApplyForce,
     AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly,
     RemoveWorldTile, SetAssemblyPose, SetAssemblyState, SetDimensionEnv, SetEntityProxies,
-    SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSimMode, SetStateExport,
-    SetVehicleInput, SetWheelTorques, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
-    SimCommandHeader,
+    SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSensor, SetSimMode,
+    SetStateExport, SetVehicleInput, SetWheelTorques, SetWorldCollision, SetWorldFluid,
+    SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -374,6 +374,21 @@ fn apply_one(
         opcode::SET_ATTACHMENT_LENGTH => {
             expect_len(payload, SetAttachmentLength::BYTES)?;
             driver.apply_set_attachment_length(read_u32(payload, 0), read_f32(payload, 4));
+            outcome.applied += 1;
+        }
+        // ADR-174 D5 : un capteur déclaré, posé sur un corps de l'assembly.
+        opcode::SET_SENSOR => {
+            expect_len(payload, SetSensor::BYTES)?;
+            let frame: [f32; 7] = core::array::from_fn(|rank| read_f32(payload, 16 + 4 * rank));
+            let size: [f32; 3] = core::array::from_fn(|rank| read_f32(payload, 48 + 4 * rank));
+            driver.apply_set_sensor(&SetSensor {
+                handle: read_handle(payload, 0),
+                index: read_u32(payload, 8),
+                body_node: read_u32(payload, 12),
+                frame,
+                shape: read_u32(payload, 44),
+                size,
+            });
             outcome.applied += 1;
         }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué

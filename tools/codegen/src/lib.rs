@@ -203,7 +203,7 @@ pub const EVENT_KINDS: [(&str, u32, &str); 13] = [
 
 /// Sens du champ `data` d'un `PhysicsEvent` selon son genre (ADR-123) : nom, valeur,
 /// description.
-pub const EVENT_DATA: [(&str, u32, &str); 7] = [
+pub const EVENT_DATA: [(&str, u32, &str); 9] = [
     (
         "CONTACT_OTHER_ENTITY",
         event_data::CONTACT_OTHER_ENTITY,
@@ -238,6 +238,16 @@ pub const EVENT_DATA: [(&str, u32, &str); 7] = [
         "DETACH_REFUSED",
         event_data::DETACH_REFUSED,
         "{@code DETACH_ATTACHMENT}, dans {@code node_a} : le natif a refusé de la créer (ADR-171 D6).",
+    ),
+    (
+        "SENSOR_DECLARED",
+        event_data::SENSOR_DECLARED,
+        "{@code SENSOR_ENTER}, {@code SENSOR_EXIT} : le capteur est déclaré par la definition, son rang dans {@code data >> SENSOR_INDEX_SHIFT} (ADR-174 D5).",
+    ),
+    (
+        "SENSOR_INDEX_SHIFT",
+        event_data::SENSOR_INDEX_SHIFT,
+        "Décalage du rang d'un capteur déclaré dans {@code data} (ADR-174 D5).",
     ),
 ];
 

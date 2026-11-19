@@ -179,7 +179,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             float[] rotation,
             long definition,
             SimCommandStream.Restored restored,
-            boolean asleep) {}
+            boolean asleep,
+            List<SensorCommand> sensors) {}
+
+    /** Un capteur déclaré à poser avec le corps (ADR-174 D5). */
+    private record SensorCommand(int index, int bodyNode, float[] frame, int shape, float[] size) {}
 
     /**
      * La registry et les compilations sont lues à chaque création de corps : un {@code /reload} ou un
@@ -280,9 +284,37 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // ADR-174 D4 : et ses nodes, que nomme le masque d'une couche.
         assembly.animation().bind(summary.clips(),
                 AxionEntities.nodeNames(definition.id().toString()).orElse(List.of()));
-        pending.add(new Pending(true, index, dimension, position, rotation, definition.hash(), restored, asleep));
+        pending.add(new Pending(true, index, dimension, position, rotation, definition.hash(), restored, asleep,
+                sensorsOf(assembly, definition)));
         ledger.attach(index, assembly);
         return true;
+    }
+
+    /**
+     * Les capteurs que la definition déclare (ADR-174 D5), chacun sur le corps de son node, au repère de ce node dans
+     * ce corps. Un capteur dont le node n'a pas de corps se journalise et ne se pose pas.
+     */
+    private static List<SensorCommand> sensorsOf(AxionEntity assembly, Definition definition) {
+        dev.axion.definition.Sensors sensors = dev.axion.definition.Sensors.of(definition.root());
+        assembly.resetSensors(sensors.declared().size());
+        if (sensors.declared().isEmpty()) {
+            return List.of();
+        }
+        List<String> nodes = AxionEntities.nodeNames(definition.id().toString()).orElse(List.of());
+        List<SensorCommand> commands = new ArrayList<>();
+        for (int rank = 0; rank < sensors.declared().size(); rank++) {
+            dev.axion.definition.Sensors.Sensor sensor = sensors.declared().get(rank);
+            float[] frame = assembly.socketFrame(nodes.indexOf(sensor.node()));
+            if (frame == null) {
+                LOGGER.warn("AXION : {} — le capteur « {} » : le node « {} » n'a pas de corps, il n'est pas posé",
+                        definition.id(), sensor.name(), sensor.node());
+                continue;
+            }
+            commands.add(new SensorCommand(rank, (int) frame[0], java.util.Arrays.copyOfRange(frame, 1, 8),
+                    sensor.shape() == dev.axion.definition.Sensors.Shape.SPHERE ? SimCommandStream.SENSOR_SPHERE
+                            : SimCommandStream.SENSOR_BOX, sensor.size()));
+        }
+        return commands;
     }
 
     /**
@@ -346,7 +378,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         implausibleBounds.remove(index);
         speeds.remove(index);
         rootNodes.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, 0L, null, false));
+        pending.add(new Pending(false, index, 0L, null, null, 0L, null, false, List.of()));
         // Son corps natif part, et ses attaches avec lui (REMOVE_ASSEMBLY) : sans être détruite, elle les retrouve
         // quand on la suit de nouveau et que le natif l'a recréée (ADR-171, 8e).
         assembly.forgetSimulation();
@@ -444,6 +476,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             if (cmd.create()) {
                 stream.createAssembly(cmd.index(), GENERATION, cmd.dimension(), cmd.position(), cmd.rotation(),
                         cmd.definition(), cmd.restored(), cmd.asleep());
+                // ADR-174 D5 : ses capteurs, après sa création — la frontière applique les créations d'un flux d'abord.
+                for (SensorCommand sensor : cmd.sensors()) {
+                    stream.setSensor(cmd.index(), GENERATION, sensor.index(), sensor.bodyNode(), sensor.frame(),
+                            sensor.shape(), sensor.size());
+                }
                 animationSent.put(cmd.index(), AnimationLayers.NONE);
             } else {
                 stream.removeAssembly(cmd.index(), GENERATION);

@@ -101,6 +101,18 @@ public final class SimCommandStream {
     /** Opcode {@code SET_ATTACHMENT_LENGTH} (ADR-171 D5) : la longueur cible d'un treuil. */
     public static final int OP_SET_ATTACHMENT_LENGTH = 26;
 
+    /** Opcode {@code SET_SENSOR} (ADR-174 D5) : un capteur déclaré, posé sur un corps d'une assembly. */
+    public static final int OP_SET_SENSOR = 27;
+
+    /** Taille du payload {@code SetSensor}, en octets. */
+    public static final int SET_SENSOR_BYTES = 60;
+
+    /** Forme d'un capteur : une boîte, sa taille entière sur chaque axe. */
+    public static final int SENSOR_BOX = 0;
+
+    /** Forme d'un capteur : une sphère, son rayon en premier. */
+    public static final int SENSOR_SPHERE = 1;
+
     /** Taille des payloads {@code Detach} et {@code SetAttachmentLength}, en octets. */
     public static final int ATTACHMENT_ID_BYTES = 8;
 
@@ -1216,6 +1228,38 @@ public final class SimCommandStream {
     public SimCommandStream setAttachmentLength(int id, float target) {
         ByteBuffer command = beginCommand(OP_SET_ATTACHMENT_LENGTH, ATTACHMENT_ID_BYTES);
         command.putInt(id).putFloat(target);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_SENSOR} (ADR-174 D5) : le capteur déclaré de rang {@code index}, posé sur le corps
+     * de node racine {@code bodyNode}, à un repère dans ce corps. Il émet {@code SENSOR_ENTER} et {@code SENSOR_EXIT}
+     * quand une autre assembly ou le proxy d'une entité y entre ou en sort.
+     *
+     * @param handleIndex index du handle de l'assembly
+     * @param handleGeneration génération du handle
+     * @param index le rang du capteur dans la definition
+     * @param bodyNode le node racine du corps qui le porte
+     * @param frame son repère dans ce corps : position {@code x, y, z} puis rotation {@code x, y, z, w}
+     * @param shape {@link #SENSOR_BOX} ou {@link #SENSOR_SPHERE}
+     * @param size la taille entière de la boîte, ou le rayon de la sphère en premier, en blocs
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setSensor(int handleIndex, int handleGeneration, int index, int bodyNode, float[] frame,
+            int shape, float[] size) {
+        if (frame.length != 7 || size.length != 3) {
+            throw new IllegalArgumentException("repère de 7 nombres et taille de 3 attendus");
+        }
+        ByteBuffer command = beginCommand(OP_SET_SENSOR, SET_SENSOR_BYTES);
+        command.putInt(handleIndex).putInt(handleGeneration).putInt(index).putInt(bodyNode);
+        for (float value : frame) {
+            command.putFloat(value);
+        }
+        command.putInt(shape);
+        for (float value : size) {
+            command.putFloat(value);
+        }
         commands.add(command.array());
         return this;
     }

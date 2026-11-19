@@ -36,6 +36,8 @@ enum NameCategory {
     VARIABLE("variable", true),
     /** Événement de contenu, clé de {@code events} (schéma 7, ADR-174 D2). */
     EVENT("événement", true),
+    /** Capteur déclaré, {@code sensors[].name} (ADR-174 D5). */
+    SENSOR("capteur", true),
     /** Vue de véhicule, {@code cameras[].name} (ADR-170). */
     CAMERA("vue", true),
     /** Jauge du tableau de bord, {@code dashboard.gauges[].name} (ADR-170). */

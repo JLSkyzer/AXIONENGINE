@@ -80,3 +80,22 @@ registrar.registerContentEventListener(new ContentEventListener() {
   serveur seul.
 - Un événement est un **instant** : il ne se sauvegarde pas. Pour un état qui dure, prends une variable.
 - Un joueur en reçoit au plus `net.events_per_player_tick` par tick (16).
+
+## Les capteurs
+
+Un capteur est un volume posé à un node, qui ne bloque rien et voit entrer et sortir les autres assemblies et les
+entités (joueurs, créatures). Au schéma 7 ([ADR-174](../../decisions/ADR-174.md) D5) :
+
+```json
+"sensors": [
+  { "name": "porte", "node": "seuil", "shape": "box", "size": [1.0, 2.0, 0.2] },
+  { "name": "sas", "node": "seuil", "shape": "sphere", "radius": 1.5, "replicate": "occupants" }
+]
+```
+
+- Une boîte a sa taille entière (`size`), une sphère son rayon (`radius`), en blocs ; 16 capteurs au plus.
+- Chaque capteur déclare deux événements, `sensor.porte.enter` et `sensor.porte.exit`, de valeur le nombre de ce qui
+  y est après le changement ; `replicate` dit à qui ils partent, comme pour un événement déclaré. Un `trigger` les nomme
+  (`event:sensor.porte.enter`), ton écouteur les reçoit comme les autres.
+- La source `sensor.porte.count` lit ce que le capteur compte, au serveur comme au client.
+- Les autres corps de la même assembly n'y comptent pas, ni le terrain. Une assembly qui disparaît dedans en sort.

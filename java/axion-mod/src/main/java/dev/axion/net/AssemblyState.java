@@ -31,6 +31,7 @@ import java.util.Set;
  *     réglée (ADR-167 D8, descripteur 6)
  * @param links les attaches vivantes qu'elle a posées, {@link Links#NONE} sans (ADR-171 D7, descripteur 8)
  * @param nodes l'état des nodes que ses actions ont changé, {@link NodeStates#NONE} sans (ADR-174 D3, descripteur 9)
+ * @param sensors ce que compte chaque capteur déclaré, {@link SensorCounts#NONE} sans (ADR-174 D5, descripteur 12)
  */
 public record AssemblyState(
         long x,
@@ -48,7 +49,54 @@ public record AssemblyState(
         VariableValues variables,
         Modifiers parameters,
         Links links,
-        NodeStates nodes) {
+        NodeStates nodes,
+        SensorCounts sensors) {
+
+    /**
+     * Ce que compte chaque capteur déclaré d'une assembly (ADR-174 D5, descripteur 12) : la source
+     * {@code sensor.<nom>.count}, dans l'ordre de la definition.
+     *
+     * @param counts le compte de chaque capteur ; copie
+     */
+    public record SensorCounts(List<Integer> counts) {
+
+        /** Capteurs d'une definition, au plus. */
+        public static final int MAX_SENSORS = 16;
+
+        /** Aucun capteur. */
+        public static final SensorCounts NONE = new SensorCounts(List.of());
+
+        /** Refuse un compte négatif ou trop de capteurs, et copie. */
+        public SensorCounts {
+            if (counts.size() > MAX_SENSORS) {
+                throw new IllegalArgumentException(counts.size() + " capteurs, au-delà de " + MAX_SENSORS);
+            }
+            for (int count : counts) {
+                if (count < 0) {
+                    throw new IllegalArgumentException("compte de capteur négatif : " + count);
+                }
+            }
+            counts = List.copyOf(counts);
+        }
+
+        /**
+         * {@return les comptes de chaque capteur}
+         *
+         * @param counts le compte de chaque capteur, dans l'ordre de la definition
+         */
+        public static SensorCounts of(int[] counts) {
+            return counts.length == 0 ? NONE : new SensorCounts(java.util.Arrays.stream(counts).boxed().toList());
+        }
+
+        /**
+         * {@return le compte d'un capteur, 0 s'il n'existe pas}
+         *
+         * @param sensor son rang
+         */
+        public int count(int sensor) {
+            return sensor >= 0 && sensor < counts.size() ? counts.get(sensor) : 0;
+        }
+    }
 
     /** Corps autres que le corps racine d'une assembly, au plus : elle en a 64 (R-190). */
     public static final int MAX_BODIES = 63;
@@ -872,9 +920,9 @@ public record AssemblyState(
             throw new IllegalArgumentException("vitesse absente");
         }
         if (bodies == null || joints == null || animation == null || wheels == null || vehicle == null
-                || variables == null || parameters == null || links == null || nodes == null) {
-            throw new IllegalArgumentException(
-                    "corps, joints, animation, roues, véhicule, variables, modificateurs, attaches ou nodes absents");
+                || variables == null || parameters == null || links == null || nodes == null || sensors == null) {
+            throw new IllegalArgumentException("corps, joints, animation, roues, véhicule, variables, modificateurs,"
+                    + " attaches, nodes ou capteurs absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
@@ -1067,7 +1115,7 @@ public record AssemblyState(
      */
     public AssemblyState withLinks(Links attached) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, parameters, attached, nodes);
+                vehicle, variables, parameters, attached, nodes, sensors);
     }
 
     /**
@@ -1145,7 +1193,7 @@ public record AssemblyState(
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation,
-                wheels, vehicle, variables, parameters, links, nodes);
+                wheels, vehicle, variables, parameters, links, nodes, sensors);
     }
 
     /**
@@ -1154,7 +1202,7 @@ public record AssemblyState(
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle,
-                variables, parameters, links, nodes);
+                variables, parameters, links, nodes, sensors);
     }
 
     /**
@@ -1163,7 +1211,7 @@ public record AssemblyState(
      */
     public AssemblyState withWheels(Wheels states) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states,
-                vehicle, variables, parameters, links, nodes);
+                vehicle, variables, parameters, links, nodes, sensors);
     }
 
     /**
@@ -1172,7 +1220,7 @@ public record AssemblyState(
      */
     public AssemblyState withVehicle(Vehicle state) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                state, variables, parameters, links, nodes);
+                state, variables, parameters, links, nodes, sensors);
     }
 
     /**
@@ -1181,7 +1229,7 @@ public record AssemblyState(
      */
     public AssemblyState withVariables(VariableValues values) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, values, parameters, links, nodes);
+                vehicle, values, parameters, links, nodes, sensors);
     }
 
     /**
@@ -1190,8 +1238,45 @@ public record AssemblyState(
      */
     public AssemblyState withNodes(NodeStates states) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, parameters, links, states);
+                vehicle, variables, parameters, links, states, sensors);
     }
+
+    /**
+     * @param counts ce que compte chaque capteur déclaré (ADR-174 D5)
+     * @return cet état, avec ces comptes
+     */
+    public AssemblyState withSensors(SensorCounts counts) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                vehicle, variables, parameters, links, nodes, counts);
+    }
+
+    /**
+     * Un état sans capteur compté.
+     *
+     * @param x position x
+     * @param y position y
+     * @param z position z
+     * @param rotation rotation
+     * @param velocity vitesses
+     * @param bounds emprise
+     * @param sleeping le corps dort
+     * @param bodies corps secondaires
+     * @param joints bits des joints
+     * @param animation état d'animation
+     * @param wheels état des roues
+     * @param vehicle état du véhicule
+     * @param variables variables de contenu
+     * @param parameters modificateurs posés
+     * @param links attaches vivantes
+     * @param nodes état des nodes
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels, Vehicle vehicle,
+            VariableValues variables, Modifiers parameters, Links links, NodeStates nodes) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle, variables,
+                parameters, links, nodes, SensorCounts.NONE);
+    }
+
 
     /**
      * @param modifiers les modificateurs posés sur ses paramètres
@@ -1199,7 +1284,7 @@ public record AssemblyState(
      */
     public AssemblyState withParameters(Modifiers modifiers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, modifiers, links, nodes);
+                vehicle, variables, modifiers, links, nodes, sensors);
     }
 
     /**

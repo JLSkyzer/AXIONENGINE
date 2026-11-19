@@ -107,6 +107,35 @@ public final class ActionsGameTests {
     }
 
     /**
+     * ADR-174 D5 : un capteur déclaré voit entrer une autre assembly — son compte monte et part avec le snapshot —,
+     * puis la voit sortir quand elle disparaît.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void adr174_UnCapteurCompteCeQuiYEntreEtEnSort(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity capteur = AssembliesDeTest.poser(helper, "axion:test/capteur", new Vec3(4.5, DESSUS_DALLE, 4.5),
+                new float[] {0f, 0f, 0f, 1f});
+        AxionEntity[] ballon = new AxionEntity[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(capteur.hasPhysicalBounds(), "le capteur est simulé"))
+                .thenExecute(() -> {
+                    helper.assertTrue(capteur.sensorCounts().length == 2 && capteur.sensorCounts()[0] == 0,
+                            "deux capteurs, vides : " + java.util.Arrays.toString(capteur.sensorCounts()));
+                    ballon[0] = AssembliesDeTest.poser(helper, "axion:test/ballon",
+                            new Vec3(4.5, DESSUS_DALLE + 5, 4.5), new float[] {0f, 0f, 0f, 1f});
+                })
+                .thenWaitUntil(() -> helper.assertTrue(capteur.sensorCounts()[0] == 1,
+                        "le ballon entre dans la porte : " + java.util.Arrays.toString(capteur.sensorCounts())))
+                .thenExecute(() -> {
+                    helper.assertTrue(capteur.netState().sensors().count(0) == 1, "le snapshot porte le compte");
+                    ballon[0].discard();
+                })
+                .thenWaitUntil(() -> helper.assertTrue(capteur.sensorCounts()[0] == 0,
+                        "disparu, il en sort : " + java.util.Arrays.toString(capteur.sensorCounts())))
+                .thenSucceed();
+    }
+
+    /**
      * ADR-174 D2 : une variable par siège — l'interaction l'écrit au siège de qui clique, debout elle est refusée ; la
      * valeur de chaque siège part avec le snapshot et se sauvegarde par nom de siège.
      */

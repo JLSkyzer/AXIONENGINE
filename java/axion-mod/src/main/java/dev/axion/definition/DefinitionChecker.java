@@ -94,6 +94,7 @@ final class DefinitionChecker {
         checker.checkInteractions(root);
         checker.checkTriggers(root);
         checker.checkLayerWeights(root);
+        checker.checkSensors(root);
         if (checker.version >= 2 && checker.issues.isEmpty()) {
             checker.checkJoints(root);
         }
@@ -382,7 +383,7 @@ final class DefinitionChecker {
     private void source(String value, String path) {
         for (SourceFamily family : SchemaOne.SOURCES) {
             String head = family.prefix() + ".";
-            if (!value.startsWith(head)) {
+            if (!value.startsWith(head) || family.since() > version) {
                 continue;
             }
             String rest = value.substring(head.length());
@@ -525,7 +526,7 @@ final class DefinitionChecker {
             String key = parsed.key();
             switch (parsed.kind()) {
                 case INTERACT -> known(path, key, "node qui porte une interaction", names(root, "interaction", "node"));
-                case EVENT -> known(path, key, "événement", keys(root, "events"));
+                case EVENT -> known(path, key, "événement", new HashSet<>(ContentEvents.of(root).names()));
                 case VAR -> {
                     Variables.Reading reading = Variables.of(root).resolve(key, Variables.seatNames(root));
                     if (reading == null) {
@@ -601,6 +602,25 @@ final class DefinitionChecker {
                 continue;
             }
             invalid(reference.path(), "variable par siège « " + reference.name() + " » : aucun siège ne la situe ici");
+        }
+    }
+
+    /** ADR-174 D5 : une boîte a sa taille, une sphère son rayon — et rien de l'autre forme. */
+    private void checkSensors(JsonObject root) {
+        if (version < 7 || !(root.get("sensors") instanceof JsonArray sensors)) {
+            return;
+        }
+        for (int i = 0; i < sensors.size(); i++) {
+            if (!(sensors.get(i) instanceof JsonObject sensor)) {
+                continue;
+            }
+            String path = "$.sensors[" + i + "]";
+            boolean sphere = "sphere".equals(string(sensor, "shape"));
+            if (sphere && (sensor.get("radius") == null || sensor.has("size"))) {
+                invalid(path, "une sphère a un rayon, « radius », et pas de « size »");
+            } else if (!sphere && (sensor.get("size") == null || sensor.has("radius"))) {
+                invalid(path, "une boîte a sa taille, « size » [x, y, z], et pas de « radius »");
+            }
         }
     }
 

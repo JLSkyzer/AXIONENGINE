@@ -610,6 +610,34 @@ public final class DefinitionBuilder {
     }
 
     /**
+     * {@code sensors} : au plus 16 éléments.
+     *
+     * @param name le champ obligatoire {@code name}
+     * @param node le champ obligatoire {@code node}
+     * @param config règle l'élément, ajouté à la suite des précédents
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder sensor(String name, String node, Consumer<Sensor> config) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("name", Objects.requireNonNull(name, "name"));
+        item.put("node", Objects.requireNonNull(node, "node"));
+        Objects.requireNonNull(config, "config").accept(new Sensor(item));
+        list(values, "sensors").add(item);
+        return this;
+    }
+
+    /**
+     * {@code sensors} : au plus 16 éléments.
+     *
+     * @param name le champ obligatoire {@code name}
+     * @param node le champ obligatoire {@code node}
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder sensor(String name, String node) {
+        return sensor(name, node, item -> { });
+    }
+
+    /**
      * {@code sockets} : au plus 32 éléments.
      *
      * @param name le champ obligatoire {@code name}
@@ -4662,6 +4690,83 @@ public final class DefinitionBuilder {
          */
         public Seat role(String value) {
             values.put("role", Objects.requireNonNull(value, "role"));
+            return this;
+        }
+    }
+
+    /** {@code sensors[]}. */
+    @Experimental
+    public static final class Sensor {
+
+        private final Map<String, Object> values;
+
+        private Sensor(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code sensors[].name} : déclare un nom (sensor).
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Sensor name(String value) {
+            values.put("name", Objects.requireNonNull(value, "name"));
+            return this;
+        }
+
+        /**
+         * {@code sensors[].node} : nom (node) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Sensor node(String value) {
+            values.put("node", Objects.requireNonNull(value, "node"));
+            return this;
+        }
+
+        /**
+         * {@code sensors[].radius} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Sensor radius(double value) {
+            values.put("radius", value);
+            return this;
+        }
+
+        /**
+         * {@code sensors[].replicate} : parmi {@code all}, {@code occupants}, {@code none}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Sensor replicate(String value) {
+            values.put("replicate", Objects.requireNonNull(value, "replicate"));
+            return this;
+        }
+
+        /**
+         * {@code sensors[].shape} : parmi {@code box}, {@code sphere}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Sensor shape(String value) {
+            values.put("shape", Objects.requireNonNull(value, "shape"));
+            return this;
+        }
+
+        /**
+         * {@code sensors[].size} : 3 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Sensor size(double... items) {
+            values.put("size", doubles(items));
             return this;
         }
     }

@@ -110,7 +110,13 @@ sealed interface SchemaNode {
         record Id() implements TextRule {}
 
         /** Source procédurale de l'ANNEXE A.4. */
-        record Source() implements TextRule {}
+        /**
+         * Une source de l'ANNEXE A.4, au schéma {@code version} : une famille n'existe qu'à partir du schéma qui l'a
+         * ajoutée (R-2410).
+         *
+         * @param version le schéma lu
+         */
+        record Source(int version) implements TextRule {}
 
         /**
          * Nom de groupe de collision : réservé, ou identifiant {@code <ns>:<chemin>} dont le

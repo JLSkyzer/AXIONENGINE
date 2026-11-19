@@ -41,8 +41,19 @@ final class SchemaOne {
      * @param category catégorie du nom désigné, ou {@code null} s'il n'est pas
      *     vérifiable à la lecture (attache runtime, variable)
      * @param fields champs admis ; vide pour {@code var.<n>}, dont le nom est tout
+     * @param since le premier schéma qui la connaît (R-2410)
      */
-    record SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields) {}
+    record SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields, int since) {
+
+        SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields) {
+            this(prefix, named, category, fields, 1);
+        }
+
+        /** {@return cette famille, connue à partir de ce schéma} */
+        SourceFamily since(int version) {
+            return new SourceFamily(prefix, named, category, fields, version);
+        }
+    }
 
     /**
      * ANNEXE A.4, liste fermée (R-1450), en V1.1 : la V1.0 et les sources du monde (ADR-163 D1, amendement A9 du
@@ -68,6 +79,8 @@ final class SchemaOne {
             named("socket", NameCategory.SOCKET, "misalignment"),
             named("attach", null, "length", "tension", "attached"),
             named("seat", NameCategory.SEAT, "occupied"),
+            // ADR-174 D5 : au schéma 7, ce que compte un capteur déclaré.
+            named("sensor", NameCategory.SENSOR, "count").since(7),
             named("particles", NameCategory.PARTICLES, "max_stretch", "torn_ratio"),
             fixed("time", "seconds"),
             fixed("world", "time", "sky_light", "rain"),
@@ -169,6 +182,16 @@ final class SchemaOne {
             // ADR-174 D2 : les événements de contenu, et à qui chacun part.
             root.opt("events", new Dict(new TextRule.Declares(NameCategory.EVENT),
                     obj().opt("replicate", oneOf("all", "occupants", "none")).build(), ContentEvents.MAX));
+            // ADR-174 D5 : les capteurs, un volume posé à un node ; la forme et sa taille se jugent ensemble
+            // (DefinitionChecker.checkSensors).
+            root.opt("sensors", cap(obj()
+                    .req("name", declares(NameCategory.SENSOR))
+                    .req("node", refers(NameCategory.NODE))
+                    .opt("shape", oneOf("box", "sphere"))
+                    .opt("size", new Arr(positive(), 3, 3, false))
+                    .opt("radius", positive())
+                    .opt("replicate", oneOf("all", "occupants", "none"))
+                    .build(), Sensors.MAX));
         }
         if (version >= 4) {
             // ADR-167 D2 : la plage qu'un réglage peut donner à chaque paramètre, dans son unité. Le nom du paramètre et
@@ -217,7 +240,7 @@ final class SchemaOne {
                     .opt("gauges", cap(obj()
                             .req("name", declares(NameCategory.GAUGE))
                             .req("kind", oneOf("dial", "bar", "text", "light"))
-                            .req("source", new Text(new TextRule.Source()))
+                            .req("source", new Text(new TextRule.Source(version)))
                             .opt("min", number())
                             .opt("max", number())
                             .opt("label", text())
@@ -600,12 +623,12 @@ final class SchemaOne {
                     .opt("axis", oneOf("x", "y", "z", "r", "g", "b"))
                     .opt("period", new Num(0, Double.POSITIVE_INFINITY, true, false))
                     .opt("smoothing", new Num(0, Double.POSITIVE_INFINITY, false, false))
-                    .opt("gate", new Text(new TextRule.Source()));
+                    .opt("gate", new Text(new TextRule.Source(version)));
         } else {
             track.opt("channel", text()).opt("axis", text());
         }
         return track
-                .req("source", new Text(new TextRule.Source()))
+                .req("source", new Text(new TextRule.Source(version)))
                 .opt("scale", number())
                 .opt("map", curve())
                 .opt("clamp", pair())
@@ -623,7 +646,7 @@ final class SchemaOne {
                 .opt("drives_joint", refers(NameCategory.JOINT))
                 .opt("trigger", text());
         if (version >= 7) {
-            animation.opt("weight_source", new Text(new TextRule.Source()))
+            animation.opt("weight_source", new Text(new TextRule.Source(version)))
                     .opt("mask", cap(refers(NameCategory.NODE), 256));
         }
         return animation.build();

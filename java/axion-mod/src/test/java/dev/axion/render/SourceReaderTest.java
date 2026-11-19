@@ -49,6 +49,19 @@ class SourceReaderTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D5 : sensor.<nom>.count se lit au compte que porte la trame")
+    void leCompteDUnCapteur() {
+        JsonObject definition = JsonParser.parseString("{\"schema\": 7, \"sensors\": [{\"name\": \"porte\","
+                + " \"node\": \"n\", \"size\": [1, 1, 1]}, {\"name\": \"sas\", \"node\": \"n\","
+                + " \"size\": [1, 1, 1]}]}").getAsJsonObject();
+        ProceduralTracks.Frame trame = ProceduralTracks.Frame.ofWheels(List.of(), new double[0])
+                .withSensors(AssemblyState.SensorCounts.of(new int[] {0, 3}));
+        assertEquals(3.0, ProceduralTracks.probe(definition, "sensor.sas.count").read(trame));
+        assertEquals(0.0, ProceduralTracks.probe(definition, "sensor.porte.count").read(trame));
+        assertEquals(null, ProceduralTracks.probe(definition, "sensor.cave.count"));
+    }
+
+    @Test
     @DisplayName("ADR-174 D2 : var.<nom> d'une variable par siège se lit au siège du lecteur ; var.<nom>.<siège> au siège nommé")
     void uneVariableParSiege() {
         JsonObject definition = JsonParser.parseString("{\"schema\": 7, \"variables\": {\"radio\": {\"type\":"

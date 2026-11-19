@@ -969,7 +969,7 @@ public final class ClientPrediction {
                 vehicle.seatsOccupied(), tick * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0,
                 dev.axion.render.ProceduralTracks.worldTime(level.getDayTime()),
                 level.getBrightness(net.minecraft.world.level.LightLayer.SKY, at), level.getRainLevel(1f),
-                vehicle.socketReadings(), localSeat(vehicle));
+                vehicle.socketReadings(), localSeat(vehicle), vehicle.sensorState());
     }
 
     /** {@return le siège qu'occupe le joueur local dans cette assembly, -1 sans} Ce que lit {@code var.<nom>}. */
