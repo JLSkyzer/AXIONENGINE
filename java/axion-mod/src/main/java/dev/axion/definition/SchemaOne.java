@@ -150,7 +150,7 @@ final class SchemaOne {
                 .opt("sockets", list(declares(NameCategory.SOCKET)))
                 .opt("procedural", list(procedural(version)))
                 .opt("animations",
-                        new Dict(new TextRule.Declares(NameCategory.ANIMATION), animation(), 128))
+                        new Dict(new TextRule.Declares(NameCategory.ANIMATION), animation(version), 128))
                 .opt("on_part_stage", new Dict(new TextRule.Refers(NameCategory.PART),
                         new Dict(new TextRule.OneOf(STAGES), actions(version), Integer.MAX_VALUE),
                         Integer.MAX_VALUE))
@@ -613,14 +613,21 @@ final class SchemaOne {
                 .build();
     }
 
-    /** §18.2 : quatre couches (R-1440), indexées de 0 à 3. */
-    private static SchemaNode animation() {
-        return obj()
+    /**
+     * §18.2 : quatre couches (R-1440), indexées de 0 à 3. Au schéma 7, le poids qu'une source pilote au client et le
+     * masque des nodes que la couche anime (ADR-174 D4).
+     */
+    private static SchemaNode animation(int version) {
+        ObjBuilder animation = obj()
                 .opt("clip", refers(NameCategory.CLIP))
                 .opt("layer", new Num(0, 3, false, true))
                 .opt("drives_joint", refers(NameCategory.JOINT))
-                .opt("trigger", text())
-                .build();
+                .opt("trigger", text());
+        if (version >= 7) {
+            animation.opt("weight_source", new Text(new TextRule.Source()))
+                    .opt("mask", cap(refers(NameCategory.NODE), 256));
+        }
+        return animation.build();
     }
 
     /**

@@ -15,6 +15,31 @@ import org.junit.jupiter.api.Test;
 /** C-37, ADR-155 D5 : l'animation d'une assembly côté serveur, et ce qu'elle refuse. */
 class AssemblyAnimationTest {
 
+    @Test
+    @DisplayName("ADR-174 D4 : un masque se nomme par les nodes de l'asset, reste à la couche et s'y garde à l'arrêt")
+    void leMasque() {
+        long[] tick = {100};
+        AssemblyAnimation animation = new AssemblyAnimation(() -> tick[0], () -> {});
+        animation.bind(new AnimClips(List.of("ouvre"), new int[] {1}), List.of("caisse", "porte_g", "porte_d"));
+        animation.play("ouvre", 1, 1f, 0f, List.of("porte_d", "porte_g"));
+        assertEquals(List.of(1, 2), animation.state().layer(1).mask());
+        tick[0] = 110;
+        animation.setSpeed(1, 2f);
+        assertEquals(List.of(1, 2), animation.state().layer(1).mask(), "la vitesse garde le masque");
+        animation.play("ouvre", 1, 1f, 0f);
+        assertEquals(List.of(1, 2), animation.state().layer(1).mask(), "un play sans masque garde celui de la couche");
+        animation.stop(1, 0.5f);
+        assertEquals(List.of(1, 2), animation.state().layer(1).mask(), "arrêtée, elle le garde");
+        animation.play("ouvre", 1, 1f, 0f, List.of());
+        assertEquals(List.of(), animation.state().layer(1).mask(), "un masque vide : tous les nodes");
+
+        assertThrows(IllegalArgumentException.class, () -> animation.play("ouvre", 1, 1f, 0f, List.of("capot")),
+                "un node inconnu de l'asset");
+        assertEquals(List.of(), animation.state().layer(1).mask(), "refusé, rien ne change");
+        animation.bind(new AnimClips(List.of("ouvre"), new int[] {1}), List.of("autre"));
+        assertSame(AnimationLayers.NONE, animation.state(), "d'autres nodes remettent l'animation au repos");
+    }
+
     @org.junit.jupiter.api.Test
     @org.junit.jupiter.api.DisplayName("ADR-158 D6 : un clip basculé repart en sens inverse de là où il en est, ramené dans le clip")
     void bascule() {

@@ -1303,6 +1303,17 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return le nom de chaque node de l'asset d'une definition compilée, dans son ordre (ADR-174 D4)} Vide tant
+     * qu'elle attend son asset, ou si elle a été refusée.
+     *
+     * @param id identifiant de la definition
+     */
+    public Optional<List<String>> assetNodeNames(String id) {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? Optional.empty() : compiling.nodeNames(id);
+    }
+
+    /**
      * {@return les sièges et les interactions d'une definition compilée (ADR-158 D1)} Vide tant qu'elle
      * attend son asset, ou si elle a été refusée.
      *

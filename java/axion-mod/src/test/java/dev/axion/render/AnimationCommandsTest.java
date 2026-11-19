@@ -13,6 +13,19 @@ import org.junit.jupiter.api.Test;
 class AnimationCommandsTest {
 
     @Test
+    @DisplayName("ADR-174 D4 : SET_WEIGHT, l'action 7, porte la couche et le poids, sans node")
+    void lePoids() {
+        byte[] bytes = new AnimationCommands().weight(42, 3, 7, 12.5, 2, 0.4f).bytes();
+        ByteBuffer b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals(AnimationCommands.HEADER_BYTES + AnimationCommands.COMMAND_BYTES, bytes.length);
+        assertEquals(7, AnimationCommands.SET_WEIGHT, "anim_action::SET_WEIGHT");
+        assertEquals(AnimationCommands.SET_WEIGHT, b.getInt(24));
+        assertEquals(2, b.getInt(28), "couche");
+        assertEquals(0.4f, b.getFloat(36), "poids");
+        assertEquals(0, b.getInt(48), "aucun node");
+    }
+
+    @Test
     @DisplayName("Une commande suit RenderAnimate puis AnimCommand, little-endian, ses nodes de masque après")
     void disposition() {
         byte[] bytes = new AnimationCommands()

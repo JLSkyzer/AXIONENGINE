@@ -88,6 +88,7 @@ final class DefinitionChecker {
         checker.checkSeats(root);
         checker.checkInteractions(root);
         checker.checkTriggers(root);
+        checker.checkLayerWeights(root);
         if (checker.version >= 2 && checker.issues.isEmpty()) {
             checker.checkJoints(root);
         }
@@ -525,6 +526,28 @@ final class DefinitionChecker {
                                 + String.join(", ", new java.util.TreeSet<>(SchemaOne.STAGES)));
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * ADR-174 D4 : au schéma 7, une couche a au plus un poids piloté — deux {@code weight_source} sur la même couche se
+     * disputeraient son poids.
+     */
+    private void checkLayerWeights(JsonObject root) {
+        if (version < 7 || !(root.get("animations") instanceof JsonObject animations)) {
+            return;
+        }
+        Map<Integer, String> piloted = new HashMap<>();
+        for (Map.Entry<String, JsonElement> entry : animations.entrySet()) {
+            if (!(entry.getValue() instanceof JsonObject animation) || animation.get("weight_source") == null) {
+                continue;
+            }
+            int layer = animation.get("layer") instanceof JsonPrimitive rank && rank.isNumber() ? rank.getAsInt() : 0;
+            String first = piloted.putIfAbsent(layer, entry.getKey());
+            if (first != null) {
+                invalid("$.animations." + entry.getKey() + ".weight_source", "la couche " + layer
+                        + " a déjà son poids piloté par l'animation « " + first + " »");
             }
         }
     }

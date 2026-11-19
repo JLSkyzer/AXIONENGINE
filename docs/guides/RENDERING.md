@@ -118,6 +118,28 @@ Le clip joue depuis son début, sur la couche de l'animation. Ce que le déclenc
 definition, sinon elle est refusée. Un déclencheur ne lit qu'un fait, jamais l'état d'un autre clip : pas de machine
 à états (R-1440).
 
+## Piloter le poids d'une couche, la restreindre à des nodes
+
+Une animation du schéma 7 peut aussi déclarer ([ADR-174](../decisions/ADR-174.md) D4) :
+
+- `weight_source`, une source de l'ANNEXE A.4 qui pilote le poids de sa couche. Chaque client l'évalue à chaque image,
+  comme une piste procédurale, depuis l'état que le serveur réplique ; le serveur ne réplique pas le poids. La valeur
+  est ramenée dans [0, 1] et remplace le poids que la couche a reçu. Une couche a au plus un poids piloté : deux
+  `weight_source` sur la même couche font refuser la definition ;
+- `mask`, les nodes de l'asset que la couche anime (256 au plus) ; les autres gardent ce que montrent les couches de
+  dessous. Le masque reste à la couche, s'applique au clip qu'elle efface pendant un fondu et se garde à l'arrêt.
+
+```json
+"animations": {
+  "capot": { "clip": "souleve", "layer": 2, "trigger": "var:capot", "mask": ["capot", "verin"],
+             "weight_source": "var.ouverture_capot" }
+}
+```
+
+Depuis Java, `AnimationControl.play(clip, couche, poids, fondu, masque)` joue un clip la couche restreinte aux nodes
+nommés ; une liste vide lui rend tous les nodes, et `play` sans masque garde celui de la couche. Un node inconnu de
+l'asset lève `IllegalArgumentException`.
+
 ## Cacher un node, poser son émission ou sa teinte
 
 Une interaction peut, au schéma 7, jouer une liste d'actions sur l'état de ses nodes

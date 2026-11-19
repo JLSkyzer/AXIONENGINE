@@ -277,7 +277,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             assembly.restoreJoints(persisted.joints());
         }
         // ADR-155, tranche 4 d'ADR-156 : l'animation Java joue les clips du résumé, par leur nom.
-        assembly.animation().bind(summary.clips());
+        // ADR-174 D4 : et ses nodes, que nomme le masque d'une couche.
+        assembly.animation().bind(summary.clips(),
+                AxionEntities.nodeNames(definition.id().toString()).orElse(List.of()));
         pending.add(new Pending(true, index, dimension, position, rotation, definition.hash(), restored, asleep));
         ledger.attach(index, assembly);
         return true;
@@ -600,7 +602,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
             for (AnimationLayers.Change change : state.changesFrom(sent)) {
                 stream.animateAssembly(index, GENERATION, change.tick(), change.action(), change.layer(),
-                        change.clip(), change.weight(), change.fade(), change.speed(), change.origin(), NO_MASK);
+                        change.clip(), change.weight(), change.fade(), change.speed(), change.origin(),
+                        change.mask().isEmpty() ? NO_MASK
+                                : change.mask().stream().mapToInt(Integer::intValue).toArray());
             }
             animationSent.put(index, state);
         });

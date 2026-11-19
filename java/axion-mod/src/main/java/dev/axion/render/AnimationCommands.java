@@ -40,6 +40,9 @@ public final class AnimationCommands {
     /** Poser le delta de nodes sur leur repos : les pistes {@code procedural} (ADR-159 D9). */
     public static final int SET_POSE = 6;
 
+    /** Régler le poids d'une couche sans relancer son clip (ADR-174 D4, ABI 28). */
+    public static final int SET_WEIGHT = 7;
+
     /** Taille d'un élément de {@link #SET_POSE}, en octets : node, translation, rotation. */
     public static final int POSE_BYTES = 32;
 
@@ -114,6 +117,22 @@ public final class AnimationCommands {
     public AnimationCommands mask(
             int id, int assetIndex, int assetGeneration, double tick, int layer, int[] nodes) {
         return add(id, assetIndex, assetGeneration, tick, SET_MASK, layer, 0, 0f, 0f, 1f, 0f, nodes.clone());
+    }
+
+    /**
+     * Règle le poids d'une couche, sans relancer son clip ni toucher à son fondu (ADR-174 D4).
+     *
+     * @param id {@code id} du candidat de rendu de l'assembly
+     * @param assetIndex index du handle natif de son asset
+     * @param assetGeneration génération de ce handle
+     * @param tick instant, en ticks du serveur
+     * @param layer couche
+     * @param weight poids, de 0 à 1
+     * @return ce même tampon
+     */
+    public AnimationCommands weight(
+            int id, int assetIndex, int assetGeneration, double tick, int layer, float weight) {
+        return add(id, assetIndex, assetGeneration, tick, SET_WEIGHT, layer, 0, weight, 0f, 1f, 0f, new int[0]);
     }
 
     /**

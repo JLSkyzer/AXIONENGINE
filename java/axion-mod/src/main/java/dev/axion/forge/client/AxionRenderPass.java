@@ -29,6 +29,7 @@ import dev.axion.render.BodySkeleton;
 import dev.axion.render.CpuSkinning;
 import dev.axion.render.GpuDegradation;
 import dev.axion.render.GpuPassTimings;
+import dev.axion.render.LayerWeights;
 import dev.axion.render.MeshCache;
 import dev.axion.render.MissingClientAssets;
 import dev.axion.render.NodeLooks;
@@ -875,14 +876,22 @@ public final class AxionRenderPass {
         AnimationSync sync = animations;
         AxionRuntime runtime = RuntimeAccess.get();
         boolean[] posed = new boolean[count];
+        boolean[] weighted = new boolean[count];
         float[][] looks = new float[count][];
         for (int rank = 0; rank < count; rank++) {
             RenderBackend.Assembly assembly = all.get(candidates[rank]);
-            ProceduralTracks.Pose pose = proceduralPose(runtime, assembly.entity(), partialTick, renderTick);
+            Rig known = runtime == null ? null : known(runtime, assembly.entity());
+            ProceduralTracks.Frame frame = known == null || (known.tracks().isEmpty() && known.weights().isEmpty())
+                    ? null : frameOf(assembly.entity(), partialTick, renderTick);
+            ProceduralTracks.Pose pose = frame == null || known.tracks().isEmpty() ? null
+                    : known.tracks().evaluate(frame, assembly.entity().trackState());
+            // ADR-174 D4 : le poids que des sources pilotent, évalué à l'image comme les pistes.
+            float[] weights = frame == null || known.weights().isEmpty() ? null : known.weights().evaluate(frame);
             posed[rank] = pose != null;
+            weighted[rank] = LayerWeights.partial(weights);
             looks[rank] = drawLooks(runtime, assembly, pose);
             sync.see(assembly.entity().getId(), assembly.asset().nativeIndex(), assembly.asset().nativeGeneration(),
-                    assembly.entity().animationState(), pose);
+                    assembly.entity().animationState(), pose, weights);
         }
         AnimationCommands commands = sync.flush(renderTick);
         if (commands.count() > 0) {
@@ -914,7 +923,7 @@ public final class AxionRenderPass {
             float[] sphere = null;
             boolean bounded;
             if (pose.bodies().isEmpty()) {
-                bounded = !animated || animation.singleClipAt(renderTick);
+                bounded = !animated || (animation.singleClipAt(renderTick) && !weighted[rank]);
             } else {
                 // ADR-157 D2 : des corps écartés de leur repos — Java unit leurs emprises, chacun à sa pose.
                 // Animés de surcroît, rien ne borne leurs dessins : retenus sans test.
@@ -1163,14 +1172,22 @@ public final class AxionRenderPass {
         if (known == null || known.tracks().isEmpty()) {
             return null;
         }
+        return known.tracks().evaluate(frameOf(entity, partialTick, renderTick), entity.trackState());
+    }
+
+    /**
+     * {@return la trame d'une assembly à cette image, que lisent ses pistes et ses poids pilotés} Appelée une fois par
+     * image : l'angle de chaque roue s'y intègre. Le monde se lit au bloc où l'assembly est dessinée.
+     */
+    private static ProceduralTracks.Frame frameOf(AxionEntity entity, float partialTick, double renderTick) {
         AxionEntity.RenderPose pose = entity.renderPose(partialTick);
         List<Interpolation.WheelPose> wheels = pose.wheels();
         Level level = entity.level();
         BlockPos at = BlockPos.containing(pose.x(), pose.y(), pose.z());
-        return known.tracks().evaluate(new ProceduralTracks.Frame(wheels, entity.wheelSpin().advance(renderTick, wheels),
+        return new ProceduralTracks.Frame(wheels, entity.wheelSpin().advance(renderTick, wheels),
                 pose.vehicle(), pose.variables(), entity.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
                 ProceduralTracks.worldTime(level.getDayTime()), level.getBrightness(LightLayer.SKY, at),
-                level.getRainLevel(partialTick), entity.socketReadings()), entity.trackState());
+                level.getRainLevel(partialTick), entity.socketReadings());
     }
 
     /**
@@ -1235,17 +1252,20 @@ public final class AxionRenderPass {
             int rootNode = nodes == null ? -1 : AssemblyBodies.rootNodeOf(definition.root(), nodes);
             ProceduralTracks tracks = ProceduralTracks.of(definition.root(), AssemblyBodies.names(nodes),
                     note -> LOGGER.warn("AXION : {} — {}", key, note));
-            known = new Rig(source, rootNode < 0 ? null : new BodyRig(nodes, rootNode), tracks, NodeLooks.parents(nodes));
+            LayerWeights weights = LayerWeights.of(definition.root(), note -> LOGGER.warn("AXION : {} — {}", key, note));
+            known = new Rig(source, rootNode < 0 ? null : new BodyRig(nodes, rootNode), tracks, weights,
+                    NodeLooks.parents(nodes));
             RIGS.put(key, known);
         }
         return known;
     }
 
     /**
-     * Les corps d'une definition, ses pistes procédurales, le parent de chaque nœud de son asset (ADR-163 D3), et le
-     * conteneur compilé dont ils viennent.
+     * Les corps d'une definition, ses pistes procédurales, le poids piloté de ses couches (ADR-174 D4), le parent de
+     * chaque nœud de son asset (ADR-163 D3), et le conteneur compilé dont ils viennent.
      */
-    private record Rig(AssetRegistry.Published source, BodyRig rig, ProceduralTracks tracks, int[] parents) {}
+    private record Rig(AssetRegistry.Published source, BodyRig rig, ProceduralTracks tracks, LayerWeights weights,
+            int[] parents) {}
 
     /**
      * Rechargement des ressources du client (R-752) : maillages, textures et ressources GPU du backend

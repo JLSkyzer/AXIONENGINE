@@ -362,6 +362,23 @@ impl Animator {
         Ok(())
     }
 
+    /// Règle le poids de `layer`, sans toucher à son clip ni à son fondu (ADR-174 D4) : le poids
+    /// qu'une `weight_source` pilote au client. Les clips que la couche lancera prennent le leur.
+    ///
+    /// # Errors
+    ///
+    /// [`AnimError::LayerOutOfRange`] ou [`AnimError::InvalidParameter`] sur un poids hors de `[0, 1]`.
+    pub fn set_weight(&mut self, layer: usize, weight: f32) -> Result<(), AnimError> {
+        if layer >= LAYERS {
+            return Err(AnimError::LayerOutOfRange);
+        }
+        if !(0.0..=1.0).contains(&weight) {
+            return Err(AnimError::InvalidParameter);
+        }
+        self.layers[layer].weight = weight;
+        Ok(())
+    }
+
     /// Restreint `layer` aux nodes donnés ; `None` lui rend tous les nodes (§18.2, masque de
     /// bones). Un node hors de l'instance est ignoré.
     ///
@@ -415,6 +432,7 @@ impl Animator {
             anim_action::STOP => self.stop(layer, command.fade, now),
             anim_action::SET_SPEED => self.set_speed(layer, command.speed, now),
             anim_action::SET_MASK => self.set_mask(layer, (!mask.is_empty()).then_some(mask)),
+            anim_action::SET_WEIGHT => self.set_weight(layer, command.weight),
             anim_action::FORGET => Ok(()),
             _ => Err(AnimError::InvalidParameter),
         }

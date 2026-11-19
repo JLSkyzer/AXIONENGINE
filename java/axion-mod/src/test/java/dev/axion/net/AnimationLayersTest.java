@@ -2,6 +2,7 @@ package dev.axion.net;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.axion.net.AnimationLayers.Change;
@@ -15,11 +16,41 @@ import org.junit.jupiter.api.Test;
 class AnimationLayersTest {
 
     @Test
+    @DisplayName("ADR-174 D4 : le masque d'une couche se range, voyage, et se change par SET_MASK avant son PLAY")
+    void leMasque() throws MalformedPacketException {
+        Layer masquee = new Layer(1, 40L, 0f, 1f, 1f, 0f, List.of(7, 3, 3));
+        assertEquals(List.of(3, 7), masquee.mask(), "croissant et distinct");
+        AnimationLayers etat = AnimationLayers.NONE.with(2, masquee);
+        WireWriter writer = new WireWriter();
+        etat.write(writer);
+        assertEquals(writer.toByteArray().length, etat.encodedSize());
+        assertEquals(etat, AnimationLayers.read(new WireReader(writer.toByteArray()), 1));
+
+        List<Change> changes = etat.changesFrom(AnimationLayers.NONE);
+        assertEquals(List.of(new Change(Change.SET_MASK, 2, 40.0, 0, 0f, 0f, 0f, 1f, List.of(3, 7)),
+                new Change(Change.PLAY, 2, 40.0, 1, 1f, 0f, 0f, 1f)), changes);
+        AnimationLayers arretee = etat.with(2, Layer.stopped(60L, 0.5f, masquee.mask()));
+        assertEquals(List.of(new Change(Change.STOP, 2, 60.0, 0, 0f, 0.5f, 0f, 1f)), arretee.changesFrom(etat),
+                "arrêtée, elle garde son masque : son clip s'efface sur les mêmes nodes");
+        AnimationLayers libre = arretee.with(2, new Layer(1, 80L, 0f, 1f, 1f, 0f));
+        assertEquals(Change.SET_MASK, libre.changesFrom(arretee).get(0).action(), "sans masque : tous les nodes");
+        assertTrue(libre.changesFrom(arretee).get(0).mask().isEmpty());
+
+        assertFalse(etat.singleClipAt(100.0), "un clip masqué ne pose pas la pose d'un clip seul");
+        assertThrows(IllegalArgumentException.class, () -> new Layer(1, 0L, 0f, 1f, 1f, 0f, List.of(-1)));
+        WireWriter long_ = new WireWriter().u8(1).varUInt(2).varULong(0).f32(0f).f32(1f).f32(1f).f32(0f)
+                .varUInt(AnimationLayers.MAX_MASK + 1);
+        assertThrows(MalformedPacketException.class,
+                () -> AnimationLayers.read(new WireReader(long_.toByteArray()), 1), "masque trop long");
+    }
+
+    @Test
     @DisplayName("Les codes d'action sont ceux d'anim_action, que les commandes de rendu écrivent")
     void codes() {
         assertEquals(AnimationCommands.PLAY, Change.PLAY);
         assertEquals(AnimationCommands.STOP, Change.STOP);
         assertEquals(AnimationCommands.SET_SPEED, Change.SET_SPEED);
+        assertEquals(AnimationCommands.SET_MASK, Change.SET_MASK);
     }
 
     @Test

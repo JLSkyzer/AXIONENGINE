@@ -41,6 +41,8 @@ public final class DefinitionCompilation {
     private final SortedMap<String, Definition> pending = new TreeMap<>();
     private final Map<String, DefinitionCompiler.Summary> compiled = new HashMap<>();
     private final Map<String, Seating> seatings = new HashMap<>();
+    /** Le nom de chaque node de l'asset d'une definition compilée, dans son ordre : ce que nomme un masque. */
+    private final Map<String, List<String>> nodeNames = new HashMap<>();
     private final Map<String, Tuning> tunings = new HashMap<>();
     private final SortedMap<String, String> refused = new TreeMap<>();
 
@@ -73,6 +75,7 @@ public final class DefinitionCompilation {
         }
         compiled.clear();
         seatings.clear();
+        nodeNames.clear();
         tunings.clear();
         refused.clear();
         pending.clear();
@@ -170,6 +173,7 @@ public final class DefinitionCompilation {
             }
             compiled.put(definition.id(), result.summary());
             seatings.put(definition.id(), seating);
+            nodeNames.put(definition.id(), nodeNamesOf(a3d));
             tunings.put(definition.id(), Tuning.of(definition.id(), definition.root(), loaded.extensions()));
             for (String warning : result.summary().warnings()) {
                 journal.add("AXION : definition " + definition.id() + " : " + warning);
@@ -203,6 +207,24 @@ public final class DefinitionCompilation {
      */
     public synchronized Optional<DefinitionCompiler.Summary> summary(String id) {
         return Optional.ofNullable(compiled.get(id));
+    }
+
+    /**
+     * {@return le nom de chaque node de l'asset d'une definition compilée, dans l'ordre de sa section {@code NODE}, ou
+     * vide si elle attend ou a été refusée} Ce que nomme le masque d'une couche d'animation (ADR-174 D4).
+     *
+     * @param id identifiant de la definition
+     */
+    public synchronized Optional<List<String>> nodeNames(String id) {
+        return Optional.ofNullable(nodeNames.get(id));
+    }
+
+    private static List<String> nodeNamesOf(byte[] a3d) {
+        try {
+            return dev.axion.physics.AssemblyBodies.names(dev.axion.asset.A3dSections.section(a3d, "NODE"));
+        } catch (IllegalArgumentException | IllegalStateException unreadable) {
+            return List.of();
+        }
     }
 
     /**

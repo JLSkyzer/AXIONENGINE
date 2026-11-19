@@ -730,6 +730,31 @@ class DefinitionSchemaTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D4 : au schéma 7, une animation déclare son poids piloté et son masque ; deux poids sur une couche, refusés")
+    void lePoidsEtLeMasqueDuSchemaSept() {
+        JsonObject ok = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+        ok.add("animations", JsonParser.parseString("{\"a\": {\"layer\": 1, \"weight_source\": \"body.linear_speed\","
+                + " \"mask\": [\"door\", \"lamp\"]}, \"b\": {\"layer\": 2, \"weight_source\": \"world.rain\"}}"));
+        assertDoesNotThrow(() -> read(ok));
+
+        JsonObject deux = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+        deux.add("animations", JsonParser.parseString("{\"a\": {\"layer\": 1, \"weight_source\": \"world.rain\"},"
+                + " \"b\": {\"layer\": 1, \"weight_source\": \"world.time\"}}"));
+        DefinitionException double_ = assertThrows(DefinitionException.class, () -> read(deux));
+        assertEquals("$.animations.b.weight_source", double_.path());
+        assertTrue(double_.getMessage().contains("« a »"), double_.getMessage());
+
+        JsonObject source = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
+        source.add("animations", JsonParser.parseString("{\"a\": {\"weight_source\": \"meteo.pluie\"}}"));
+        assertEquals("$.animations.a.weight_source", assertThrows(DefinitionException.class, () -> read(source)).path());
+
+        JsonObject six = JsonParser.parseString("{\"schema\": 6, \"asset\": \"mymod:models/pickup.glb\", \"kind\":"
+                + " \"rigid_object\", \"animations\": {\"a\": {\"mask\": [\"door\"]}}}").getAsJsonObject();
+        assertEquals("$.animations.a.mask", assertThrows(DefinitionException.class, () -> read(six)).path(),
+                "avant le schéma 7, mask n'existe pas");
+    }
+
+    @Test
     @DisplayName("ADR-174 D3 : une action à deux clés, une émission ou une teinte hors bornes, une liste absente : refusées")
     void lesActionsMalFormeesSontRefusees() {
         DefinitionException deuxCles = assertThrows(DefinitionException.class, () -> read(septAvec(

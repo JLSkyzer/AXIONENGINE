@@ -5,6 +5,7 @@ import dev.axion.asset.DefinitionCompiler;
 import dev.axion.definition.DefinitionRegistry;
 import dev.axion.definition.Seating;
 import dev.axion.lifecycle.AxionRuntime;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
@@ -75,6 +76,7 @@ public final class AxionEntities {
 
     /** Les sièges et les interactions d'une definition compilée (ADR-158 D1), par identifiant. */
     private static volatile Function<String, Optional<Seating>> seatings = id -> Optional.empty();
+    private static volatile Function<String, Optional<List<String>>> nodeNames = id -> Optional.empty();
 
     /** Les paramètres réglables d'une definition compilée (ADR-167 D1), par identifiant. */
     private static volatile Function<String, Optional<dev.axion.definition.Tuning>> tunings = id -> Optional.empty();
@@ -126,6 +128,7 @@ public final class AxionEntities {
         maxCustomBytes = runtime::maxCustomBytes;
         summaries = runtime::compiledDefinition;
         seatings = runtime::seating;
+        nodeNames = runtime::assetNodeNames;
         tunings = runtime::tuning;
         rays = runtime::raycastAssembly;
         boxes = runtime::boxTouchesAssembly;
@@ -149,6 +152,16 @@ public final class AxionEntities {
      */
     static Optional<DefinitionCompiler.Summary> summary(String id) {
         return summaries.apply(id);
+    }
+
+    /**
+     * {@return le nom de chaque node de l'asset d'une definition compilée, dans son ordre, vide tant qu'elle l'attend}
+     * Ce que nomme le masque d'une couche d'animation (ADR-174 D4).
+     *
+     * @param id identifiant de la definition
+     */
+    static Optional<List<String>> nodeNames(String id) {
+        return nodeNames.apply(id);
     }
 
     /**

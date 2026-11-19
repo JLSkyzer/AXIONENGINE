@@ -747,7 +747,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         for (dev.axion.definition.AnimationTriggers.Trigger trigger : animationTriggers().matching(kind, key)) {
             try {
                 animation.setSpeed(trigger.layer(), 1f);
-                animation.play(trigger.clip(), trigger.layer(), 1f, 0f);
+                animation.play(trigger.clip(), trigger.layer(), 1f, 0f, trigger.mask());
             } catch (IllegalArgumentException refused) {
                 LOGGER.warn("AXION : assembly {}, déclencheur de l'animation {} refusé — {}", getUUID(),
                         trigger.animation(), refused.getMessage());
@@ -780,7 +780,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 try {
                     if (on) {
                         animation.setSpeed(trigger.layer(), 1f);
-                        animation.play(trigger.clip(), trigger.layer(), 1f, 0f);
+                        animation.play(trigger.clip(), trigger.layer(), 1f, 0f, trigger.mask());
                     } else {
                         animation.stop(trigger.layer(), 0f);
                     }

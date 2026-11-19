@@ -1,5 +1,6 @@
 package dev.axion.definition;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -61,8 +62,20 @@ public record AnimationTriggers(List<Trigger> triggers) {
      * @param animation l'animation de la definition
      * @param clip son clip
      * @param layer sa couche
+     * @param mask les nodes que l'animation anime ; vide : tous (ADR-174 D4)
      */
-    public record Trigger(Kind kind, String key, String animation, String clip, int layer) {}
+    public record Trigger(Kind kind, String key, String animation, String clip, int layer, List<String> mask) {
+
+        /** Un déclencheur sans masque. */
+        public Trigger(Kind kind, String key, String animation, String clip, int layer) {
+            this(kind, key, animation, clip, layer, List.of());
+        }
+
+        /** Copie le masque. */
+        public Trigger {
+            mask = List.copyOf(mask);
+        }
+    }
 
     /** Copie la liste. */
     public AnimationTriggers {
@@ -128,7 +141,13 @@ public record AnimationTriggers(List<Trigger> triggers) {
             }
             String clip = animation.get("clip") != null ? animation.get("clip").getAsString() : entry.getKey();
             int layer = animation.get("layer") != null ? animation.get("layer").getAsInt() : 0;
-            found.add(new Trigger(parsed.kind(), parsed.key(), entry.getKey(), clip, layer));
+            List<String> mask = new ArrayList<>();
+            if (animation.get("mask") instanceof JsonArray nodes) {
+                for (JsonElement node : nodes) {
+                    mask.add(node.getAsString());
+                }
+            }
+            found.add(new Trigger(parsed.kind(), parsed.key(), entry.getKey(), clip, layer, mask));
         }
         return found.isEmpty() ? NONE : new AnimationTriggers(found);
     }

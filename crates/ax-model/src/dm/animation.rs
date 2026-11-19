@@ -158,6 +158,9 @@ pub mod anim_action {
     /// Poser le delta de `mask_count` nodes sur leur repos (client seulement, ADR-159 D9) : `mask_count`
     /// [`super::PoseDelta`] suivent la commande, au lieu de ses nodes de masque.
     pub const SET_POSE: u32 = 6;
+    /// Régler le poids de `layer` à `weight`, sans relancer son clip (ADR-174 D4) : le poids qu'une
+    /// `weight_source` évalue au client.
+    pub const SET_WEIGHT: u32 = 7;
 }
 
 /// Le delta d'un node sur sa pose de repos, posé par [`anim_action::SET_POSE`] (ADR-159 D9) : les
@@ -211,7 +214,7 @@ pub struct AnimCommand {
     pub layer: u32,
     /// Clip, rang dans la section `ANIM` de l'asset (`PLAY`).
     pub clip: u32,
-    /// Poids, dans `[0, 1]` (`PLAY`).
+    /// Poids, dans `[0, 1]` (`PLAY`, `SET_WEIGHT`).
     pub weight: f32,
     /// Durée du fondu, en secondes (`PLAY`, `STOP`).
     pub fade: f32,

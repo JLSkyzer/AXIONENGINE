@@ -29,6 +29,8 @@ public final class AssemblyAnimation implements AnimationControl {
     private final LongSupplier ticks;
     private final Runnable authoritative;
     private AnimClips clips = AnimClips.NONE;
+    /** Le nom de chaque node de l'asset, dans l'ordre de sa section {@code NODE} : ce que nomme un masque. */
+    private List<String> nodes = List.of();
     private AnimationLayers state = AnimationLayers.NONE;
     /** La vitesse de chaque couche, celle des clips qu'elle lancera. */
     private final float[] speeds = {1f, 1f, 1f, 1f};
@@ -51,10 +53,22 @@ public final class AssemblyAnimation implements AnimationControl {
      * @param assetClips les clips de la section {@code ANIM} de l'asset
      */
     public void bind(AnimClips assetClips) {
-        if (assetClips.equals(clips)) {
+        bind(assetClips, nodes);
+    }
+
+    /**
+     * Pose les clips et les nodes de l'asset, comme {@link #bind(AnimClips)} : d'autres nodes que ceux d'avant
+     * remettent aussi l'animation au repos, ses masques ne désignant plus les mêmes nodes.
+     *
+     * @param assetClips les clips de la section {@code ANIM} de l'asset
+     * @param assetNodes le nom de chaque node de sa section {@code NODE}, dans son ordre
+     */
+    public void bind(AnimClips assetClips, List<String> assetNodes) {
+        if (assetClips.equals(clips) && assetNodes.equals(nodes)) {
             return;
         }
         clips = assetClips;
+        nodes = List.copyOf(assetNodes);
         state = AnimationLayers.NONE;
         Arrays.fill(speeds, 1f);
         Arrays.fill(outgoing, NONE);
@@ -72,6 +86,31 @@ public final class AssemblyAnimation implements AnimationControl {
 
     @Override
     public void play(String clip, int layer, float weight, float fadeSeconds) {
+        playMasked(clip, layer, weight, fadeSeconds, null);
+    }
+
+    @Override
+    public void play(String clip, int layer, float weight, float fadeSeconds, List<String> mask) {
+        authoritative.run();
+        if (mask.size() > AnimationLayers.MAX_MASK) {
+            throw new IllegalArgumentException("masque de " + mask.size() + " nodes, " + AnimationLayers.MAX_MASK
+                    + " au plus");
+        }
+        List<Integer> ranks = new java.util.ArrayList<>(mask.size());
+        for (String node : mask) {
+            int rank = nodes.indexOf(node);
+            if (rank < 0) {
+                throw new IllegalArgumentException("node de masque inconnu de l'asset : « " + node + " »");
+            }
+            ranks.add(rank);
+        }
+        playMasked(clip, layer, weight, fadeSeconds, ranks);
+    }
+
+    /**
+     * Joue un clip, la couche restreinte à des nodes par leur rang ; {@code null} garde le masque de la couche.
+     */
+    private void playMasked(String clip, int layer, float weight, float fadeSeconds, List<Integer> mask) {
         authoritative.run();
         checkLayer(layer);
         int index = clips.indexOf(clip);
@@ -97,7 +136,8 @@ public final class AssemblyAnimation implements AnimationControl {
         int shown = shown(layer, now);
         float fade = others + entering + clips.tracksOf(shown) > MAX_ACTIVE_TRACKS ? 0f : fadeSeconds;
         outgoing[layer] = fade > 0f ? shown : NONE;
-        state = state.with(layer, new AnimationLayers.Layer(index, now, 0f, speeds[layer], weight, fade));
+        state = state.with(layer, new AnimationLayers.Layer(index, now, 0f, speeds[layer], weight, fade,
+                mask == null ? state.layer(layer).mask() : mask));
     }
 
     /**
@@ -124,7 +164,7 @@ public final class AssemblyAnimation implements AnimationControl {
         speeds[layer] = reversed;
         outgoing[layer] = NONE;
         state = state.with(layer, new AnimationLayers.Layer(index, now, (float) clips.wrap(index, current.clipTimeAt(now)),
-                reversed, current.weight(), 0f));
+                reversed, current.weight(), 0f, current.mask()));
     }
 
     @Override
@@ -135,7 +175,7 @@ public final class AssemblyAnimation implements AnimationControl {
         long now = ticks.getAsLong();
         int shown = shown(layer, now);
         outgoing[layer] = fadeSeconds > 0f ? shown : NONE;
-        state = state.with(layer, AnimationLayers.Layer.stopped(now, fadeSeconds));
+        state = state.with(layer, AnimationLayers.Layer.stopped(now, fadeSeconds, state.layer(layer).mask()));
     }
 
     @Override
@@ -157,9 +197,10 @@ public final class AssemblyAnimation implements AnimationControl {
             // Le tick et le fondu restent, le temps de clip y est ramené : le client retrouve l'instant.
             double origin = clipTime - (now - current.tick()) / TICKS_PER_SECOND * speed;
             changed = new AnimationLayers.Layer(current.clip(), current.tick(), (float) origin, speed,
-                    current.weight(), current.fade());
+                    current.weight(), current.fade(), current.mask());
         } else {
-            changed = new AnimationLayers.Layer(current.clip(), now, (float) clipTime, speed, current.weight(), 0f);
+            changed = new AnimationLayers.Layer(current.clip(), now, (float) clipTime, speed, current.weight(), 0f,
+                    current.mask());
             outgoing[layer] = NONE;
         }
         state = state.with(layer, changed);

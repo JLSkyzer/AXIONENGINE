@@ -116,6 +116,28 @@ From schema 7, an animation declares what plays it (`trigger`), in a closed gram
 The clip plays from its start, on the animation's layer. What the trigger names must exist in the definition,
 otherwise it is refused. A trigger reads only a fact, never the state of another clip: no state machine (R-1440).
 
+## Driving a layer's weight, restricting it to nodes
+
+A schema-7 animation can also declare ([ADR-174](../decisions/ADR-174.md) D4):
+
+- `weight_source`, an ANNEX A.4 source that drives its layer's weight. Each client evaluates it every frame, like a
+  procedural track, from the state the server replicates; the server does not replicate the weight. The value is
+  clamped to [0, 1] and replaces the weight the layer received. A layer has at most one driven weight: two
+  `weight_source` on the same layer get the definition refused;
+- `mask`, the asset nodes the layer animates (at most 256); the others keep what the layers below show. The mask
+  stays on the layer, applies to the clip it fades out, and is kept when the layer stops.
+
+```json
+"animations": {
+  "hood": { "clip": "lift", "layer": 2, "trigger": "var:hood", "mask": ["hood", "strut"],
+            "weight_source": "var.hood_opening" }
+}
+```
+
+From Java, `AnimationControl.play(clip, layer, weight, fade, mask)` plays a clip with the layer restricted to the
+named nodes; an empty list gives it back every node, and `play` without a mask keeps the layer's. A node the asset
+does not have throws `IllegalArgumentException`.
+
 ## Hiding a node, setting its emission or its tint
 
 From schema 7, an interaction can play a list of actions on the state of its nodes

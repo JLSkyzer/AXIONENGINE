@@ -271,6 +271,43 @@ fn t364_le_masque_de_nodes_est_respecte() {
 }
 
 #[test]
+fn adr174_le_poids_se_regle_sans_relancer_le_clip() {
+    let clips = clips();
+    let mut animateur = Animator::new(2);
+    animateur.play(&clips, TOUT, 0, 1.0, 0.0, 0.0).unwrap();
+    let plein = pose(&mut animateur, &clips, 0.5);
+    animateur.set_weight(0, 0.5).unwrap();
+    assert_eq!(animateur.playing(0), Some(TOUT), "le clip joue toujours");
+    let moitie = pose(&mut animateur, &clips, 0.5);
+    for axe in 0..3 {
+        assert!(
+            (moitie[0].translation[axe] - plein[0].translation[axe] * 0.5).abs() < 1e-5,
+            "à mi-poids, la couche qui remplace pose la moitié du chemin : {moitie:?} contre {plein:?}"
+        );
+    }
+    assert_eq!(
+        animateur.set_weight(0, 1.5),
+        Err(AnimError::InvalidParameter)
+    );
+    assert_eq!(
+        animateur.set_weight(4, 0.5),
+        Err(AnimError::LayerOutOfRange)
+    );
+    let commande = AnimCommand {
+        action: anim_action::SET_WEIGHT,
+        layer: 0,
+        weight: 1.0,
+        ..AnimCommand::default()
+    };
+    animateur.apply(&clips, &commande, &[]).unwrap();
+    let rendu = pose(&mut animateur, &clips, 0.5);
+    assert_eq!(
+        rendu[0].translation, plein[0].translation,
+        "SET_WEIGHT rend le poids plein"
+    );
+}
+
+#[test]
 fn un_clip_boucle_ou_tient_sa_derniere_pose() {
     let clips = clips();
     let mut animateur = Animator::new(2);

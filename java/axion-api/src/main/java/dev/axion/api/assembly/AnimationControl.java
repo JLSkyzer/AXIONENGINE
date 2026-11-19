@@ -37,6 +37,24 @@ public interface AnimationControl {
     void play(String clip, int layer, float weight, float fadeSeconds);
 
     /**
+     * Joue un clip comme {@link #play(String, int, float, float)}, la couche restreinte aux nodes nommés : les autres
+     * restent à ce que montrent les couches de dessous (ADR-174 D4). Le masque reste à la couche, et s'applique aussi
+     * au clip qu'elle efface ; une liste vide rend à la couche tous les nodes.
+     *
+     * @param clip nom du clip ; un nom que plusieurs clips portent joue le premier
+     * @param layer couche, de 0 à 3
+     * @param weight poids, de 0 à 1
+     * @param fadeSeconds durée du fondu, en secondes ; 0 : aucun
+     * @param mask noms des nodes de l'asset que la couche anime, 256 au plus ; vide : tous
+     * @throws IllegalArgumentException comme {@link #play(String, int, float, float)}, ou si un node du masque est
+     *     inconnu de l'asset, ou le masque trop long
+     * @throws UnsupportedOperationException si l'implémentation ne connaît pas les masques
+     */
+    default void play(String clip, int layer, float weight, float fadeSeconds, List<String> mask) {
+        throw new UnsupportedOperationException("masque d'animation non pris en charge");
+    }
+
+    /**
      * Arrête une couche par un fondu vers la pose neutre.
      *
      * @param layer couche, de 0 à 3

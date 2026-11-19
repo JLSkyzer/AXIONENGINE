@@ -986,6 +986,17 @@ public final class DefinitionBuilder {
         }
 
         /**
+         * {@code animations.*.mask} : au plus 256 éléments ; nom (node) dans le modèle.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public Animation mask(String... items) {
+            values.put("mask", texts(items));
+            return this;
+        }
+
+        /**
          * {@code animations.*.trigger}.
          *
          * @param value la valeur
@@ -993,6 +1004,17 @@ public final class DefinitionBuilder {
          */
         public Animation trigger(String value) {
             values.put("trigger", Objects.requireNonNull(value, "trigger"));
+            return this;
+        }
+
+        /**
+         * {@code animations.*.weight_source}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Animation weightSource(String value) {
+            values.put("weight_source", Objects.requireNonNull(value, "weight_source"));
             return this;
         }
     }

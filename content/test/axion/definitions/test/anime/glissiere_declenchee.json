@@ -9,7 +9,8 @@
     "sonne": {}
   },
   "animations": {
-    "par_variable": { "clip": "glisse", "layer": 1, "trigger": "var:ouverte" },
+    "par_variable": { "clip": "glisse", "layer": 1, "trigger": "var:ouverte", "mask": ["coulisseau"],
+      "weight_source": "var.ouverte" },
     "par_evenement": { "clip": "glisse", "layer": 2, "trigger": "event:sonne" },
     "par_interaction": { "clip": "glisse", "layer": 3, "trigger": "interact:socle" }
   },

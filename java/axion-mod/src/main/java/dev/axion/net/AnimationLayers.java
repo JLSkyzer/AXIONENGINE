@@ -6,7 +6,8 @@ import java.util.List;
 
 /**
  * L'état d'animation d'une assembly, tel que le descripteur d'états v3 le porte (ADR-155, tranche 4) : la
- * dernière commande de chacune des quatre couches, que le client rejoue.
+ * dernière commande de chacune des quatre couches, que le client rejoue. Depuis le descripteur v10, chaque couche
+ * porte aussi son masque, les nodes qu'elle anime (ADR-174 D4).
  *
  * <p>Une couche joue {@code clip} depuis le tick {@code tick}, où son temps de clip valait {@code origin}
  * secondes, à la vitesse {@code speed}, de poids {@code weight}, entrée par un fondu de {@code fade}
@@ -32,6 +33,9 @@ public record AnimationLayers(List<Layer> layers) {
     /** Plus grand rang de clip : un asset a au plus 128 animations (C-22). */
     public static final int MAX_CLIP = 127;
 
+    /** Nodes au plus dans le masque d'une couche (ADR-174 D4). */
+    public static final int MAX_MASK = 256;
+
     /** Aucune animation. */
     public static final AnimationLayers NONE =
             new AnimationLayers(List.of(Layer.EMPTY, Layer.EMPTY, Layer.EMPTY, Layer.EMPTY));
@@ -48,8 +52,10 @@ public record AnimationLayers(List<Layer> layers) {
      * @param speed vitesse
      * @param weight poids, de 0 à 1
      * @param fade durée du fondu, en secondes
+     * @param mask les nodes que la couche anime, rangs dans la section {@code NODE} de l'asset, croissants et
+     *     distincts ; vide : tous (ADR-174 D4)
      */
-    public record Layer(int clip, long tick, float origin, float speed, float weight, float fade) {
+    public record Layer(int clip, long tick, float origin, float speed, float weight, float fade, List<Integer> mask) {
 
         /** Clip d'une couche arrêtée. */
         public static final int STOPPED = -1;
@@ -57,8 +63,27 @@ public record AnimationLayers(List<Layer> layers) {
         /** La couche vide : arrêtée au tick 0, sans fondu. */
         public static final Layer EMPTY = new Layer(STOPPED, 0L, 0f, 0f, 0f, 0f);
 
-        /** Refuse un clip, un tick ou un nombre hors de leurs bornes. */
+        /**
+         * Une couche sans masque : elle anime tous les nodes.
+         *
+         * @param clip rang du clip dans l'asset, ou {@link #STOPPED}
+         * @param tick tick du serveur de la commande
+         * @param origin temps de clip à ce tick, en secondes
+         * @param speed vitesse
+         * @param weight poids, de 0 à 1
+         * @param fade durée du fondu, en secondes
+         */
+        public Layer(int clip, long tick, float origin, float speed, float weight, float fade) {
+            this(clip, tick, origin, speed, weight, fade, List.of());
+        }
+
+        /** Refuse un clip, un tick, un nombre ou un masque hors de leurs bornes ; range le masque. */
         public Layer {
+            mask = List.copyOf(new java.util.TreeSet<>(mask));
+            if (mask.size() > MAX_MASK || (!mask.isEmpty() && mask.get(0) < 0)) {
+                throw new IllegalArgumentException("masque hors bornes : " + mask.size() + " nodes, " + MAX_MASK
+                        + " au plus, rangs positifs");
+            }
             if (clip < STOPPED || clip > MAX_CLIP) {
                 throw new IllegalArgumentException("clip " + clip);
             }
@@ -79,6 +104,16 @@ public record AnimationLayers(List<Layer> layers) {
          */
         public static Layer stopped(long tick, float fade) {
             return new Layer(STOPPED, tick, 0f, 0f, 0f, fade);
+        }
+
+        /**
+         * @param tick tick du serveur
+         * @param fade durée du fondu, en secondes
+         * @param mask le masque que garde la couche : son clip s'efface sur les mêmes nodes
+         * @return la couche arrêtée à ce tick par ce fondu, son masque gardé
+         */
+        public static Layer stopped(long tick, float fade, List<Integer> mask) {
+            return new Layer(STOPPED, tick, 0f, 0f, 0f, fade, mask);
         }
 
         /** {@return vrai si la couche joue un clip} */
@@ -148,9 +183,9 @@ public record AnimationLayers(List<Layer> layers) {
     /**
      * @param now tick du serveur, fraction comprise
      * @return vrai si, à cet instant, la pose est celle d'un seul clip joué seul : une seule couche
-     *     visible, qui joue à poids plein, son fondu d'entrée fini. La sphère que balaient les clips de
-     *     l'asset la borne alors (ADR-157 D1) ; deux couches, un fondu ou un poids partiel composent une
-     *     pose qu'aucun clip seul ne balaie
+     *     visible, qui joue à poids plein sur tous les nodes, son fondu d'entrée fini. La sphère que balaient les
+     *     clips de l'asset la borne alors (ADR-157 D1) ; deux couches, un fondu, un poids partiel ou un masque
+     *     composent une pose qu'aucun clip seul ne balaie
      */
     public boolean singleClipAt(double now) {
         Layer seen = null;
@@ -162,15 +197,15 @@ public record AnimationLayers(List<Layer> layers) {
                 seen = layer;
             }
         }
-        return seen != null && seen.playing() && seen.weight() >= 1f
+        return seen != null && seen.playing() && seen.weight() >= 1f && seen.mask().isEmpty()
                 && now >= seen.tick() + seen.fade() * TICKS_PER_SECOND;
     }
 
     /**
      * Une commande d'animation qui mène un natif d'un état à l'autre.
      *
-     * @param action {@link #PLAY}, {@link #STOP} ou {@link #SET_SPEED}, les codes d'{@code anim_action}
-     *     (DM-10)
+     * @param action {@link #PLAY}, {@link #STOP}, {@link #SET_SPEED} ou {@link #SET_MASK}, les codes
+     *     d'{@code anim_action} (DM-10)
      * @param layer rang de la couche
      * @param tick instant de la commande, en ticks du serveur
      * @param clip rang du clip ({@code PLAY})
@@ -178,9 +213,21 @@ public record AnimationLayers(List<Layer> layers) {
      * @param fade durée du fondu, en secondes ({@code PLAY}, {@code STOP})
      * @param origin temps de clip à l'instant {@code tick}, en secondes ({@code PLAY})
      * @param speed vitesse ({@code PLAY}, {@code SET_SPEED})
+     * @param mask les nodes du masque ({@code SET_MASK}) ; vide : tous
      */
-    public record Change(
-            int action, int layer, double tick, int clip, float weight, float fade, float origin, float speed) {
+    public record Change(int action, int layer, double tick, int clip, float weight, float fade, float origin,
+            float speed, List<Integer> mask) {
+
+        /** Une commande sans masque. */
+        public Change(int action, int layer, double tick, int clip, float weight, float fade, float origin,
+                float speed) {
+            this(action, layer, tick, clip, weight, fade, origin, speed, List.of());
+        }
+
+        /** Copie le masque. */
+        public Change {
+            mask = List.copyOf(mask);
+        }
 
         /** Jouer un clip. */
         public static final int PLAY = 1;
@@ -190,6 +237,9 @@ public record AnimationLayers(List<Layer> layers) {
 
         /** Régler la vitesse d'une couche. */
         public static final int SET_SPEED = 3;
+
+        /** Restreindre une couche à des nodes (ADR-174 D4). */
+        public static final int SET_MASK = 4;
     }
 
     /**
@@ -197,7 +247,8 @@ public record AnimationLayers(List<Layer> layers) {
      * le serveur pousse à son natif, et le client au sien (ADR-155, tranche 4). Depuis {@link #NONE}, elles
      * rejouent l'état entier.
      *
-     * <p>Une couche inchangée ne donne rien. Arrêtée, elle donne {@code STOP}, sauf depuis la couche vide.
+     * <p>Une couche inchangée ne donne rien. Un masque changé donne {@code SET_MASK}, avant la commande de la couche
+     * au même instant : le natif garde le masque d'une couche d'un clip à l'autre. Arrêtée, elle donne {@code STOP}, sauf depuis la couche vide.
      * Jouant le même clip au même tick, au même poids et au même fondu, à une autre vitesse, elle donne
      * {@code SET_SPEED} à l'instant où les deux temps de clip se rejoignent. Toute autre donne {@code PLAY}.
      *
@@ -212,13 +263,16 @@ public record AnimationLayers(List<Layer> layers) {
             if (after.equals(before)) {
                 continue;
             }
+            if (!after.mask().equals(before.mask())) {
+                changes.add(new Change(Change.SET_MASK, index, after.tick(), 0, 0f, 0f, 0f, 1f, after.mask()));
+            }
             if (!after.playing()) {
                 if (!before.equals(Layer.EMPTY)) {
                     changes.add(new Change(Change.STOP, index, after.tick(), 0, 0f, after.fade(), 0f, 1f));
                 }
             } else if (before.playing() && before.clip() == after.clip() && before.tick() == after.tick()
                     && before.weight() == after.weight() && before.fade() == after.fade()
-                    && before.speed() != after.speed()) {
+                    && before.speed() != after.speed() && before.mask().equals(after.mask())) {
                 // Les deux temps de clip se rejoignent à l'instant du changement de vitesse.
                 double at = before.tick()
                         + TICKS_PER_SECOND * ((double) after.origin() - before.origin())
@@ -249,7 +303,10 @@ public record AnimationLayers(List<Layer> layers) {
             Layer layer = layers.get(index);
             if ((mask & (1 << index)) != 0) {
                 writer.varUInt(layer.clip() + 1).varULong(layer.tick()).f32(layer.origin()).f32(layer.speed())
-                        .f32(layer.weight()).f32(layer.fade());
+                        .f32(layer.weight()).f32(layer.fade()).varUInt(layer.mask().size());
+                for (int node : layer.mask()) {
+                    writer.varUInt(node);
+                }
             }
         }
     }
@@ -261,7 +318,10 @@ public record AnimationLayers(List<Layer> layers) {
         int size = 1;
         for (Layer layer : layers) {
             if (!layer.equals(Layer.EMPTY)) {
-                size += varSize(layer.clip() + 1) + varSize(layer.tick()) + 4 * Float.BYTES;
+                size += varSize(layer.clip() + 1) + varSize(layer.tick()) + 4 * Float.BYTES + varSize(layer.mask().size());
+                for (int node : layer.mask()) {
+                    size += varSize(node);
+                }
             }
         }
         return size;
@@ -289,8 +349,17 @@ public record AnimationLayers(List<Layer> layers) {
             float speed = reader.f32();
             float weight = reader.f32();
             float fade = reader.f32();
+            int masked = reader.varUInt();
+            if (masked < 0 || masked > MAX_MASK) {
+                throw new MalformedPacketException("entité " + handle + ", couche " + index + " : masque de " + masked
+                        + " nodes, " + MAX_MASK + " au plus");
+            }
+            Integer[] nodes = new Integer[masked];
+            for (int node = 0; node < masked; node++) {
+                nodes[node] = reader.varUInt();
+            }
             try {
-                layers[index] = new Layer(clip, tick, origin, speed, weight, fade);
+                layers[index] = new Layer(clip, tick, origin, speed, weight, fade, List.of(nodes));
             } catch (IllegalArgumentException outOfBounds) {
                 throw new MalformedPacketException("entité " + handle + ", couche " + index + " : "
                         + outOfBounds.getMessage());

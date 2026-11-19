@@ -108,7 +108,8 @@ public final class ActionsGameTests {
 
     /**
      * ADR-174 D4 : le {@code trigger} d'une animation, évalué au serveur — une interaction et l'événement qu'elle émet
-     * jouent chacun leur clip ; une variable qui devient non nulle joue le sien, revenue à 0 elle l'arrête.
+     * jouent chacun leur clip ; une variable qui devient non nulle joue le sien, revenue à 0 elle l'arrête. Le masque de
+     * l'animation (ADR-174 D4) suit la couche.
      */
     @GameTest(template = "test/plancher", timeoutTicks = 200)
     public static void adr174_LesDeclencheursJouentLeurClip(GameTestHelper helper) {
@@ -132,6 +133,15 @@ public final class ActionsGameTests {
                 .thenIdle(2)
                 .thenExecute(() -> {
                     helper.assertTrue(assembly.animation().state().layer(1).playing(), "var:ouverte non nulle joue la couche 1");
+                    // ADR-174 D4 : le masque de l'animation, résolu contre les nodes de l'asset, part avec la couche.
+                    int coulisseau = AxionEntities.nodeNames("axion:test/anime/glissiere_declenchee").orElseThrow()
+                            .indexOf("coulisseau");
+                    helper.assertTrue(coulisseau >= 0 && assembly.animation().state().layer(1).mask()
+                            .equals(java.util.List.of(coulisseau)), "le masque : " + assembly.animation().state().layer(1));
+                    helper.assertTrue(assembly.netState().animation().layer(1).mask().equals(java.util.List.of(coulisseau)),
+                            "le snapshot porte le masque");
+                    helper.assertTrue(assembly.animation().state().layer(2).mask().isEmpty(),
+                            "sans masque, la couche anime tous les nodes");
                     assembly.variables().set(assembly.variables().declared().indexOf("ouverte"), 0, "test");
                 })
                 .thenIdle(2)

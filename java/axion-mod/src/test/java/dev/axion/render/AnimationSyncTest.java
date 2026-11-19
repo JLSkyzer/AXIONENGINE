@@ -46,6 +46,50 @@ class AnimationSyncTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D4 : le poids piloté remplace celui du PLAY, puis part en SET_WEIGHT quand il change")
+    void lePoidsPilote() {
+        AnimationSync sync = new AnimationSync();
+        float[] moitie = {0.5f, Float.NaN, Float.NaN, Float.NaN};
+        sync.see(42, 3, 7, JOUE, null, moitie);
+        AnimationCommands lance = sync.flush(100.0);
+        assertEquals(1, lance.count(), "le PLAY porte déjà le poids piloté, rien d'autre ne part");
+        ByteBuffer b = ByteBuffer.wrap(lance.bytes()).order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals(AnimationCommands.PLAY, b.getInt(24));
+        assertEquals(0.5f, b.getFloat(36), "poids piloté, pas celui du serveur (0,75)");
+
+        sync.see(42, 3, 7, JOUE, null, moitie);
+        assertEquals(0, sync.flush(101.0).count(), "inchangé, rien ne repart");
+
+        sync.see(42, 3, 7, JOUE, null, new float[] {0.25f, Float.NaN, Float.NaN, Float.NaN});
+        AnimationCommands change = sync.flush(102.0);
+        assertEquals(1, change.count());
+        ByteBuffer c = ByteBuffer.wrap(change.bytes()).order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals(AnimationCommands.SET_WEIGHT, c.getInt(24));
+        assertEquals(0, c.getInt(28), "couche");
+        assertEquals(0.25f, c.getFloat(36));
+        assertEquals(102.0, c.getDouble(16), "à l'instant de l'image");
+
+        sync.see(42, 3, 7, JOUE);
+        assertEquals(0, sync.flush(103.0).count(), "sans poids piloté à cette image, la couche garde le dernier");
+    }
+
+    @Test
+    @DisplayName("ADR-174 D4 : un masque changé part en SET_MASK, avec ses nodes, avant le PLAY du même instant")
+    void leMasque() {
+        AnimationSync sync = new AnimationSync();
+        sync.see(42, 3, 7, AnimationLayers.NONE.with(0,
+                new Layer(2, 100L, 0f, 1f, 1f, 0f, java.util.List.of(5, 1))));
+        AnimationCommands commands = sync.flush(100.0);
+        assertEquals(2, commands.count());
+        ByteBuffer b = ByteBuffer.wrap(commands.bytes()).order(ByteOrder.LITTLE_ENDIAN);
+        assertEquals(AnimationCommands.SET_MASK, b.getInt(24));
+        assertEquals(2, b.getInt(48), "deux nodes");
+        assertEquals(1, b.getInt(RECORD), "rangés");
+        assertEquals(5, b.getInt(RECORD + 4));
+        assertEquals(AnimationCommands.PLAY, b.getInt(RECORD + 8 + 24));
+    }
+
+    @Test
     @DisplayName("Une assembly sans animation n'occupe rien ; arrêtée, elle donne STOP")
     void sansAnimation() {
         AnimationSync sync = new AnimationSync();
