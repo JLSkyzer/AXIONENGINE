@@ -224,6 +224,24 @@ public final class DefinitionCompilation {
     }
 
     /**
+     * {@return tout ce qu'une assembly lit d'une definition compilée, d'une même compilation, ou vide si elle attend ou a
+     * été refusée} Une assembly le garde (ADR-175 D4) : un rechargement qui suit ne change rien pour elle.
+     *
+     * @param id identifiant de la definition
+     */
+    public synchronized Optional<HeldDefinition> held(String id) {
+        Definition definition = loaded.get(id).orElse(null);
+        DefinitionCompiler.Summary summary = compiled.get(id);
+        Seating seating = seatings.get(id);
+        Tuning tuning = tunings.get(id);
+        if (definition == null || summary == null || seating == null || tuning == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new HeldDefinition(definition, summary, seating, tuning,
+                nodeNames.getOrDefault(id, List.of()), bodyRests.getOrDefault(id, BodyRests.NONE)));
+    }
+
+    /**
      * {@return la pose de repos de chaque corps d'une definition compilée, ou vide si elle attend ou a été refusée}
      * Ce que prend un corps que la sauvegarde ne connaissait pas (ADR-175 D2).
      *

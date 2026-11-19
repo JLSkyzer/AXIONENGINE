@@ -1303,6 +1303,17 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return tout ce qu'une assembly lit d'une definition compilée, d'une même compilation (ADR-175 D4)} Vide tant
+     * qu'elle attend son asset, ou si elle a été refusée.
+     *
+     * @param id identifiant de la definition
+     */
+    public Optional<dev.axion.definition.HeldDefinition> heldDefinition(String id) {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? Optional.empty() : compiling.held(id);
+    }
+
+    /**
      * {@return la pose de repos de chaque corps d'une definition compilée (ADR-175 D2)} Vide tant qu'elle attend son
      * asset, ou si elle a été refusée.
      *

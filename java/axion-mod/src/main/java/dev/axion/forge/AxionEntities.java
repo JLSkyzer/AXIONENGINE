@@ -79,6 +79,8 @@ public final class AxionEntities {
     private static volatile Function<String, Optional<List<String>>> nodeNames = id -> Optional.empty();
     private static volatile Function<String, Optional<dev.axion.definition.BodyRests>> bodyRests =
             id -> Optional.empty();
+    private static volatile Function<String, Optional<dev.axion.definition.HeldDefinition>> held =
+            id -> Optional.empty();
 
     /** Les paramètres réglables d'une definition compilée (ADR-167 D1), par identifiant. */
     private static volatile Function<String, Optional<dev.axion.definition.Tuning>> tunings = id -> Optional.empty();
@@ -132,6 +134,7 @@ public final class AxionEntities {
         seatings = runtime::seating;
         nodeNames = runtime::assetNodeNames;
         bodyRests = runtime::bodyRests;
+        held = runtime::heldDefinition;
         tunings = runtime::tuning;
         rays = runtime::raycastAssembly;
         boxes = runtime::boxTouchesAssembly;
@@ -175,6 +178,16 @@ public final class AxionEntities {
      */
     static Optional<dev.axion.definition.BodyRests> bodyRests(String id) {
         return bodyRests.apply(id);
+    }
+
+    /**
+     * {@return tout ce qu'une assembly lit d'une definition compilée, d'une même compilation, vide tant qu'elle l'attend}
+     * L'instance le garde (ADR-175 D4).
+     *
+     * @param id identifiant de la definition
+     */
+    static Optional<dev.axion.definition.HeldDefinition> held(String id) {
+        return held.apply(id);
     }
 
     /**

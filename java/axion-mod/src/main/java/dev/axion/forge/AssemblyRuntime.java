@@ -275,15 +275,17 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // NBT garde lui est rendu s'il correspond encore à ses corps et à ses joints.
         boolean asleep = assembly.takeLoadedFromSave();
         PersistedState persisted = assembly.takeSavedState().orElse(null);
+        // ADR-175 D4 : l'instance tient dès lors la definition dont ce corps natif est créé.
+        dev.axion.definition.HeldDefinition held = assembly.hold(summary);
         SimCommandStream.Restored restored =
-                persisted == null ? null : restoredOf(persisted, summary, definition.id().toString());
+                persisted == null ? null : restoredOf(persisted, summary, definition.id().toString(), held);
         if (restored != null) {
             assembly.restoreJoints(persisted.joints());
         }
         // ADR-155, tranche 4 d'ADR-156 : l'animation Java joue les clips du résumé, par leur nom.
         // ADR-174 D4 : et ses nodes, que nomme le masque d'une couche.
-        assembly.animation().bind(summary.clips(),
-                AxionEntities.nodeNames(definition.id().toString()).orElse(List.of()));
+        assembly.animation().bind(summary.clips(), held != null ? held.nodeNames()
+                : AxionEntities.nodeNames(definition.id().toString()).orElse(List.of()));
         pending.add(new Pending(true, index, dimension, position, rotation, definition.hash(), restored, asleep,
                 sensorsOf(assembly, definition)));
         ledger.attach(index, assembly);
@@ -300,7 +302,9 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         if (sensors.declared().isEmpty()) {
             return List.of();
         }
-        List<String> nodes = AxionEntities.nodeNames(definition.id().toString()).orElse(List.of());
+        dev.axion.definition.HeldDefinition held = assembly.held();
+        List<String> nodes = held != null ? held.nodeNames()
+                : AxionEntities.nodeNames(definition.id().toString()).orElse(List.of());
         List<SensorCommand> commands = new ArrayList<>();
         for (int rank = 0; rank < sensors.declared().size(); rank++) {
             dev.axion.definition.Sensors.Sensor sensor = sensors.declared().get(rank);
@@ -325,10 +329,12 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * sa pose de repos.
      */
     private static SimCommandStream.Restored restoredOf(
-            PersistedState saved, DefinitionCompiler.Summary summary, String definitionId) {
+            PersistedState saved, DefinitionCompiler.Summary summary, String definitionId,
+            dev.axion.definition.HeldDefinition held) {
         int[] roots = summary.roots();
         // ADR-175 D1, D2 : chaque corps et chaque joint se rapproche par son nom ; ce qui manque se dit (E-7012).
-        List<String> nodeNames = AxionEntities.nodeNames(definitionId).orElse(List.of());
+        List<String> nodeNames = held != null ? held.nodeNames()
+                : AxionEntities.nodeNames(definitionId).orElse(List.of());
         List<String> bodyNames = new ArrayList<>(roots.length);
         for (int rootNode : Arrays.copyOfRange(roots, 1, roots.length)) {
             bodyNames.add(StateMatching.nameOf(nodeNames, rootNode));
@@ -337,7 +343,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         StateMatching.Outcome outcome = StateMatching.match(saved, bodyNames,
                 StateMatching.jointNames(definition == null ? null : definition.root(), summary.joints()),
                 summary.joints(), nodeNames,
-                AxionEntities.bodyRests(definitionId).orElse(dev.axion.definition.BodyRests.NONE));
+                held != null ? held.bodyRests()
+                        : AxionEntities.bodyRests(definitionId).orElse(dev.axion.definition.BodyRests.NONE));
         if (outcome.restored() == null) {
             LOGGER.warn("AXION : E-7012 l'état sauvegardé d'une assembly de {} n'est pas restauré : {} ; elle repart de"
                     + " sa pose de repos", definitionId, outcome.refusal());

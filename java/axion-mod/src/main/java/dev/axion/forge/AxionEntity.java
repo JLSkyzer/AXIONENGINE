@@ -461,9 +461,56 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return seating();
     }
 
+    /** Ce que cette instance lit de sa definition, pris à la création de son corps (serveur, ADR-175 D4). */
+    private dev.axion.definition.HeldDefinition held;
+
+    /**
+     * {@return tout ce que l'instance lit de sa definition, ou {@code null} : inerte, ou pas encore compilée} Pris une
+     * fois, d'une même compilation, et gardé : un rechargement ne le change pas (ADR-175 D4) ; seule la reliure à la
+     * definition suivante le remplace (D5).
+     */
+    dev.axion.definition.HeldDefinition held() {
+        if (held == null && !inert) {
+            held = AxionEntities.held(definitionId).orElse(null);
+        }
+        return held;
+    }
+
+    /**
+     * Fixe ce que l'instance lit de sa definition au résumé dont son corps natif vient d'être créé : le même, d'une même
+     * compilation (ADR-175 D4). Sans effet si la compilation n'est plus celle de ce résumé.
+     *
+     * @param summary le résumé de la compilation dont le corps natif est créé
+     * @return ce que l'instance tient, ou {@code null}
+     */
+    dev.axion.definition.HeldDefinition hold(DefinitionCompiler.Summary summary) {
+        if (!inert && (held == null || held.summary() != summary)) {
+            // Le corps natif naît de ce résumé : l'instance suit la compilation dont il vient, même si un rechargement
+            // l'a remplacée entre-temps.
+            held = AxionEntities.held(definitionId).filter(candidate -> candidate.summary() == summary).orElse(held);
+        }
+        return held();
+    }
+
+    /** {@return le document de la definition : celui que l'instance tient, sinon celui du registre, {@code null} : inerte} */
+    private Definition document() {
+        dev.axion.definition.HeldDefinition tenue = held();
+        return tenue != null ? tenue.definition() : inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+    }
+
+    private DefinitionCompiler.Summary summaryHeld() {
+        dev.axion.definition.HeldDefinition tenue = held();
+        return tenue == null ? null : tenue.summary();
+    }
+
+    List<String> heldNodeNames() {
+        dev.axion.definition.HeldDefinition tenue = held();
+        return tenue == null ? List.of() : tenue.nodeNames();
+    }
+
     /** {@return les sièges et les interactions de la definition, ou {@code null} : inerte, ou pas encore compilée} */
     private Seating seating() {
-        return inert ? null : AxionEntities.seating(definitionId).orElse(null);
+        return held() == null ? null : held().seating();
     }
 
     /** {@return l'occupation des sièges, telle que la donnée synchronisée la porte} */
@@ -556,7 +603,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return le nom du node qui porte une interaction, tel que la definition le déclare ; vide sans} */
     private String interactionNode(int rank) {
-        Definition definition = AxionEntities.definitions().get(definitionId).orElse(null);
+        Definition definition = document();
         if (definition != null && definition.root().get("interaction") instanceof com.google.gson.JsonArray list
                 && rank < list.size() && list.get(rank) instanceof com.google.gson.JsonObject declared
                 && declared.get("node") != null) {
@@ -766,7 +813,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return les déclencheurs des animations que la definition de l'assembly déclare (ADR-174 D4)} */
     public dev.axion.definition.AnimationTriggers animationTriggers() {
-        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        Definition definition = document();
         if (definition == null) {
             return dev.axion.definition.AnimationTriggers.NONE;
         }
@@ -845,7 +892,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return les événements de contenu que la definition de l'assembly déclare (ADR-174 D2)} */
     public dev.axion.definition.ContentEvents contentEvents() {
-        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        Definition definition = document();
         if (definition == null) {
             return dev.axion.definition.ContentEvents.NONE;
         }
@@ -916,7 +963,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     void sensorChanged(int sensor, boolean enter, long other) {
         dev.axion.definition.Sensors declared = dev.axion.definition.Sensors.of(
-                AxionEntities.definitions().get(definitionId).map(Definition::root).orElse(new com.google.gson.JsonObject()));
+                java.util.Optional.ofNullable(document()).map(Definition::root).orElse(new com.google.gson.JsonObject()));
         if (sensor < 0 || sensor >= sensorOccupants.size() || sensor >= declared.declared().size()) {
             return;
         }
@@ -941,7 +988,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     List<Entity> sensorOccupants(String sensor) {
         dev.axion.definition.Sensors declared = dev.axion.definition.Sensors.of(
-                AxionEntities.definitions().get(definitionId).map(Definition::root).orElse(new com.google.gson.JsonObject()));
+                java.util.Optional.ofNullable(document()).map(Definition::root).orElse(new com.google.gson.JsonObject()));
         int rank = declared.indexOf(sensor);
         if (rank < 0) {
             throw new IllegalArgumentException("capteur « " + sensor + " » inconnu de " + definitionId);
@@ -1223,7 +1270,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     private dev.axion.definition.Tuning tuning() {
-        dev.axion.definition.Tuning compiled = inert ? null : AxionEntities.tuning(definitionId).orElse(null);
+        dev.axion.definition.Tuning compiled = held() == null ? null : held().tuning();
         if (compiled == null) {
             return null;
         }
@@ -1241,7 +1288,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * {@return les nodes des roues de sa definition, dans son ordre ; vide si elle n'en a pas ou n'est pas chargée}
      */
     public List<String> wheelNodes() {
-        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        Definition definition = document();
         if (definition != wheelsOf) {
             wheelsOf = definition;
             wheelNodes = definition == null || !(definition.root().get("wheels") instanceof com.google.gson.JsonArray
@@ -1413,7 +1460,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     public java.util.function.ToDoubleFunction<String> sources(
             java.util.function.Supplier<ProceduralTracks.Frame> frame) {
-        Definition definition = inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
+        Definition definition = document();
         if (definition == null) {
             return name -> {
                 throw new IllegalStateException("source « " + name + " » : l'assembly " + getUUID()
@@ -1857,13 +1904,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return les rangs de rapport que la boîte de ce véhicule accepte de son conducteur (ADR-159 D6)} */
     public GearRange gearRange() {
-        return AxionEntities.definitions().get(definitionId).map(definition -> GearRange.of(definition.root()))
+        return java.util.Optional.ofNullable(document()).map(definition -> GearRange.of(definition.root()))
                 .orElse(GearRange.NONE);
     }
 
     /** {@return ce que vise le joueur, d'après le rayon du serveur, ou {@code null}} */
     private Seating.Target aim(Player player, Seating seating) {
-        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        DefinitionCompiler.Summary summary = summaryHeld();
         if (summary == null) {
             return null;
         }
@@ -2091,7 +2138,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (lostNodes.isEmpty()) {
             return;
         }
-        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        DefinitionCompiler.Summary summary = summaryHeld();
         if (summary == null) {
             return;
         }
@@ -2325,7 +2372,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     public SeatPlacement.Pose seatPose(int seat) {
         Seating seating = seating();
-        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        DefinitionCompiler.Summary summary = summaryHeld();
         if (seating == null || summary == null || seat < 0 || seat >= seating.seats().size()) {
             return null;
         }
@@ -2414,7 +2461,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return les capteurs que la definition déclare (ADR-174 D5)} */
     public dev.axion.definition.Sensors sensorTable() {
-        return dev.axion.definition.Sensors.of(AxionEntities.definitions().get(definitionId).map(Definition::root)
+        return dev.axion.definition.Sensors.of(java.util.Optional.ofNullable(document()).map(Definition::root)
                 .orElse(new com.google.gson.JsonObject()));
     }
 
@@ -2432,7 +2479,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param node le node du socket
      */
     public float[] socketFrame(int node) {
-        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        DefinitionCompiler.Summary summary = summaryHeld();
         if (summary == null || node < 0 || node >= summary.anatomy().size()) {
             return null;
         }
@@ -2453,7 +2500,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param node l'index du node dans l'asset
      */
     public SeatPlacement.Pose nodePose(int node) {
-        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        DefinitionCompiler.Summary summary = summaryHeld();
         if (summary == null || node < 0 || node >= summary.anatomy().size()) {
             return null;
         }
@@ -2485,7 +2532,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param shown la pose dessinée à cette image ({@link #renderPose})
      */
     public SeatPlacement.Pose nodePoseAt(int node, RenderPose shown) {
-        DefinitionCompiler.Summary summary = AxionEntities.summary(definitionId).orElse(null);
+        DefinitionCompiler.Summary summary = summaryHeld();
         if (summary == null || node < 0 || node >= summary.anatomy().size()) {
             return null;
         }
@@ -3299,7 +3346,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         AssemblyTags.putCustom(stored, custom);
         // ADR-175 D3 : la révision et l'empreinte de la definition à laquelle cet état est écrit.
         if (!inert) {
-            AxionEntities.definitions().get(definitionId).ifPresent(bound -> AssemblyTags.putRevision(stored,
+            java.util.Optional.ofNullable(document()).ifPresent(bound -> AssemblyTags.putRevision(stored,
                     dev.axion.definition.Revisions.of(bound.root()).revision(), bound.sha256()));
         }
         // ADR-163 D2 : les variables gardées, si l'assembly en a déjà ; sinon, celles que son NBT portait restent.
@@ -3361,9 +3408,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** {@return l'état que le NBT garde au schéma 3, au dernier tick simulé (serveur, ADR-153 D2)} */
     PersistedState persistedState() {
         // ADR-175 D1 : chaque corps et chaque joint s'écrit avec son nom, d'après la definition de l'assembly.
-        List<String> nodeNames = AxionEntities.nodeNames(definitionId).orElse(List.of());
+        List<String> nodeNames = heldNodeNames();
         List<String> jointNames = StateMatching.jointNames(
-                AxionEntities.definitions().get(definitionId).map(Definition::root).orElse(null), jointFlags.length);
+                java.util.Optional.ofNullable(document()).map(Definition::root).orElse(null), jointFlags.length);
         List<PersistedState.Body> bodies = new ArrayList<>(secondaryBodies.size());
         for (BodyPose body : secondaryBodies) {
             Quaternionf r = body.rotation();

@@ -78,4 +78,38 @@ public final class RechargementGameTests {
             runtime.onDefinitionReload(courantes);
         });
     }
+
+    /**
+     * ADR-175 D4 : une assembly vivante garde la definition dont son corps est né. Un rechargement qui recompile la
+     * même definition en fait de nouveaux objets — document, sièges, réglage — ; l'assembly, elle, lit toujours les
+     * siens : Java ne mêle plus la definition d'avant et celle d'après.
+     */
+    @GameTest(template = "test/plancher", batch = "rechargement_definitions", timeoutTicks = 300)
+    public static void adr175_UneInstanceGardeSaDefinitionApresUnRechargement(GameTestHelper helper) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        dev.axion.definition.HeldDefinition[] avant = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds() && assembly.held() != null,
+                        "l'assembly est simulée, sa definition tenue"))
+                .thenExecute(() -> {
+                    avant[0] = assembly.held();
+                    runtime.onDefinitionReload(courantes);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(AxionEntities.held("axion:test/siege").isPresent(),
+                        "la definition rechargée est recompilée"))
+                .thenExecute(() -> {
+                    dev.axion.definition.HeldDefinition apres = AxionEntities.held("axion:test/siege").orElseThrow();
+                    helper.assertTrue(apres.seating() != avant[0].seating() && apres.definition() != avant[0].definition()
+                            && apres.summary() != avant[0].summary(),
+                            "le rechargement a bien produit d'autres objets");
+                    helper.assertTrue(assembly.held() == avant[0], "l'assembly tient toujours sa definition d'avant");
+                    helper.assertTrue(assembly.declaredSeating() == avant[0].seating(),
+                            "ses sièges sont ceux d'avant, non ceux du rechargement");
+                })
+                .thenSucceed();
+    }
 }
