@@ -91,6 +91,9 @@ class DefinitionBuilderTest {
                 .procedural("rotation", "wheel.roue_arriere_droite.spin_angle",
                         p -> p.node("roue_arriere_droite").axis("x"))
                 .interaction("sit", i -> i.node("siege_conducteur").seat("conducteur"))
+                .interaction("emit_event", i -> i.node("capot").event("capot_touche"))
+                .event("capot_touche", e -> e.replicate("all"))
+                .sensor("abords", "chassis", c -> c.shape("sphere").radius(3.0).replicate("none"))
                 .camera("pilote", "cockpit")
                 .camera("poursuite", "follow",
                         c -> c.distance(7.0).height(2.2).smoothingMs(200.0).recenterMs(1500.0))

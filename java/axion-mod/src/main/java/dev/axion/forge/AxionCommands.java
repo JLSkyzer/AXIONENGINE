@@ -188,6 +188,12 @@ final class AxionCommands {
                                                 .executes(context -> detach(context.getSource(),
                                                         EntityArgument.getEntity(context, "cible"),
                                                         StringArgumentType.getString(context, "socket"))))))
+                        // ADR-174, axe Diagnostic : les derniers événements de contenu, de toutes ou d'une assembly.
+                        .then(Commands.literal("events")
+                                .executes(context -> events(context.getSource(), null))
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .executes(context -> events(context.getSource(),
+                                                EntityArgument.getEntity(context, "cible")))))
                         .then(Commands.literal("attaches")
                                 .then(Commands.argument("cible", EntityArgument.entity())
                                         .executes(context -> attaches(context.getSource(),
@@ -513,6 +519,21 @@ final class AxionCommands {
         return list.size();
     }
 
+    private static int events(CommandSourceStack source, Entity target) {
+        if (target != null && !(target instanceof AxionEntity)) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        List<ContentEventLog.Entry> last = ContentEventLog.last(target == null ? null : target.getUUID());
+        List<String> lines = new ArrayList<>();
+        lines.add("AXION ENGINE — derniers événements de contenu" + (target == null ? "" : " de "
+                + ((AxionEntity) target).definitionId()) + " : " + last.size() + " (au plus " + ContentEventLog.KEPT
+                + ")");
+        last.forEach(entry -> lines.add(entry.line()));
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
+        return last.size();
+    }
+
     private static int variables(CommandSourceStack source, Entity target) {
         if (!(target instanceof AxionEntity assembly)) {
             source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
@@ -653,7 +674,17 @@ final class AxionCommands {
                     || (Double.isInfinite(variable.min()) && Double.isInfinite(variable.max()))
                     ? ""
                     : " dans [" + number(variable.min()) + ", " + number(variable.max()) + "]";
-            lines.add("  " + variable.name() + " = " + number(held.get(i)) + " (" + variable.type().key() + bounds
+            // ADR-174 D2 : une variable par siège dit la valeur de chacun.
+            String shown = number(held.get(i));
+            if (variable.perSeat()) {
+                List<String> seats = new ArrayList<>();
+                double[] values = held.seatValues(i);
+                for (int seat = 0; seat < values.length; seat++) {
+                    seats.add(held.seats().get(seat) + " " + number(values[seat]));
+                }
+                shown = "{" + String.join(", ", seats) + "} par siège";
+            }
+            lines.add("  " + variable.name() + " = " + shown + " (" + variable.type().key() + bounds
                     + ") — posée par " + held.writer(i) + " ; persist " + variable.persist()
                     + ", replicate " + variable.replicate().name().toLowerCase(java.util.Locale.ROOT)
                     + ", write " + variable.write().name().toLowerCase(java.util.Locale.ROOT));

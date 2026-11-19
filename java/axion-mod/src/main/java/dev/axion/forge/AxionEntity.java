@@ -876,6 +876,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (!Double.isFinite(value)) {
             throw new IllegalArgumentException("événement « " + event + " » : valeur " + value + " non finie");
         }
+        // ADR-174, axe Diagnostic : /axion events montre les derniers.
+        ContentEventLog.record(new ContentEventLog.Entry(level().getGameTime(), getUUID(), definitionId, event, value,
+                writer));
         dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
         ContentListeners.notify(ContentListeners.events(), listener -> listener.onEvent(view, event, value),
                 "l'événement " + event + " de " + writer);
@@ -2401,6 +2404,18 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // Le désalignement n'a de sens que pour ce qui tient deux sockets ensemble : rigid, hitch, magnet.
         boolean held = link.kind() != 2 && link.kind() != 3;
         readings[at + 3] = held ? link.distance() / 1000.0 : 0.0;
+    }
+
+    /** {@return le node de chaque capteur déclaré, dans l'ordre de la definition (ADR-174 D5) ; vide sans} */
+    public int[] sensorNodes() {
+        Seating seating = seating();
+        return seating == null ? new int[0] : seating.sensorNodes();
+    }
+
+    /** {@return les capteurs que la definition déclare (ADR-174 D5)} */
+    public dev.axion.definition.Sensors sensorTable() {
+        return dev.axion.definition.Sensors.of(AxionEntities.definitions().get(definitionId).map(Definition::root)
+                .orElse(new com.google.gson.JsonObject()));
     }
 
     /** {@return les sockets d'attache de sa definition (ADR-171 D2) ; vide sans definition compilée} */

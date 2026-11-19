@@ -111,4 +111,19 @@ class DefinitionsReportTest {
         DefinitionsReport.sockets(JsonParser.parseString("{}").getAsJsonObject(), lignes);
         assertEquals(List.of(), lignes, "sans socket, rien");
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("ADR-174, axe Diagnostic : le rapport dit les événements, les capteurs et ce que des mods font")
+    void ceQuUneDefinitionEmetEtVoit() {
+        com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString("{\"schema\": 7, \"events\":"
+                + " {\"klaxon\": {\"replicate\": \"occupants\"}}, \"sensors\": [{\"name\": \"porte\", \"node\":"
+                + " \"seuil\", \"size\": [1, 2, 0.5]}], \"interaction\": [{\"node\": \"d\", \"action\":"
+                + " \"coffres:coffre\", \"actions\": [{\"cadrans:bip\": {}}]}]}").getAsJsonObject();
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        DefinitionsReport.content(root, lines);
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(
+                "  événements : klaxon (occupants), sensor.porte.enter (all), sensor.porte.exit (all)",
+                "  capteur porte : au node seuil, boîte 1.0 × 2.0 × 0.5",
+                "  de mods : action cadrans:bip, interaction coffres:coffre"), lines);
+    }
 }

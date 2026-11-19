@@ -126,7 +126,16 @@
   ],
 
   "interaction": [
-    { "node": "siege_conducteur", "action": "sit", "seat": "conducteur" }
+    { "node": "siege_conducteur", "action": "sit", "seat": "conducteur" },
+    { "node": "capot", "action": "emit_event", "event": "capot_touche" }
+  ],
+
+  "events": {
+    "capot_touche": { "replicate": "all" }
+  },
+
+  "sensors": [
+    { "name": "abords", "node": "chassis", "shape": "sphere", "radius": 3.0, "replicate": "none" }
   ],
 
   "cameras": [

@@ -78,12 +78,57 @@ public final class DefinitionsReport {
             lines.add("  empreinte : " + definition.sha256().substring(0, 16));
             seated(definition.root(), lines);
             sockets(definition.root(), lines);
+            content(definition.root(), lines);
             return List.copyOf(lines);
         }
         return registry.refusal(id)
                 .map(refusal -> List.of("AXION : " + id + " refusée — " + refusal))
                 .orElse(List.of("AXION : aucune definition « " + id + " », ni chargée ni refusée : aucun mod ne "
                         + "l'enregistre (vérifier le modId et le chemin)"));
+    }
+
+    /**
+     * Ce qu'une definition émet et voit (ADR-174, axe Diagnostic) : ses événements et à qui chacun part, ses capteurs,
+     * et les actions et interactions de mods qu'elle nomme.
+     */
+    static void content(JsonObject root, List<String> lines) {
+        dev.axion.definition.ContentEvents events = dev.axion.definition.ContentEvents.of(root);
+        if (!events.declared().isEmpty()) {
+            List<String> named = new ArrayList<>();
+            for (dev.axion.definition.ContentEvents.Event event : events.declared()) {
+                named.add(event.name() + " (" + event.replicate().name().toLowerCase(java.util.Locale.ROOT) + ")");
+            }
+            lines.add("  événements : " + String.join(", ", named));
+        }
+        for (dev.axion.definition.Sensors.Sensor sensor : dev.axion.definition.Sensors.of(root).declared()) {
+            float[] size = sensor.size();
+            lines.add("  capteur " + sensor.name() + " : au node " + sensor.node() + ", "
+                    + (sensor.shape() == dev.axion.definition.Sensors.Shape.SPHERE ? "sphère de rayon " + size[0]
+                            : "boîte " + size[0] + " × " + size[1] + " × " + size[2]));
+        }
+        java.util.Set<String> mods = new java.util.TreeSet<>();
+        if (root.get("interaction") instanceof JsonArray interactions) {
+            for (JsonElement element : interactions) {
+                if (!(element instanceof JsonObject interaction)) {
+                    continue;
+                }
+                if (interaction.get("action") instanceof com.google.gson.JsonPrimitive action
+                        && action.getAsString().contains(":")) {
+                    mods.add("interaction " + action.getAsString());
+                }
+                if (interaction.get("actions") instanceof JsonArray steps) {
+                    for (JsonElement step : steps) {
+                        if (step instanceof JsonObject object) {
+                            object.keySet().stream().filter(key -> key.contains(":"))
+                                    .forEach(key -> mods.add("action " + key));
+                        }
+                    }
+                }
+            }
+        }
+        if (!mods.isEmpty()) {
+            lines.add("  de mods : " + String.join(", ", mods));
+        }
     }
 
     /**

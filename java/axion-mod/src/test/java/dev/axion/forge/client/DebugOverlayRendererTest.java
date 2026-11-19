@@ -267,7 +267,7 @@ class DebugOverlayRendererTest {
                 couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
             }
         }
-        assertEquals(12, couleurs.size(), "douze overlays sans corps ni axes à colorer, douze couleurs");
+        assertEquals(13, couleurs.size(), "treize overlays sans corps ni axes à colorer, treize couleurs");
         assertEquals(
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));
@@ -369,5 +369,34 @@ class DebugOverlayRendererTest {
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f, -l}, axes[0], 1e-5f);
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f + l, 0f}, axes[1], 1e-5f);
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, l, 4f, 0f}, axes[2], 1e-5f);
+    }
+
+    @Test
+    @DisplayName("ADR-174 D5 : l'overlay sensors dessine les douze arêtes d'une boîte, trois cercles d'une sphère, tournés comme le node")
+    void lesCapteurs() {
+        dev.axion.seat.SeatPlacement.Pose node = new dev.axion.seat.SeatPlacement.Pose(10.0, 64.0, -3.0,
+                new float[] {0f, 0f, 0f, 1f});
+        float[] boite = DebugOverlayRenderer.sensorSegments(node, false, new float[] {2f, 4f, 6f}, 10.0, 60.0, -3.0);
+        assertEquals(12 * DebugGeometry.FLOATS_PER_SEGMENT, boite.length, "douze arêtes");
+        for (int i = 0; i < boite.length; i += 3) {
+            assertEquals(1f, Math.abs(boite[i]), 1e-5f, "x aux demi-tailles");
+            assertEquals(2f, Math.abs(boite[i + 1] - 4f), 1e-5f, "y autour du node, à 4 de la caméra");
+            assertEquals(3f, Math.abs(boite[i + 2]), 1e-5f);
+        }
+        float[] sphere = DebugOverlayRenderer.sensorSegments(node, true, new float[] {1.5f, 0f, 0f}, 10.0, 64.0, -3.0);
+        assertEquals(3 * DebugOverlayRenderer.SENSOR_CIRCLE_SEGMENTS * DebugGeometry.FLOATS_PER_SEGMENT, sphere.length);
+        for (int i = 0; i < sphere.length; i += 3) {
+            float r = (float) Math.sqrt(sphere[i] * sphere[i] + sphere[i + 1] * sphere[i + 1] + sphere[i + 2] * sphere[i + 2]);
+            assertEquals(1.5f, r, 1e-4f, "chaque point au rayon");
+        }
+        // Un quart de tour autour de y : la longueur x de la boîte passe sur z.
+        float c = (float) Math.sqrt(0.5);
+        float[] tournee = DebugOverlayRenderer.sensorSegments(new dev.axion.seat.SeatPlacement.Pose(0, 0, 0,
+                new float[] {0f, c, 0f, c}), false, new float[] {2f, 4f, 6f}, 0, 0, 0);
+        for (int i = 0; i < tournee.length; i += 3) {
+            assertEquals(3f, Math.abs(tournee[i]), 1e-4f);
+            assertEquals(1f, Math.abs(tournee[i + 2]), 1e-4f);
+        }
+        assertEquals(DebugOverlayRenderer.SENSOR_COLOR, DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.SENSORS, 0));
     }
 }

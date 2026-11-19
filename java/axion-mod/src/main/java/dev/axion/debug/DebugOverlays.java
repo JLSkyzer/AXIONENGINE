@@ -50,6 +50,11 @@ public final class DebugOverlays {
          * seul : le client connaît la pose dessinée et le repère de chaque socket, que la definition déclare.
          */
         SOCKETS("sockets", 1L << 13, Source.JAVA),
+        /**
+         * Le volume de chaque capteur déclaré, à la pose dessinée de son assembly (ADR-174, axe Diagnostic). Rang 35, au
+         * bout du §31.4. En Java seul, comme les sockets : la definition déclare la forme, le client connaît la pose.
+         */
+        SENSORS("sensors", 1L << 35, Source.JAVA),
         /** Les tuiles de collision du monde (C-38, A1). Rang 30. */
         WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES, Source.PHYSICS),
         /** Le centre de masse de chaque corps (A1). Rang 31. */

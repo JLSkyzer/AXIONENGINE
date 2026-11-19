@@ -24,9 +24,10 @@ import java.util.Map;
  * @param variables les variables que les commandes liées, les interactions et l'API écrivent (ADR-163 D2)
  * @param views les vues de ses sièges (ADR-170)
  * @param dashboard son tableau de bord (ADR-170 D4)
+ * @param sensorNodes le node de chaque capteur déclaré, dans l'ordre de la definition (ADR-174 D5)
  */
 public record Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables,
-        VehicleViews views, VehicleDashboard dashboard, SocketTable sockets) {
+        VehicleViews views, VehicleDashboard dashboard, SocketTable sockets, int[] sensorNodes) {
 
     /** Aucun siège, aucune interaction, aucune variable. */
     public static final Seating NONE = new Seating(List.of(), List.of(), List.of(), Variables.NONE);
@@ -36,6 +37,28 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         seats = List.copyOf(seats);
         interactions = List.copyOf(interactions);
         warnings = List.copyOf(warnings);
+        sensorNodes = sensorNodes == null ? new int[0] : sensorNodes.clone();
+    }
+
+    /**
+     * Une table sans capteur.
+     *
+     * @param seats les sièges
+     * @param interactions les interactions
+     * @param warnings les actions sans effet
+     * @param variables les variables
+     * @param views les vues
+     * @param dashboard le tableau de bord
+     * @param sockets les sockets
+     */
+    public Seating(List<Seat> seats, List<Interaction> interactions, List<String> warnings, Variables variables,
+            VehicleViews views, VehicleDashboard dashboard, SocketTable sockets) {
+        this(seats, interactions, warnings, variables, views, dashboard, sockets, new int[0]);
+    }
+
+    @Override
+    public int[] sensorNodes() {
+        return sensorNodes.clone();
     }
 
     /**
@@ -770,10 +793,18 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                             : Map.of()));
         }
         SocketTable sockets = SocketTable.of(root, byPath);
+        // ADR-174 D5 : le node de chaque capteur, que l'overlay sensors dessine.
+        int sensorCount = Sensors.of(root).declared().size();
+        int[] sensorNodes = new int[sensorCount];
+        for (int sensor = 0; sensor < sensorCount; sensor++) {
+            Integer node = byPath.get("$.sensors[" + sensor + "].node");
+            sensorNodes[sensor] = node == null ? -1 : node;
+        }
         return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0 && sockets.isEmpty()
+                && sensorCount == 0
                 ? NONE
                 : new Seating(seats, interactions, warnings, variables, VehicleViews.of(root, byPath, seatRanks),
-                        VehicleDashboard.of(root, seatRanks, drivers(seats)), sockets);
+                        VehicleDashboard.of(root, seatRanks, drivers(seats)), sockets, sensorNodes);
     }
 
     /** {@return les sièges conducteurs, un bit par rang} */

@@ -574,6 +574,9 @@ public final class AxionRenderPass {
         if (DEBUG.socketsDrawn() > 0) {
             counts.merge(DebugOverlays.Overlay.SOCKETS.rank(), DEBUG.socketsDrawn(), Integer::sum);
         }
+        if (DEBUG.sensorsDrawn() > 0) {
+            counts.merge(DebugOverlays.Overlay.SENSORS.rank(), DEBUG.sensorsDrawn(), Integer::sum);
+        }
         return counts;
     }
 

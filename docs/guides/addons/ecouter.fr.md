@@ -132,3 +132,15 @@ dans son `action`, avec ses `parameters` :
   session (`E-1012`), comme un écouteur.
 - **Qui est dans un capteur** : `assembly.sensorOccupants("porte")` rend les entités et les assemblies qui y sont ; les
   événements du capteur ne disent que leur nombre.
+
+## Voir ce qui se passe
+
+| Commande | Ce qu'elle montre |
+|---|---|
+| `/axion defs info <id>` | les événements d'une definition et à qui chacun part, ses capteurs, les actions et interactions de mods qu'elle nomme |
+| `/axion events [cible]` | les 32 derniers événements de contenu émis — par qui, sur quelle assembly, à quel tick |
+| `/axion variables <cible>` | chaque variable, la valeur de chaque siège pour une variable par siège |
+| `/axion debug sensors on` | le volume de chaque capteur en jeu, en violet, à son node |
+
+L'exemple `axion:example/buggy` émet `capot_touche` quand on clique son capot, et porte un capteur `abords` de trois
+blocs autour de son châssis : `/axion events` les montre.

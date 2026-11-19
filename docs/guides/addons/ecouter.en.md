@@ -132,3 +132,15 @@ The definition names them `<modId>:<name>`, from schema 7 — an action as a ste
   (`E-1012`), like a listener.
 - **Who is in a sensor**: `assembly.sensorOccupants("door")` returns the entities and assemblies inside it; the
   sensor's events only give their number.
+
+## Seeing what happens
+
+| Command | What it shows |
+|---|---|
+| `/axion defs info <id>` | a definition's events and who each is sent to, its sensors, the mod actions and interactions it names |
+| `/axion events [target]` | the last 32 content events emitted — by whom, on which assembly, at which tick |
+| `/axion variables <target>` | each variable, each seat's value for a per-seat variable |
+| `/axion debug sensors on` | each sensor's volume in game, in purple, at its node |
+
+The example `axion:example/buggy` emits `capot_touche` when its hood is clicked, and carries a three-block sensor
+`abords` around its chassis: `/axion events` shows them.

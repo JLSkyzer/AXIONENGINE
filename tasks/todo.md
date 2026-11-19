@@ -3887,9 +3887,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
+     - [x] ADR-174 **clos** le 2026-11-19 (9g2 : `/axion defs info`, `/axion events`, overlay `sensors`, coût mesuré,
+           grille vérifiée). Reste à proposer à Killian : un modèle d'exemple avec une portière qui se cache (Blender),
+           et son film.
      - [x] ADR-174, tranche 9g1 (2026-11-19) : `registerAction`, `registerInteraction`, `open_container` délégué,
-           `sensorOccupants`. Suite : 9g2 (diagnostics de la grille : `/axion defs info`, `/axion events`, overlay
-           `sensors` ; clôture).
+           `sensorOccupants`.
      - [x] ADR-174, tranche 9f (2026-11-19) : capteurs déclarés, `SET_SENSOR` (ABI 29), événements
            `sensor.<nom>.enter/exit`, source `sensor.<nom>.count`, descripteur 12.
      - [x] ADR-174, tranche 9e (2026-11-19) : variables `scope: "seat"`, une case par siège, `var.<nom>.<siège>`,

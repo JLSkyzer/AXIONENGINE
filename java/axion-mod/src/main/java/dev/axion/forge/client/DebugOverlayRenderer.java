@@ -120,6 +120,12 @@ final class DebugOverlayRenderer {
     /** Couleur de l'overlay {@code pivots} (RGB). */
     static final int PIVOT_COLOR = 0xFF66CC;
 
+    /** Couleur de l'overlay {@code sensors} : le volume d'un capteur déclaré (ADR-174 D5). */
+    static final int SENSOR_COLOR = 0x9966FF;
+
+    /** Segments d'un cercle de capteur sphérique. */
+    static final int SENSOR_CIRCLE_SEGMENTS = 24;
+
     /** En deçà, un segment n'a pas de direction : le shader de lignes ne saurait l'épaissir. */
     private static final float MIN_SEGMENT_LENGTH = 1e-6f;
 
@@ -146,6 +152,7 @@ final class DebugOverlayRenderer {
 
     /** Sockets que {@code sockets} a dessinés à la dernière image. */
     private int socketsDrawn;
+    private int sensorsDrawn;
 
     /** Couleur de l'emprise d'une assembly retenue, dans {@code culling} (RGB). */
     static final int CULLING_KEPT = 0x40E040;
@@ -267,12 +274,14 @@ final class DebugOverlayRenderer {
         lodDrawn = 0;
         cullingDrawn = 0;
         socketsDrawn = 0;
+        sensorsDrawn = 0;
+        boolean sensors = overlays.isOn(DebugOverlays.Overlay.SENSORS);
         boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
         boolean lod = overlays.isOn(DebugOverlays.Overlay.LOD);
         boolean culled = overlays.isOn(DebugOverlays.Overlay.CULLING);
         boolean sockets = overlays.isOn(DebugOverlays.Overlay.SOCKETS);
         if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && animation.ranges().isEmpty() && !network && !lod
-                && !culled && !sockets)) {
+                && !culled && !sockets && !sensors)) {
             return;
         }
         RenderType type = RenderType.lines();
@@ -320,6 +329,9 @@ final class DebugOverlayRenderer {
         }
         if (sockets) {
             out = drawSockets(frame, out, type, scratch);
+        }
+        if (sensors) {
+            out = drawSensors(frame, out, type, scratch);
         }
         if (out != null) {
             frame.buffers().endBatch(type);
@@ -401,6 +413,99 @@ final class DebugOverlayRenderer {
             }
         }
         return out;
+    }
+
+    /** L'overlay {@code sensors} : le volume de chaque capteur déclaré, à la pose dessinée de son node (ADR-174 D5). */
+    private VertexConsumer drawSensors(RenderBackend.Frame frame, VertexConsumer out, RenderType type,
+            Vector3f scratch) {
+        Vec3 eye = frame.camera();
+        PoseStack.Pose last = frame.pose().last();
+        for (RenderBackend.Assembly assembly : frame.assemblies()) {
+            AxionEntity entity = assembly.entity();
+            int[] nodes = entity.sensorNodes();
+            if (nodes.length == 0) {
+                continue;
+            }
+            List<dev.axion.definition.Sensors.Sensor> declared = entity.sensorTable().declared();
+            AxionEntity.RenderPose shown = entity.renderPose(frame.partialTick());
+            for (int rank = 0; rank < nodes.length && rank < declared.size(); rank++) {
+                dev.axion.seat.SeatPlacement.Pose at = nodes[rank] < 0 ? null : entity.nodePoseAt(nodes[rank], shown);
+                if (at == null) {
+                    continue;
+                }
+                if (out == null) {
+                    out = frame.buffers().getBuffer(type);
+                }
+                dev.axion.definition.Sensors.Sensor sensor = declared.get(rank);
+                emit(out, last.pose(), last.normal(), scratch, sensorSegments(at,
+                        sensor.shape() == dev.axion.definition.Sensors.Shape.SPHERE, sensor.size(), eye.x, eye.y,
+                        eye.z), SENSOR_COLOR);
+                sensorsDrawn++;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * {@return les segments du volume d'un capteur, relatifs à la caméra : les douze arêtes d'une boîte, ou trois cercles
+     * d'une sphère dans ses plans, tournés comme son node}
+     *
+     * @param at la pose monde du node du capteur
+     * @param sphere vrai pour une sphère
+     * @param size la taille entière de la boîte, ou le rayon de la sphère en premier
+     * @param cameraX position de la caméra
+     * @param cameraY position de la caméra
+     * @param cameraZ position de la caméra
+     */
+    static float[] sensorSegments(dev.axion.seat.SeatPlacement.Pose at, boolean sphere, float[] size, double cameraX,
+            double cameraY, double cameraZ) {
+        float[] q = at.rotation();
+        org.joml.Quaternionf rotation = new org.joml.Quaternionf(q[0], q[1], q[2], q[3]);
+        float ox = (float) (at.x() - cameraX);
+        float oy = (float) (at.y() - cameraY);
+        float oz = (float) (at.z() - cameraZ);
+        java.util.List<float[]> points = new java.util.ArrayList<>();
+        if (sphere) {
+            float r = size[0];
+            for (int plane = 0; plane < 3; plane++) {
+                for (int k = 0; k < SENSOR_CIRCLE_SEGMENTS; k++) {
+                    for (int end = 0; end < 2; end++) {
+                        double angle = 2 * Math.PI * (k + end) / SENSOR_CIRCLE_SEGMENTS;
+                        float c = (float) (r * Math.cos(angle));
+                        float s = (float) (r * Math.sin(angle));
+                        points.add(plane == 0 ? new float[] {0, c, s} : plane == 1 ? new float[] {c, 0, s}
+                                : new float[] {c, s, 0});
+                    }
+                }
+            }
+        } else {
+            float hx = size[0] / 2f;
+            float hy = size[1] / 2f;
+            float hz = size[2] / 2f;
+            for (int axis = 0; axis < 3; axis++) {
+                for (int a = -1; a <= 1; a += 2) {
+                    for (int b = -1; b <= 1; b += 2) {
+                        for (int end = -1; end <= 1; end += 2) {
+                            float[] corner = new float[3];
+                            corner[axis] = end;
+                            corner[(axis + 1) % 3] = a;
+                            corner[(axis + 2) % 3] = b;
+                            points.add(new float[] {corner[0] * hx, corner[1] * hy, corner[2] * hz});
+                        }
+                    }
+                }
+            }
+        }
+        float[] segments = new float[points.size() * 3];
+        Vector3f p = new Vector3f();
+        for (int i = 0; i < points.size(); i++) {
+            float[] local = points.get(i);
+            rotation.transform(p.set(local[0], local[1], local[2]));
+            segments[3 * i] = ox + p.x;
+            segments[3 * i + 1] = oy + p.y;
+            segments[3 * i + 2] = oz + p.z;
+        }
+        return segments;
     }
 
     /**
@@ -544,6 +649,11 @@ final class DebugOverlayRenderer {
         return socketsDrawn;
     }
 
+    /** {@return les capteurs dessinés à la dernière frame (ADR-174, axe Diagnostic)} */
+    int sensorsDrawn() {
+        return sensorsDrawn;
+    }
+
     /** {@return le nombre d'assemblies que {@code network} a dessinées à la dernière image} */
     int networkDrawn() {
         return networkDrawn;
@@ -596,6 +706,7 @@ final class DebugOverlayRenderer {
             case NODES -> AXIS_COLORS[0];
             case PIVOTS -> PIVOT_COLOR;
             case SOCKETS -> AXIS_COLORS[0];
+            case SENSORS -> SENSOR_COLOR;
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
             case NETWORK -> NETWORK_RECEIVED;
@@ -641,6 +752,7 @@ final class DebugOverlayRenderer {
             case NODES -> "axes de chaque node d'une instance animée : rouge x, vert y, bleu z";
             case PIVOTS -> "rose : l'origine de chaque node animé, autour de laquelle il tourne";
             case SOCKETS -> "axes de chaque socket, là où une attache se prend : rouge x, vert y, bleu z";
+            case SENSORS -> "violet : le volume de chaque capteur déclaré, boîte ou sphère, à son node";
             case WORLD_TILES -> "gris : les colliders des tuiles du monde";
             case CENTER_OF_MASS -> "blanc : le centre de masse de chaque corps";
             case NETWORK -> "violet : l'emprise à la pose dessinée, interpolée ; orange : au dernier état reçu du"

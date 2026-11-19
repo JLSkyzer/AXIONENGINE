@@ -479,6 +479,7 @@ public final class AxionForgeEntrypoint {
         }
         if (assemblyRuntime != null) {
             assemblyRuntime.close();
+            ContentEventLog.clear();
             assemblyRuntime = null;
         }
         // C-15 : les ticks lents encore comptés sont dits avant l'arrêt — il peut fermer le

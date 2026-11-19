@@ -159,7 +159,9 @@ public final class BancDeRendu {
             "axion:test/materiaux/sol_repete",
             "axion:test/materiaux/vitre",
             // Ses deux sockets : l'overlay sockets a de quoi dessiner (ADR-171, axe Diagnostic).
-            "axion:test/maillon");
+            "axion:test/maillon",
+            // Ses deux capteurs, une boîte et une sphère : l'overlay sensors a de quoi dessiner (ADR-174).
+            "axion:test/capteur");
 
     private static final String CUBE = "axion:test_cube";
 

@@ -106,6 +106,60 @@ public final class ActionsGameTests {
                 .thenSucceed();
     }
 
+    /** Les mesures de l'exécuteur : appels chauds, puis mesurés. */
+    private static final int CHAUFFE = 200;
+    private static final int MESURES = 2000;
+
+    /**
+     * ADR-174, axe Coût : le coût d'une interaction jouée par l'exécuteur, mesuré — ses actions sur les nodes, l'événement
+     * qu'elle émet et ses écouteurs ; puis une interaction et une action de mod. Le journal dit p50 et p99, en
+     * microsecondes ; le test ne borne rien, il mesure.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr174_LeCoutDeLExecuteurSeMesure(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity actions = AssembliesDeTest.poser(helper, DEFINITION, new Vec3(2.5, DESSUS_DALLE, 4.5),
+                new float[] {0f, 0f, 0f, 1f});
+        AxionEntity addon = AssembliesDeTest.poser(helper, "axion:test/siege_addon", new Vec3(6.5, DESSUS_DALLE, 4.5),
+                new float[] {0f, 0f, 0f, 1f});
+        ServerPlayer joueur = SiegesGameTests.joueur(helper, "mesure");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(actions.hasPhysicalBounds() && addon.hasPhysicalBounds(),
+                        "les assemblies sont simulées"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    long[] axion = mesurer(() -> actions.playInteraction(0, joueur));
+                    long[] mod = mesurer(() -> addon.playInteraction(0, joueur));
+                    org.slf4j.LoggerFactory.getLogger("axion.mesure").info(
+                            "AXION mesure ADR-174 : exécuteur, interaction à 4 actions (hide_node, deux"
+                            + " set_material_param, emit_event) : p50 {} µs, p99 {} µs ; interaction et action de mod"
+                            + " avec un hide_node : p50 {} µs, p99 {} µs ({} appels)",
+                            micros(axion[0]), micros(axion[1]), micros(mod[0]), micros(mod[1]), MESURES);
+                    ControleursDeTest.VUS.remove(addon.getUUID());
+                    helper.assertTrue(axion[0] > 0 && mod[0] > 0, "des mesures");
+                })
+                .thenSucceed();
+    }
+
+    /** {@return p50 et p99 d'un appel, en nanosecondes, après {@link #CHAUFFE} appels chauds} */
+    private static long[] mesurer(Runnable appel) {
+        for (int i = 0; i < CHAUFFE; i++) {
+            appel.run();
+        }
+        long[] durees = new long[MESURES];
+        for (int i = 0; i < MESURES; i++) {
+            long debut = System.nanoTime();
+            appel.run();
+            durees[i] = System.nanoTime() - debut;
+        }
+        java.util.Arrays.sort(durees);
+        return new long[] {durees[MESURES / 2], durees[MESURES * 99 / 100]};
+    }
+
+    private static String micros(long nanos) {
+        return String.format(java.util.Locale.ROOT, "%.1f", nanos / 1000.0);
+    }
+
     /**
      * ADR-174 D6 : une interaction et une action qu'un mod enregistre, jouées avec leurs paramètres et dans l'ordre de
      * la liste ; {@code open_container} délégué au mod qui l'enregistre ; une interaction que rien n'enregistre ne fait
