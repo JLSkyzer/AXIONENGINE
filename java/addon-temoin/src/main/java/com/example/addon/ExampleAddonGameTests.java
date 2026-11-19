@@ -105,8 +105,16 @@ public final class ExampleAddonGameTests {
                 new Vec3(4.5, AxionGameTests.DESSUS_DALLE, 6.0));
         double[] fastest = {0};
         helper.startSequence()
-                .thenWaitUntil(() -> helper.assertTrue(buggy.parameters().has(Parameters.ENGINE_TORQUE),
-                        "not compiled yet"))
+                .thenWaitUntil(() -> {
+                    helper.assertTrue(buggy.parameters().has(Parameters.ENGINE_TORQUE), "not compiled yet");
+                    // Its state is read below: the vehicle view answers once its definition is compiled, a moment
+                    // after its parameters on a slow machine.
+                    try {
+                        buggy.vehicle().orElseThrow().state();
+                    } catch (IllegalStateException notYet) {
+                        helper.fail("its vehicle state is not ready yet: " + notYet.getMessage());
+                    }
+                })
                 .thenExecute(() -> {
                     helper.assertTrue(!buggy.parameters().has(ExampleSpeedLimiter.MAX_SPEED), "no limiter, no top speed");
                     VehicleControl vehicle = buggy.vehicle().orElseThrow();
