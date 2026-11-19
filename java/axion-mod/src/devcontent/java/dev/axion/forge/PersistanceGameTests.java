@@ -248,6 +248,61 @@ public final class PersistanceGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-175 D3 : une assembly sauvegardée à la révision 1 sous l'identifiant d'une definition remplacée, avec un corps
+     * que la révision 2 a renommé, se relie à la definition qui la remplace et retrouve son corps sous son nouveau nom :
+     * une migration, un alias, aucune perte.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void adr175_UneMigrationEtUnAliasRetrouventLEtatSousSonNouveauNom(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/deux_corps_evolue", new Vec3(4.5, DESSUS_DALLE + 6.0, 4.5), DROIT);
+        AxionEntity[] relue = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds()
+                        && assembly.secondaryBodies().size() == 1, "l'assembly est simulée, à deux corps"))
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    CompoundTag sauvegarde = new CompoundTag();
+                    helper.assertTrue(assembly.save(sauvegarde), "sauvegarde refusée");
+                    helper.assertTrue(sauvegarde.getInt(AssemblyTags.REVISION) == 2, "la révision se garde : "
+                            + sauvegarde.get(AssemblyTags.REVISION));
+                    helper.assertTrue(sauvegarde.getString(AssemblyTags.SHA).length() == 64, "l'empreinte se garde");
+                    // Ce que la révision 1 écrivait : l'ancien identifiant, l'ancien nom du corps, déplacé de 4 blocs.
+                    PersistedState etat = PersistedState.read(AssemblyTags.extract(sauvegarde)).orElseThrow();
+                    PersistedState.Body corps = etat.bodies().get(0);
+                    new PersistedState(etat.position(), etat.rotation(), etat.linear(), etat.angular(), etat.sleeping(),
+                            List.of(new PersistedState.Body(corps.node(), "fantome", corps.x() + 4.0, corps.y(),
+                                    corps.z(), corps.rotation(), corps.linear(), corps.angular())), etat.joints())
+                            .write(sauvegarde);
+                    sauvegarde.putInt(AssemblyTags.REVISION, 1);
+                    sauvegarde.putLong(AssemblyTags.DEFINITION,
+                            dev.axion.definition.DefinitionIds.hash("axion:test/deux_corps_ancien"));
+                    assembly.discard();
+                    relue[0] = rechargerSauvegarde(helper, sauvegarde);
+                    helper.assertTrue(!relue[0].isInert(), "l'assembly sauvegardée sous l'ancien identifiant est liée : "
+                            + relue[0].definitionId());
+                    helper.assertTrue("axion:test/deux_corps_evolue".equals(relue[0].definitionId()),
+                            "reliée à la definition qui la remplace : " + relue[0].definitionId());
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].hasPhysicalBounds()
+                        && relue[0].secondaryBodies().size() == 1, "l'assembly relue est simulée"))
+                .thenExecute(() -> {
+                    AxionEntity.BodyPose b = relue[0].secondaryBodies().get(0);
+                    helper.assertTrue(Math.abs(b.x() - relue[0].getX() - 6.0) < 0.2,
+                            "« fantome » est devenu « b » : son état est restauré, à quatre blocs de plus de sa pose de"
+                                    + " repos : " + (b.x() - relue[0].getX()));
+                    CompoundTag resauvegarde = new CompoundTag();
+                    helper.assertTrue(relue[0].save(resauvegarde), "sauvegarde refusée");
+                    helper.assertTrue(resauvegarde.getInt(AssemblyTags.REVISION) == 2, "réécrite à la révision 2");
+                    helper.assertTrue(resauvegarde.getLong(AssemblyTags.DEFINITION)
+                            == dev.axion.definition.DefinitionIds.hash("axion:test/deux_corps_evolue"),
+                            "réécrite sous l'identifiant de la definition");
+                })
+                .thenSucceed();
+    }
+
     /** Ajoute au monde l'entité relue d'une sauvegarde, sans retirer personne. */
     private static AxionEntity rechargerSauvegarde(GameTestHelper helper, CompoundTag sauvegarde) {
         Entity relue = EntityType.loadEntityRecursive(sauvegarde, helper.getLevel(), entite -> entite);

@@ -188,6 +188,19 @@ public final class DefinitionRegistry {
             byHash.put(hasher.applyAsLong(definition.id()), definition);
         }
         List<String> warnings = new ArrayList<>();
+        // ADR-175 D3 : une definition peut en remplacer une autre — une assembly sauvegardée sous l'ancien identifiant s'y
+        // relie. Une definition qui porte encore cet identifiant le garde ; de deux qui remplacent la même, la
+        // première par identifiant l'emporte.
+        for (Definition definition : accepted.values()) {
+            for (String replaced : Revisions.of(definition.root()).replaces()) {
+                Definition holder = byHash.putIfAbsent(hasher.applyAsLong(replaced), definition);
+                if (holder != null && holder != definition) {
+                    warnings.add(definition.location() + " — $.replaces : « " + replaced + " » est déjà "
+                            + (holder.id().equals(replaced) ? "l'identifiant d'une definition chargée"
+                                    : "remplacée par " + holder.id()) + " ; ce remplacement est ignoré");
+                }
+            }
+        }
         for (Definition definition : accepted.values()) {
             materialWarnings(definition, rules.physicsMaterials(), warnings);
             tireWarnings(definition, rules.tires(), warnings);

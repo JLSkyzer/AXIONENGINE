@@ -2564,3 +2564,18 @@ un relevé fait sur des images où le rendu n'a pas avancé l'angle. Pas reprodu
 **Règle.** Un rouge du banc sur une tranche qui ne touche pas ce qu'il mesure se relance une fois, seul, avant toute
 correction ; un second rouge est un vrai défaut à chercher. Noter ici chaque récidive de T-365, avec ses rapports.
 
+## 2026-11-19 | Deux NBT égaux n'ont pas toujours les mêmes octets ; un schéma publié se lit en dur
+
+**Ce qui a mal tourné.** Ajouter deux clés au NBT d'une assembly (`axion:rev`, `axion:sha`) a fait échouer
+`uneSauvegardeArriveAuJournal`, qui comparait les octets du blob journalisé à ceux d'une sauvegarde faite à côté : les
+deux `toString()` étaient identiques. Plus tôt dans la même journée, passer le schéma NBT de 5 à 6 avait fait échouer
+`lesModificateursPosesSeRelisent`, qui attendait `== 5` en dur.
+
+**Cause.** `CompoundTag` garde ses clés dans une table de hachage : `NbtIo.write` les écrit dans l'ordre de la table,
+qui dépend de l'histoire des insertions et du nombre de clés, pas seulement de leur contenu. Quant au `5`, un test
+avait recopié la valeur du schéma au lieu de lire `NBT_SCHEMA`.
+
+**Règle.** Comparer deux NBT par leur contenu décodé (`equals`), jamais par leurs octets. Un test qui connaît le numéro
+d'un schéma le lit de la constante du code (`AssemblyBinding.NBT_SCHEMA`). Un GameTest qui échoue sans que la tranche
+touche à ce qu'il mesure se relance une fois, seul ; deux échecs identiques, c'est un vrai défaut.
+

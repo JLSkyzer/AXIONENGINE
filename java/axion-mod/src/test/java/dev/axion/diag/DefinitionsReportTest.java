@@ -118,10 +118,13 @@ class DefinitionsReportTest {
         com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString("{\"schema\": 7, \"events\":"
                 + " {\"klaxon\": {\"replicate\": \"occupants\"}}, \"sensors\": [{\"name\": \"porte\", \"node\":"
                 + " \"seuil\", \"size\": [1, 2, 0.5]}], \"interaction\": [{\"node\": \"d\", \"action\":"
-                + " \"coffres:coffre\", \"actions\": [{\"cadrans:bip\": {}}]}]}").getAsJsonObject();
+                + " \"coffres:coffre\", \"actions\": [{\"cadrans:bip\": {}}]}], \"revision\": 3, \"migrations\":"
+                + " [{\"from\": 1, \"rename\": {}}, {\"from\": 2, \"rename\": {}}], \"replaces\": [\"mymod:ancienne\"]}")
+                .getAsJsonObject();
         java.util.List<String> lines = new java.util.ArrayList<>();
         DefinitionsReport.content(root, lines);
         org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(
+                "  révision : 3, migrations depuis 1, 2, remplace mymod:ancienne",
                 "  événements : klaxon (occupants), sensor.porte.enter (all), sensor.porte.exit (all)",
                 "  capteur porte : au node seuil, boîte 1.0 × 2.0 × 0.5",
                 "  de mods : action cadrans:bip, interaction coffres:coffre"), lines);

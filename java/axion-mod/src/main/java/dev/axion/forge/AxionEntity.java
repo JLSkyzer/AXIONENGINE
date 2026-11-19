@@ -3187,6 +3187,18 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         stored = AssemblyTags.migrate(AssemblyTags.extract(tag));
         simulated = false;
         loadedFromSave = true;
+        AssemblyBinding binding = AssemblyBinding.resolve(
+                AssemblyTags.version(stored),
+                AssemblyTags.definition(stored),
+                AxionEntities.definitions());
+        inert = binding.isInert();
+        inertReason = binding.inertReason();
+        definitionId = binding.bound().map(Definition::id).orElse(AssemblyTags.describe(stored));
+        // ADR-175 D3 : une definition qui en remplace une, ou qui a changé de révision, mène l'état à elle avant
+        // qu'il soit lu : ses renommages s'appliquent aux noms que le NBT garde.
+        binding.bound().ifPresent(bound -> AssemblyTags.evolve(stored, dev.axion.definition.Revisions.of(bound.root()),
+                bound.sha256(), bound.hash(), note -> LOGGER.warn("AXION : assembly {} de {} — {}", getUUID(),
+                        bound.id(), note)));
         // ADR-153 D3 : l'état gardé, rendu à la création de l'assembly ; ses vitesses et ses corps
         // secondaires sont aussi ceux que la sauvegarde suivante réécrit, tant que l'assembly dort.
         savedState = PersistedState.read(stored).orElse(null);
@@ -3202,13 +3214,6 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             }
             secondaryBodies = List.copyOf(bodies);
         }
-        AssemblyBinding binding = AssemblyBinding.resolve(
-                AssemblyTags.version(stored),
-                AssemblyTags.definition(stored),
-                AxionEntities.definitions());
-        inert = binding.isInert();
-        inertReason = binding.inertReason();
-        definitionId = binding.bound().map(Definition::id).orElse(AssemblyTags.describe(stored));
         custom = AssemblyTags.custom(stored, AxionEntities::maxCustomBytes, inert);
         // ADR-167 D7 : un contrôleur dont aucun mod ne s'enregistre plus reste attaché, inactif, et se dit (CAP-38).
         attachedControllers.clear();
@@ -3292,6 +3297,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             AssemblyTags.putRotation(stored, bodyRotation);
         }
         AssemblyTags.putCustom(stored, custom);
+        // ADR-175 D3 : la révision et l'empreinte de la definition à laquelle cet état est écrit.
+        if (!inert) {
+            AxionEntities.definitions().get(definitionId).ifPresent(bound -> AssemblyTags.putRevision(stored,
+                    dev.axion.definition.Revisions.of(bound.root()).revision(), bound.sha256()));
+        }
         // ADR-163 D2 : les variables gardées, si l'assembly en a déjà ; sinon, celles que son NBT portait restent.
         if (!inert && variables != null) {
             AssemblyTags.putVariables(stored, variables.persisted());

@@ -1,0 +1,14 @@
+{
+  "schema": 7,
+  "asset": "axion:models/test/deux_corps.gltf",
+  "kind": "rigid_object",
+  "revision": 2,
+  "migrations": [
+    { "from": 1, "rename": { "nodes": { "fantome": "b" } } }
+  ],
+  "replaces": [ "axion:test/deux_corps_ancien" ],
+  "bodies": [
+    { "name": "a", "root_node": "a" },
+    { "name": "b", "root_node": "b" }
+  ]
+}

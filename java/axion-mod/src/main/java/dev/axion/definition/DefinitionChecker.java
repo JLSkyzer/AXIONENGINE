@@ -95,6 +95,7 @@ final class DefinitionChecker {
         checker.checkTriggers(root);
         checker.checkLayerWeights(root);
         checker.checkSensors(root);
+        checker.checkRevisions(root);
         if (checker.version >= 2 && checker.issues.isEmpty()) {
             checker.checkJoints(root);
         }
@@ -610,6 +611,52 @@ final class DefinitionChecker {
                 continue;
             }
             invalid(reference.path(), "variable par siège « " + reference.name() + " » : aucun siège ne la situe ici");
+        }
+    }
+
+    /**
+     * ADR-175 D3 : une migration mène d'une révision à la suivante, donc sa révision de départ précède celle de la
+     * definition, et deux migrations ne partent pas de la même ; chaque nouveau nom est un nom valide, que deux anciens
+     * ne se partagent pas.
+     */
+    private void checkRevisions(JsonObject root) {
+        if (version < 7) {
+            return;
+        }
+        int revision = root.get("revision") instanceof JsonPrimitive number && number.isNumber()
+                ? number.getAsInt() : 1;
+        if (root.get("migrations") instanceof JsonArray migrations) {
+            Set<Integer> from = new HashSet<>();
+            for (int i = 0; i < migrations.size(); i++) {
+                if (!(migrations.get(i) instanceof JsonObject migration)
+                        || !(migration.get("from") instanceof JsonPrimitive start) || !start.isNumber()) {
+                    continue;
+                }
+                String path = "$.migrations[" + i + "]";
+                if (start.getAsInt() >= revision) {
+                    invalid(path + ".from", "une migration part d'une révision antérieure à celle de la definition ("
+                            + revision + ") : elle mène de « from » à la suivante");
+                } else if (!from.add(start.getAsInt())) {
+                    invalid(path + ".from", "deux migrations partent de la révision " + start.getAsInt());
+                }
+                if (!(migration.get("rename") instanceof JsonObject rename)) {
+                    continue;
+                }
+                for (String kind : Revisions.KINDS) {
+                    if (!(rename.get(kind) instanceof JsonObject names)) {
+                        continue;
+                    }
+                    Set<String> targets = new HashSet<>();
+                    for (Map.Entry<String, JsonElement> entry : names.entrySet()) {
+                        String at = StrictJson.member(path + ".rename." + kind, entry.getKey());
+                        if (!(entry.getValue() instanceof JsonPrimitive to) || !to.isString()) {
+                            invalid(at, "attendu le nouveau nom, une chaîne");
+                        } else if (validName(to.getAsString(), at) && !targets.add(to.getAsString())) {
+                            invalid(at, "« " + to.getAsString() + " » est déjà le nouveau nom d'un autre ancien nom");
+                        }
+                    }
+                }
+            }
         }
     }
 

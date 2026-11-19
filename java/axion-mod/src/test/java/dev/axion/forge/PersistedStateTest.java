@@ -292,4 +292,88 @@ class PersistedStateTest {
         CompoundTag sansVersion = new CompoundTag();
         assertSame(sansVersion, AssemblyTags.migrate(sansVersion));
     }
+
+    @Test
+    @DisplayName("ADR-175 D3 : une migration renomme ce que l'état nomme — corps, joints, nodes, variables, sièges, sockets, paramètres")
+    void migrationRenomme() {
+        CompoundTag stored = new CompoundTag();
+        new PersistedState(new double[] {1, 2, 3}, new float[] {0f, 0f, 0f, 1f}, new float[3], new float[3], false,
+                List.of(new PersistedState.Body(7, "porte_g", 2.5, 63.0, -3.0, new float[] {0f, 0f, 0f, 1f},
+                        new float[3], new float[3])), List.of(new PersistedState.Joint(true, 0.5f, "a"))).write(stored);
+        AssemblyTags.putVariables(stored, java.util.Map.of("phare", 1.0, "intacte", 2.0));
+        AssemblyTags.putSeatVariables(stored, java.util.Map.of("radio", java.util.Map.of("avant", 3.0)));
+        CompoundTag nodes = new CompoundTag();
+        CompoundTag etat = new CompoundTag();
+        etat.putBoolean("hidden", true);
+        etat.putString("swap", "porte_g");
+        nodes.put("vitre", etat);
+        nodes.put("porte_g", new CompoundTag());
+        stored.put("axion:nodes", nodes);
+        net.minecraft.nbt.ListTag atts = new net.minecraft.nbt.ListTag();
+        CompoundTag attache = new CompoundTag();
+        attache.putString("socket", "crochet");
+        atts.add(attache);
+        stored.put("axion:atts", atts);
+        net.minecraft.nbt.ListTag params = new net.minecraft.nbt.ListTag();
+        CompoundTag modificateur = new CompoundTag();
+        modificateur.putString("parameter", "poids");
+        params.add(modificateur);
+        stored.put("axion:params", params);
+
+        dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(
+                com.google.gson.JsonParser.parseString("{\"schema\": 7, \"revision\": 3, \"migrations\": ["
+                        + "{\"from\": 1, \"rename\": {\"nodes\": {\"porte_g\": \"portiere_gauche\"}, \"joints\":"
+                        + " {\"a\": \"charniere\"}, \"variables\": {\"phare\": \"feux\"}, \"seats\":"
+                        + " {\"avant\": \"conducteur\"}, \"sockets\": {\"crochet\": \"attelage\"}}},"
+                        + " {\"from\": 2, \"rename\": {\"parameters\": {\"poids\": \"mass\"},"
+                        + " \"nodes\": {\"portiere_gauche\": \"porte_conducteur\"}}}]}").getAsJsonObject());
+        java.util.List<String> notes = new java.util.ArrayList<>();
+        AssemblyTags.evolve(stored, revisions, "sha-neuf", 99L, notes::add);
+
+        PersistedState lu = PersistedState.read(stored).orElseThrow();
+        assertEquals("porte_conducteur", lu.bodies().get(0).name(), "deux migrations s'enchaînent");
+        assertEquals("charniere", lu.joints().get(0).name());
+        assertEquals(java.util.Map.of("feux", 1.0, "intacte", 2.0), AssemblyTags.variables(stored));
+        assertEquals(java.util.Map.of("radio", java.util.Map.of("conducteur", 3.0)), AssemblyTags.seatVariables(stored));
+        assertTrue(stored.getCompound("axion:nodes").contains("porte_conducteur")
+                && !stored.getCompound("axion:nodes").contains("porte_g"));
+        assertEquals("porte_conducteur", stored.getCompound("axion:nodes").getCompound("vitre").getString("swap"));
+        assertEquals("attelage", stored.getList("axion:atts", 10).getCompound(0).getString("socket"));
+        assertEquals("mass", stored.getList("axion:params", 10).getCompound(0).getString("parameter"));
+        assertEquals(99L, AssemblyTags.definition(stored).orElseThrow(), "liée à l'identifiant que la definition a pris");
+        assertEquals(1, notes.size());
+        assertTrue(notes.get(0).startsWith("révision 1 → 3 : 2 migration(s)"), notes.get(0));
+    }
+
+    @Test
+    @DisplayName("ADR-175 D3 : un état déjà à la révision courante n'est pas migré ; un contenu changé sans révision, ou un état plus récent, se dit")
+    void evolutionDit() {
+        dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(
+                com.google.gson.JsonParser.parseString("{\"schema\": 7, \"revision\": 2, \"migrations\": ["
+                        + "{\"from\": 1, \"rename\": {\"variables\": {\"a\": \"b\"}}}]}").getAsJsonObject());
+        java.util.function.BiFunction<Integer, String, java.util.List<String>> evoluer = (revision, sha) -> {
+            CompoundTag stored = new CompoundTag();
+            AssemblyTags.putVariables(stored, java.util.Map.of("a", 1.0));
+            if (revision != null) {
+                AssemblyTags.putRevision(stored, revision, sha);
+            }
+            java.util.List<String> notes = new java.util.ArrayList<>();
+            AssemblyTags.evolve(stored, revisions, "sha-courant", 5L, notes::add);
+            return notes;
+        };
+        assertTrue(evoluer.apply(2, "sha-courant").isEmpty(), "à la révision courante, au même contenu : rien à dire");
+        assertTrue(evoluer.apply(2, "sha-ancien").get(0).contains("sans nouvelle révision"));
+        assertTrue(evoluer.apply(3, "x").get(0).contains("plus récente"));
+        assertTrue(evoluer.apply(null, null).get(0).startsWith("révision 1 → 2"), "sans révision gardée : la première");
+    }
+
+    @Test
+    @DisplayName("ADR-175 D3 : la révision et l'empreinte se gardent et se relisent")
+    void revisionGardee() {
+        CompoundTag stored = new CompoundTag();
+        assertTrue(AssemblyTags.revision(stored).isEmpty() && AssemblyTags.sha(stored).isEmpty());
+        AssemblyTags.putRevision(stored, 4, "abc123");
+        assertEquals(4, AssemblyTags.revision(stored).getAsInt());
+        assertEquals("abc123", AssemblyTags.sha(stored).orElseThrow());
+    }
 }

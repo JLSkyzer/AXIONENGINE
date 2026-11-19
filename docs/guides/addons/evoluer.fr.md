@@ -32,6 +32,31 @@ perdu — corps « coffre », joint « attelage » ; nouveau, à sa pose de repo
 
 Rien d'autre ne change : l'assembly vit, au repos là où elle n'a pas d'état.
 
+## Révision, migrations et remplacement
+
+Au schéma 7, une definition déclare sa **révision** et ce qui mène une sauvegarde d'une révision à la suivante
+([ADR-175](../../decisions/ADR-175.md) D3) :
+
+```json
+"revision": 3,
+"migrations": [
+  { "from": 1, "rename": { "nodes": { "porte_g": "portiere_gauche" } } },
+  { "from": 2, "rename": { "variables": { "phare": "feux" }, "joints": { "gond": "charniere" } } }
+],
+"replaces": [ "monmod:ancienne_voiture" ]
+```
+
+- **`revision`** : un entier, 1 par défaut. Monte-la quand tu renommes quelque chose qu'une sauvegarde nomme.
+- **`migrations`** : une par révision que tu quittes (`from`), qui **renomment** — `nodes` (corps et état des nodes),
+  `joints`, `variables`, `seats` (les sièges d'une variable par siège), `sockets` (des attaches), `parameters`. Une
+  assembly sauvegardée à la révision 1, chargée sous la révision 3, passe par les deux. Une migration ne crée ni ne
+  calcule rien. Son `from` précède la révision de la definition, et deux migrations ne partent pas de la même.
+- **`replaces`** : les identifiants de definitions que celle-ci remplace. Une assembly sauvegardée sous l'ancien
+  identifiant s'y relie au lieu de rester inerte ; si une definition porte encore cet identifiant, elle le garde.
+  Sans alias, une definition retirée laisse ses assemblies inertes et intactes.
+
+Un contenu qui change **sans** nouvelle révision se restaure par nom, et le journal le dit une fois.
+
 ## Les sauvegardes d'avant les noms
 
 Une assembly sauvegardée avant le schéma 6 n'a pas de noms. AXION nomme ses corps d'après l'asset chargé — le node que

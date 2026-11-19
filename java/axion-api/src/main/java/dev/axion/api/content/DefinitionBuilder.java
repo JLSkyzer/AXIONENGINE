@@ -412,6 +412,31 @@ public final class DefinitionBuilder {
     }
 
     /**
+     * {@code migrations} : au plus 64 éléments.
+     *
+     * @param from le champ obligatoire {@code from}
+     * @param config règle l'élément, ajouté à la suite des précédents
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder migration(long from, Consumer<Migration> config) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("from", from);
+        Objects.requireNonNull(config, "config").accept(new Migration(item));
+        list(values, "migrations").add(item);
+        return this;
+    }
+
+    /**
+     * {@code migrations} : au plus 64 éléments.
+     *
+     * @param from le champ obligatoire {@code from}
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder migration(long from) {
+        return migration(from, item -> { });
+    }
+
+    /**
      * {@code on_detach}.
      *
      * @param part clé de la table
@@ -581,6 +606,28 @@ public final class DefinitionBuilder {
      */
     public DefinitionBuilder repairRule(String value) {
         values.put("repair_rule", Objects.requireNonNull(value, "repair_rule"));
+        return this;
+    }
+
+    /**
+     * {@code replaces} : au moins 1 élément ; au plus 8 éléments.
+     *
+     * @param items les valeurs, dans l'ordre
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder replaces(String... items) {
+        values.put("replaces", texts(items));
+        return this;
+    }
+
+    /**
+     * {@code revision} : au moins 1 ; au plus 1000000.
+     *
+     * @param value la valeur
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder revision(long value) {
+        values.put("revision", value);
         return this;
     }
 
@@ -2729,6 +2776,129 @@ public final class DefinitionBuilder {
          */
         public Joint type(String value) {
             values.put("type", Objects.requireNonNull(value, "type"));
+            return this;
+        }
+    }
+
+    /** {@code migrations[].rename}. */
+    @Experimental
+    public static final class MigrationRename {
+
+        private final Map<String, Object> values;
+
+        private MigrationRename(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code migrations[].rename.joints}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public MigrationRename joint(String name, String value) {
+            Map<String, Object> table = object(values, "joints");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "joints"));
+            return this;
+        }
+
+        /**
+         * {@code migrations[].rename.nodes}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public MigrationRename node(String name, String value) {
+            Map<String, Object> table = object(values, "nodes");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "nodes"));
+            return this;
+        }
+
+        /**
+         * {@code migrations[].rename.parameters}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public MigrationRename parameter(String name, String value) {
+            Map<String, Object> table = object(values, "parameters");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "parameters"));
+            return this;
+        }
+
+        /**
+         * {@code migrations[].rename.seats}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public MigrationRename seat(String name, String value) {
+            Map<String, Object> table = object(values, "seats");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "seats"));
+            return this;
+        }
+
+        /**
+         * {@code migrations[].rename.sockets}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public MigrationRename socket(String name, String value) {
+            Map<String, Object> table = object(values, "sockets");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "sockets"));
+            return this;
+        }
+
+        /**
+         * {@code migrations[].rename.variables}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public MigrationRename variable(String name, String value) {
+            Map<String, Object> table = object(values, "variables");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "variables"));
+            return this;
+        }
+    }
+
+    /** {@code migrations[]}. */
+    @Experimental
+    public static final class Migration {
+
+        private final Map<String, Object> values;
+
+        private Migration(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code migrations[].from} : au moins 1 ; au plus 1000000.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Migration from(long value) {
+            values.put("from", value);
+            return this;
+        }
+
+        /**
+         * {@code migrations[].rename}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Migration rename(Consumer<MigrationRename> config) {
+            Map<String, Object> nested = object(values, "rename");
+            Objects.requireNonNull(config, "config").accept(new MigrationRename(nested));
             return this;
         }
     }

@@ -92,6 +92,13 @@ public final class DefinitionsReport {
      * et les actions et interactions de mods qu'elle nomme.
      */
     static void content(JsonObject root, List<String> lines) {
+        dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(root);
+        if (revisions.revision() > 1 || !revisions.migrations().isEmpty() || !revisions.replaces().isEmpty()) {
+            lines.add("  révision : " + revisions.revision() + (revisions.migrations().isEmpty() ? ""
+                    : ", migrations depuis " + revisions.migrations().stream()
+                            .map(migration -> String.valueOf(migration.from())).collect(java.util.stream.Collectors.joining(", ")))
+                    + (revisions.replaces().isEmpty() ? "" : ", remplace " + String.join(", ", revisions.replaces())));
+        }
         dev.axion.definition.ContentEvents events = dev.axion.definition.ContentEvents.of(root);
         if (!events.declared().isEmpty()) {
             List<String> named = new ArrayList<>();

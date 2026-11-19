@@ -1836,6 +1836,94 @@
       "maxProperties": 64,
       "x-axion-code": "E-3050"
     },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "migrations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "rename": {
+            "type": "object",
+            "properties": {
+              "nodes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 256,
+                "x-axion-code": "E-3050"
+              },
+              "joints": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 256,
+                "x-axion-code": "E-3050"
+              },
+              "variables": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 256,
+                "x-axion-code": "E-3050"
+              },
+              "seats": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 256,
+                "x-axion-code": "E-3050"
+              },
+              "sockets": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 256,
+                "x-axion-code": "E-3050"
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "maxProperties": 256,
+                "x-axion-code": "E-3050"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64,
+      "x-axion-code": "E-3050"
+    },
+    "replaces": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9_.-]+:[a-z0-9/._-]+$"
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "x-axion-code": "E-3050"
+    },
     "events": {
       "type": "object",
       "propertyNames": {

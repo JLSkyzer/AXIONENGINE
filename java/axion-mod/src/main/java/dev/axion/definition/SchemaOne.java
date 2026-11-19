@@ -179,6 +179,14 @@ final class SchemaOne {
                     new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(version), Variables.MAX));
         }
         if (version >= 7) {
+            // ADR-175 D3 : la révision, ce qui mène une sauvegarde d'une révision à la suivante, et les identifiants que
+            // la definition remplace ; la cohérence des révisions se juge ensemble (DefinitionChecker.checkRevisions).
+            root.opt("revision", new Num(1, 1_000_000, false, true));
+            root.opt("migrations", cap(obj()
+                    .req("from", new Num(1, 1_000_000, false, true))
+                    .opt("rename", renames())
+                    .build(), Revisions.MAX_MIGRATIONS));
+            root.opt("replaces", new Arr(id(), 1, Revisions.MAX_REPLACES, true));
             // ADR-174 D2 : les événements de contenu, et à qui chacun part.
             root.opt("events", new Dict(new TextRule.Declares(NameCategory.EVENT),
                     obj().opt("replicate", oneOf("all", "occupants", "none")).build(), ContentEvents.MAX));
@@ -720,6 +728,15 @@ final class SchemaOne {
                     .opt("parameters", new Dict(new TextRule.Free(), any(), Integer.MAX_VALUE));
         }
         return interaction.build();
+    }
+
+    /** ADR-175 D3 : les noms qu'une migration change, par catégorie, ancien → nouveau. */
+    private static SchemaNode renames() {
+        ObjBuilder renames = obj();
+        for (String kind : Revisions.KINDS) {
+            renames.opt(kind, new Dict(new TextRule.Free(), text(), Revisions.MAX_RENAMES));
+        }
+        return renames.build();
     }
 
     /** Actions d'une interaction, au plus (ADR-174 D3). */

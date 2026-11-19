@@ -3887,6 +3887,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
+     - [x] ADR-175, tranche 10c (2026-11-19) : `revision`, `migrations`, `replaces` au schéma 7, `axion:rev`,
+           `axion:sha`, migrations de renommage à la lecture, alias d'identifiant. Suite : 10d (une instance tient sa
+           definition), 10e (reliure à chaud).
      - [x] ADR-175, tranche 10b (2026-11-19) : corps et joints sauvegardés par nom (NBT 6, `persistence-6.md`),
            migration 5 → 6, restauration partielle nommée (`E-7012`), pose de repos d'un corps nouveau
            (`BodyRests`). Suite : 10c (`revision`, `migrations`, `replaces`, `axion:rev`, `axion:sha`), 10d, 10e.

@@ -38,6 +38,12 @@ final class AssemblyTags {
     /** Identifiant 64 bits de la definition. */
     static final String DEFINITION = "axion:def";
 
+    /** Révision de la definition à laquelle l'état a été sauvegardé : un entier (ADR-175 D3). */
+    static final String REVISION = "axion:rev";
+
+    /** Empreinte SHA-256 du contenu de la definition à la sauvegarde : un texte hexadécimal (ADR-175 D3). */
+    static final String SHA = "axion:sha";
+
     /** Orientation du corps : quaternion {@code (x, y, z, w)}, quatre flottants (R-461). */
     static final String ROTATION = "axion:rot";
 
@@ -526,6 +532,151 @@ final class AssemblyTags {
             variables.put(name, seats);
         });
         stored.put(VARIABLES, variables);
+    }
+
+    /** {@return la révision que l'état gardait, ou vide s'il n'en dit pas : celle d'une definition sans révision, 1} */
+    static java.util.OptionalInt revision(CompoundTag stored) {
+        return stored.contains(REVISION, Tag.TAG_INT) ? java.util.OptionalInt.of(stored.getInt(REVISION))
+                : java.util.OptionalInt.empty();
+    }
+
+    /** {@return l'empreinte du contenu que l'état gardait, ou vide} */
+    static java.util.Optional<String> sha(CompoundTag stored) {
+        return stored.contains(SHA, Tag.TAG_STRING) ? java.util.Optional.of(stored.getString(SHA))
+                : java.util.Optional.empty();
+    }
+
+    /**
+     * Garde la révision et l'empreinte de la definition à laquelle l'état est écrit (ADR-175 D3).
+     *
+     * @param stored les clés gardées
+     * @param revision la révision de la definition
+     * @param sha256 l'empreinte de son contenu
+     */
+    static void putRevision(CompoundTag stored, int revision, String sha256) {
+        stored.putInt(REVISION, revision);
+        stored.putString(SHA, sha256);
+    }
+
+    /**
+     * Fait évoluer un état sauvegardé vers sa definition (ADR-175 D3) : lié à l'identifiant que la definition a pris
+     * — {@code axion:def} le suit —, puis mené de la révision qu'il gardait à la sienne par les migrations qui les
+     * séparent, qui renomment ce que l'état nomme. Un contenu qui a changé sans nouvelle révision se restaure par nom et
+     * le dit ; un état d'une révision plus récente aussi.
+     *
+     * @param stored les clés gardées, migrées au schéma courant ; modifiées en place
+     * @param revisions les révisions de la definition
+     * @param sha256 l'empreinte de son contenu
+     * @param definitionHash l'empreinte de son identifiant, que {@code axion:def} porte désormais
+     * @param note ce qu'il faut dire au journal
+     */
+    static void evolve(CompoundTag stored, dev.axion.definition.Revisions revisions, String sha256, long definitionHash,
+            java.util.function.Consumer<String> note) {
+        long before = definition(stored).orElse(definitionHash);
+        stored.putLong(DEFINITION, definitionHash);
+        int saved = revision(stored).orElse(1);
+        if (before != definitionHash) {
+            note.accept("sauvegardée sous l'identifiant d'une definition qu'elle remplace, reliée à celle-ci");
+        }
+        if (saved < revisions.revision()) {
+            java.util.List<dev.axion.definition.Revisions.Migration> chain = revisions.chain(saved);
+            int renamed = 0;
+            for (dev.axion.definition.Revisions.Migration migration : chain) {
+                renamed += rename(stored, migration);
+            }
+            note.accept("révision " + saved + " → " + revisions.revision() + " : " + chain.size()
+                    + " migration(s), " + renamed + " nom(s) changé(s)");
+        } else if (saved > revisions.revision()) {
+            note.accept("sauvegardée à la révision " + saved + ", plus récente que la révision "
+                    + revisions.revision() + " de la definition : restaurée par nom");
+        } else if (sha(stored).filter(kept -> !kept.equals(sha256)).isPresent()) {
+            note.accept("le contenu de la definition a changé sans nouvelle révision : restaurée par nom");
+        }
+    }
+
+    /**
+     * Applique une migration aux noms que l'état garde (ADR-175 D3) : les nodes, des corps et de l'état des nodes ; les
+     * joints ; les variables, et leurs sièges ; les sockets des attaches ; les paramètres des modificateurs.
+     *
+     * @param stored les clés gardées ; modifiées en place
+     * @param migration les renommages
+     * @return le nombre de noms changés
+     */
+    static int rename(CompoundTag stored, dev.axion.definition.Revisions.Migration migration) {
+        int count = 0;
+        Map<String, String> nodes = migration.of("nodes");
+        count += renameList(stored, PersistedState.BODY_NAMES, nodes);
+        count += renameList(stored, PersistedState.JOINT_NAMES, migration.of("joints"));
+        if (stored.contains(NODES, Tag.TAG_COMPOUND)) {
+            CompoundTag states = stored.getCompound(NODES);
+            for (String name : java.util.List.copyOf(states.getAllKeys())) {
+                CompoundTag state = states.getCompound(name);
+                if (state.contains("swap", Tag.TAG_STRING) && nodes.containsKey(state.getString("swap"))) {
+                    state.putString("swap", nodes.get(state.getString("swap")));
+                    count++;
+                }
+            }
+            count += renameKeys(states, nodes);
+        }
+        if (stored.contains(VARIABLES, Tag.TAG_COMPOUND)) {
+            CompoundTag variables = stored.getCompound(VARIABLES);
+            for (String name : java.util.List.copyOf(variables.getAllKeys())) {
+                if (variables.contains(name, Tag.TAG_COMPOUND)) {
+                    count += renameKeys(variables.getCompound(name), migration.of("seats"));
+                }
+            }
+            count += renameKeys(variables, migration.of("variables"));
+        }
+        count += renameField(stored, ATTACHMENTS, "socket", migration.of("sockets"));
+        count += renameField(stored, PARAMETERS, "parameter", migration.of("parameters"));
+        return count;
+    }
+
+    private static int renameList(CompoundTag stored, String key, Map<String, String> table) {
+        if (table.isEmpty() || !stored.contains(key, Tag.TAG_LIST)) {
+            return 0;
+        }
+        ListTag names = stored.getList(key, Tag.TAG_STRING);
+        ListTag renamed = new ListTag();
+        int count = 0;
+        for (int i = 0; i < names.size(); i++) {
+            String name = names.getString(i);
+            String to = table.get(name);
+            renamed.add(net.minecraft.nbt.StringTag.valueOf(to == null ? name : to));
+            count += to == null ? 0 : 1;
+        }
+        stored.put(key, renamed);
+        return count;
+    }
+
+    private static int renameKeys(CompoundTag compound, Map<String, String> table) {
+        int count = 0;
+        for (Map.Entry<String, String> rename : table.entrySet()) {
+            if (compound.contains(rename.getKey())) {
+                net.minecraft.nbt.Tag value = compound.get(rename.getKey());
+                compound.remove(rename.getKey());
+                compound.put(rename.getValue(), value);
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int renameField(CompoundTag stored, String key, String field, Map<String, String> table) {
+        if (table.isEmpty() || !stored.contains(key, Tag.TAG_LIST)) {
+            return 0;
+        }
+        int count = 0;
+        ListTag list = stored.getList(key, Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) {
+            CompoundTag entry = list.getCompound(i);
+            String to = table.get(entry.getString(field));
+            if (to != null) {
+                entry.putString(field, to);
+                count++;
+            }
+        }
+        return count;
     }
 
     /**

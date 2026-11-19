@@ -31,6 +31,31 @@ lost — body "trunk", joint "hitch"; new, at its rest pose — body "door"
 
 Nothing else changes: the assembly lives, at rest wherever it has no state.
 
+## Revision, migrations and replacement
+
+From schema 7, a definition declares its **revision** and what leads a save from one revision to the next
+([ADR-175](../../decisions/ADR-175.md) D3):
+
+```json
+"revision": 3,
+"migrations": [
+  { "from": 1, "rename": { "nodes": { "door_l": "left_door" } } },
+  { "from": 2, "rename": { "variables": { "lamp": "lights" }, "joints": { "pin": "hinge" } } }
+],
+"replaces": [ "mymod:old_car" ]
+```
+
+- **`revision`**: an integer, 1 by default. Raise it when you rename something a save names.
+- **`migrations`**: one per revision you leave (`from`), which **rename** — `nodes` (bodies and node state), `joints`,
+  `variables`, `seats` (the seats of a per-seat variable), `sockets` (of attachments), `parameters`. An assembly saved
+  at revision 1, loaded under revision 3, goes through both. A migration creates and computes nothing. Its `from`
+  precedes the definition's revision, and two migrations do not start from the same one.
+- **`replaces`**: the identifiers of definitions this one replaces. An assembly saved under the old identifier links
+  to it instead of staying inert; if a definition still carries that identifier, it keeps it. Without an alias, a
+  removed definition leaves its assemblies inert and intact.
+
+Content that changes **without** a new revision is restored by name, and the log says so once.
+
 ## Saves from before names
 
 An assembly saved before schema 6 has no names. AXION names its bodies from the loaded asset — the node each one

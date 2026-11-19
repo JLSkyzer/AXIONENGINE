@@ -164,6 +164,14 @@ public final class JournalGameTests {
         });
     }
 
+    private static CompoundTag decode(byte[] blob) {
+        try {
+            return net.minecraft.nbt.NbtIo.read(new java.io.DataInputStream(new java.io.ByteArrayInputStream(blob)));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** R-1743 : la sauvegarde d'une assembly arrive au journal sur le disque, ses clés axion:* intactes. */
     @GameTest(template = "test/plancher", timeoutTicks = 200)
     public static void uneSauvegardeArriveAuJournal(GameTestHelper helper) {
@@ -189,7 +197,10 @@ public final class JournalGameTests {
                 throw new IllegalStateException(e);
             }
             helper.assertTrue(lue != null, "pas encore au journal");
-            helper.assertTrue(java.util.Arrays.equals(lue.blob(), attendue.blob()), "blob journalisé différent");
+            // Les clés d'un NBT s'écrivent dans l'ordre de leur table de hachage, qui dépend de l'histoire des insertions :
+            // deux NBT égaux n'ont pas toujours les mêmes octets. On compare ce que le journal a gardé, pas ses octets.
+            helper.assertTrue(decode(lue.blob()).equals(decode(attendue.blob())), "blob journalisé différent : "
+                    + decode(lue.blob()) + " contre " + decode(attendue.blob()));
             helper.assertTrue(lue.definition() == attendue.definition() && lue.dimension().equals(attendue.dimension())
                     && lue.x() == attendue.x() && lue.y() == attendue.y() && lue.z() == attendue.z(),
                     "définition, dimension ou position journalisées différentes");

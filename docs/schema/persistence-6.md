@@ -32,6 +32,8 @@ axion:custom  byte[]    table CBOR des données personnalisées, absente si elle
 axion:vars    compound  valeur de chaque variable gardée, par nom, absente sans elles
 axion:params  list      modificateurs posés, dans l'ordre de leur pose, absente sans eux
 axion:ctrls   list      contrôleurs de véhicule attachés par l'API, dans l'ordre de l'attache, absente sans eux
+axion:rev     int       révision de la definition à laquelle l'état a été écrit (ADR-175 D3), 1 si absente
+axion:sha     string    empreinte SHA-256 du contenu de cette definition, en hexadécimal
 ```
 
 - **`axion:bodies`**, pour chaque corps autre que le corps racine : `node u32` (node racine du corps dans
@@ -56,6 +58,20 @@ axion:ctrls   list      contrôleurs de véhicule attachés par l'API, dans l'or
   la position de son entité. Une orientation unitaire au flottant près est rendue au bit près.
 - **Chargement.** Toute assembly chargée est créée endormie (22.4), puis réveillée par la gestion
   d'activité ; ses vitesses lui sont rendues au réveil.
+
+### `axion:rev` et `axion:sha`
+
+La révision (`revision` d'une definition du schéma 7, 1 sans) et l'empreinte du contenu de la definition à laquelle
+l'état a été écrit (ADR-175 D3), réécrites à chaque sauvegarde. À la lecture :
+
+- un état d'une révision antérieure à celle de la definition est mené jusqu'à elle par ses `migrations`, dont le `from`
+  va de la révision gardée à la courante : elles **renomment** ce que l'état nomme — les corps et l'état des nodes
+  (`nodes`), les joints, les variables et leurs sièges, les sockets des attaches, les paramètres des modificateurs —,
+  et rien d'autre ;
+- un contenu qui a changé sans nouvelle révision, ou un état d'une révision plus récente, se restaure par nom (D2) et
+  le dit une fois, en avertissement ;
+- `axion:def` suit l'identifiant que la definition a pris : une definition qui en `replaces` une autre reprend ses
+  assemblies sauvegardées, sauf si une definition porte encore l'ancien identifiant.
 
 ### `axion:vars`
 
