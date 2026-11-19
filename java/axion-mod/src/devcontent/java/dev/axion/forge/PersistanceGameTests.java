@@ -179,6 +179,84 @@ public final class PersistanceGameTests {
     }
 
     /**
+     * ADR-175 D1, D2 : un corps se retrouve par son nom, pas par son rang. Une assembly à deux corps est sauvegardée,
+     * son second corps déplacé de quatre blocs dans le NBT. Rechargée sous le nom que ce corps porte, il est restauré
+     * à ce déplacement ; rechargée sous un autre nom — le corps a disparu de la definition —, il est perdu et le corps
+     * de la definition, nouveau, prend sa pose de repos relative à la racine. Cela vérifie aussi, contre le natif, la
+     * pose de repos que {@code BodyRests} calcule en Java.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void adr175_UnCorpsSeRetrouveParSonNomEtUnCorpsNouveauPrendSaPoseDeRepos(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/deux_corps", new Vec3(4.5, DESSUS_DALLE + 6.0, 4.5), DROIT);
+        AxionEntity[] relue = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds()
+                        && assembly.secondaryBodies().size() == 1, "l'assembly est simulée, à deux corps"))
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    AxionEntity.BodyPose b = assembly.secondaryBodies().get(0);
+                    dev.axion.definition.BodyRests.Rest repos = AxionEntities.bodyRests("axion:test/deux_corps")
+                            .orElseThrow().rests().get(1);
+                    helper.assertTrue(Math.abs(b.x() - assembly.getX() - repos.offset()[0]) < 0.05
+                            && Math.abs(b.y() - assembly.getY() - repos.offset()[1]) < 0.05
+                            && Math.abs(b.z() - assembly.getZ() - repos.offset()[2]) < 0.05,
+                            "la pose de repos calculée en Java est celle du natif : " + java.util.Arrays.toString(
+                                    repos.offset()) + " pour (" + (b.x() - assembly.getX()) + ", "
+                                    + (b.y() - assembly.getY()) + ", " + (b.z() - assembly.getZ()) + ")");
+                    // Même nom : le corps est restauré où le NBT le met, quatre blocs plus loin.
+                    CompoundTag sauvegarde = new CompoundTag();
+                    helper.assertTrue(assembly.save(sauvegarde), "sauvegarde refusée");
+                    PersistedState etat = PersistedState.read(AssemblyTags.extract(sauvegarde)).orElseThrow();
+                    PersistedState.Body corps = etat.bodies().get(0);
+                    helper.assertTrue("b".equals(corps.name()), "le corps se nomme d'après son node : " + corps.name());
+                    new PersistedState(etat.position(), etat.rotation(), etat.linear(), etat.angular(), etat.sleeping(),
+                            List.of(new PersistedState.Body(corps.node(), "b", corps.x() + 4.0, corps.y(), corps.z(),
+                                    corps.rotation(), corps.linear(), corps.angular())), etat.joints())
+                            .write(sauvegarde);
+                    assembly.discard();
+                    relue[0] = rechargerSauvegarde(helper, sauvegarde);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].hasPhysicalBounds()
+                        && relue[0].secondaryBodies().size() == 1, "l'assembly relue est simulée"))
+                .thenExecute(() -> {
+                    AxionEntity.BodyPose b = relue[0].secondaryBodies().get(0);
+                    helper.assertTrue(Math.abs(b.x() - relue[0].getX() - 6.0) < 0.2,
+                            "restauré par son nom, à quatre blocs de plus de sa pose de repos : "
+                                    + (b.x() - relue[0].getX()));
+                    // Un autre nom : « b » est nouveau, « fantome » perdu.
+                    CompoundTag sauvegarde = new CompoundTag();
+                    helper.assertTrue(relue[0].save(sauvegarde), "sauvegarde refusée");
+                    PersistedState etat = PersistedState.read(AssemblyTags.extract(sauvegarde)).orElseThrow();
+                    PersistedState.Body corps = etat.bodies().get(0);
+                    new PersistedState(etat.position(), etat.rotation(), etat.linear(), etat.angular(), etat.sleeping(),
+                            List.of(new PersistedState.Body(corps.node(), "fantome", corps.x(), corps.y(), corps.z(),
+                                    corps.rotation(), corps.linear(), corps.angular())), etat.joints())
+                            .write(sauvegarde);
+                    relue[0].discard();
+                    relue[0] = rechargerSauvegarde(helper, sauvegarde);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].hasPhysicalBounds()
+                        && relue[0].secondaryBodies().size() == 1, "l'assembly relue est simulée"))
+                .thenExecute(() -> {
+                    AxionEntity.BodyPose b = relue[0].secondaryBodies().get(0);
+                    helper.assertTrue(Math.abs(b.x() - relue[0].getX() - 2.0) < 0.2,
+                            "le corps nouveau est à sa pose de repos, non où « fantome » était : "
+                                    + (b.x() - relue[0].getX()));
+                })
+                .thenSucceed();
+    }
+
+    /** Ajoute au monde l'entité relue d'une sauvegarde, sans retirer personne. */
+    private static AxionEntity rechargerSauvegarde(GameTestHelper helper, CompoundTag sauvegarde) {
+        Entity relue = EntityType.loadEntityRecursive(sauvegarde, helper.getLevel(), entite -> entite);
+        helper.assertTrue(relue instanceof AxionEntity, "la sauvegarde ne rend pas une assembly : " + relue);
+        helper.assertTrue(helper.getLevel().addFreshEntity(relue), "l'assembly rechargée n'entre pas dans le monde");
+        return (AxionEntity) relue;
+    }
+
+    /**
      * T-430 : la charnière fragile rompue, son second corps posé sur la dalle, sauvegardée puis rechargée,
      * reste rompue, et ce corps reste où il était posé — il ne revient pas pendre au gond.
      */

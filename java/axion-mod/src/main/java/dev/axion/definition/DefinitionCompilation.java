@@ -43,6 +43,8 @@ public final class DefinitionCompilation {
     private final Map<String, Seating> seatings = new HashMap<>();
     /** Le nom de chaque node de l'asset d'une definition compilée, dans son ordre : ce que nomme un masque. */
     private final Map<String, List<String>> nodeNames = new HashMap<>();
+    /** La pose de repos de chaque corps d'une definition compilée, dans le repère du corps racine (ADR-175 D2). */
+    private final Map<String, BodyRests> bodyRests = new HashMap<>();
     private final Map<String, Tuning> tunings = new HashMap<>();
     private final SortedMap<String, String> refused = new TreeMap<>();
 
@@ -76,6 +78,7 @@ public final class DefinitionCompilation {
         compiled.clear();
         seatings.clear();
         nodeNames.clear();
+        bodyRests.clear();
         tunings.clear();
         refused.clear();
         pending.clear();
@@ -174,6 +177,7 @@ public final class DefinitionCompilation {
             compiled.put(definition.id(), result.summary());
             seatings.put(definition.id(), seating);
             nodeNames.put(definition.id(), nodeNamesOf(a3d));
+            bodyRests.put(definition.id(), bodyRestsOf(a3d, result.summary().roots()));
             tunings.put(definition.id(), Tuning.of(definition.id(), definition.root(), loaded.extensions()));
             for (String warning : result.summary().warnings()) {
                 journal.add("AXION : definition " + definition.id() + " : " + warning);
@@ -217,6 +221,24 @@ public final class DefinitionCompilation {
      */
     public synchronized Optional<List<String>> nodeNames(String id) {
         return Optional.ofNullable(nodeNames.get(id));
+    }
+
+    /**
+     * {@return la pose de repos de chaque corps d'une definition compilée, ou vide si elle attend ou a été refusée}
+     * Ce que prend un corps que la sauvegarde ne connaissait pas (ADR-175 D2).
+     *
+     * @param id identifiant de la definition
+     */
+    public synchronized Optional<BodyRests> bodyRests(String id) {
+        return Optional.ofNullable(bodyRests.get(id));
+    }
+
+    private static BodyRests bodyRestsOf(byte[] a3d, int[] roots) {
+        try {
+            return BodyRests.of(dev.axion.asset.A3dSections.section(a3d, "NODE"), roots);
+        } catch (IllegalArgumentException | IllegalStateException unreadable) {
+            return BodyRests.NONE;
+        }
     }
 
     private static List<String> nodeNamesOf(byte[] a3d) {

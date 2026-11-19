@@ -170,7 +170,19 @@ final class AssemblyTags {
     static CompoundTag migrate(CompoundTag stored) {
         CompoundTag migrated = version(stored).orElse(-1) == 2 ? migrate2To3(stored) : stored;
         migrated = version(migrated).orElse(-1) == 3 ? migrate3To4(migrated) : migrated;
-        return version(migrated).orElse(-1) == 4 ? migrate4To5(migrated) : migrated;
+        migrated = version(migrated).orElse(-1) == 4 ? migrate4To5(migrated) : migrated;
+        return version(migrated).orElse(-1) == 5 ? migrate5To6(migrated) : migrated;
+    }
+
+    /**
+     * Le schéma 5 passe au 6 (ADR-175 D1) : ses corps et ses joints n'ont pas de nom. La migration n'en invente pas : la
+     * restauration les nomme d'après la definition chargée, qui lit les index contre elle ({@code StateMatching}). Toute
+     * clé est gardée ; seule la version change.
+     */
+    private static CompoundTag migrate5To6(CompoundTag stored) {
+        CompoundTag migrated = stored.copy();
+        migrated.putInt(VERSION, 6);
+        return migrated;
     }
 
     /**

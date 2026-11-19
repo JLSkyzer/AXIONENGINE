@@ -1303,6 +1303,17 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return la pose de repos de chaque corps d'une definition compilée (ADR-175 D2)} Vide tant qu'elle attend son
+     * asset, ou si elle a été refusée.
+     *
+     * @param id identifiant de la definition
+     */
+    public Optional<dev.axion.definition.BodyRests> bodyRests(String id) {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? Optional.empty() : compiling.bodyRests(id);
+    }
+
+    /**
      * {@return le nom de chaque node de l'asset d'une definition compilée, dans son ordre (ADR-174 D4)} Vide tant
      * qu'elle attend son asset, ou si elle a été refusée.
      *

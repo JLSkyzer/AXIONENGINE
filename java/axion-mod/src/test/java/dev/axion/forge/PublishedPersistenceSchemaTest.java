@@ -19,7 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Le NBT publié dans {@code docs/schema/persistence-5.md} est celui qu'écrit le code (PARTIE 22.2,
+ * Le NBT publié dans {@code docs/schema/persistence-6.md} est celui qu'écrit le code (PARTIE 22.2,
  * ADR-153 D2) : une clé, une taille ou une version changée sans être reportée fait échouer le build.
  */
 class PublishedPersistenceSchemaTest {
@@ -52,9 +52,9 @@ class PublishedPersistenceSchemaTest {
                         new float[] {0.5f, -2.0f, 0.125f},
                         new float[] {0f, 1.25f, -0.75f},
                         true,
-                        List.of(new PersistedState.Body(7, 2.5, 63.0, -3.0, new float[] {0f, 0f, 0f, 1f},
+                        List.of(new PersistedState.Body(7, "capot", 2.5, 63.0, -3.0, new float[] {0f, 0f, 0f, 1f},
                                 new float[] {1f, 2f, 3f}, new float[] {-1f, -2f, -3f})),
-                        List.of(new PersistedState.Joint(true, 0.5f)))
+                        List.of(new PersistedState.Joint(true, 0.5f, "charniere_capot")))
                 .write(stored);
         CustomTable custom = CustomTable.read(null, () -> 16_384, false);
         assertTrue(custom.put("demo", new byte[] {1, 2, 3}));

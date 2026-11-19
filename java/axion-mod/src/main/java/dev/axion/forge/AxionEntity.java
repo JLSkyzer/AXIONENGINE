@@ -3350,16 +3350,23 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return l'état que le NBT garde au schéma 3, au dernier tick simulé (serveur, ADR-153 D2)} */
     PersistedState persistedState() {
+        // ADR-175 D1 : chaque corps et chaque joint s'écrit avec son nom, d'après la definition de l'assembly.
+        List<String> nodeNames = AxionEntities.nodeNames(definitionId).orElse(List.of());
+        List<String> jointNames = StateMatching.jointNames(
+                AxionEntities.definitions().get(definitionId).map(Definition::root).orElse(null), jointFlags.length);
         List<PersistedState.Body> bodies = new ArrayList<>(secondaryBodies.size());
         for (BodyPose body : secondaryBodies) {
             Quaternionf r = body.rotation();
-            bodies.add(new PersistedState.Body(body.node(), body.x(), body.y(), body.z(),
-                    new float[] {r.x, r.y, r.z, r.w}, body.linear().clone(), body.angular().clone()));
+            bodies.add(new PersistedState.Body(body.node(),
+                    body.node() >= 0 && body.node() < nodeNames.size() ? nodeNames.get(body.node()) : null,
+                    body.x(), body.y(), body.z(), new float[] {r.x, r.y, r.z, r.w}, body.linear().clone(),
+                    body.angular().clone()));
         }
         List<PersistedState.Joint> joints = new ArrayList<>(jointFlags.length);
         for (int i = 0; i < jointFlags.length; i++) {
             joints.add(new PersistedState.Joint(
-                    (jointFlags[i] & JointState.BROKEN) != 0, i < jointMisalignment.length ? jointMisalignment[i] : 0f));
+                    (jointFlags[i] & JointState.BROKEN) != 0, i < jointMisalignment.length ? jointMisalignment[i] : 0f,
+                    jointNames == null ? null : jointNames.get(i)));
         }
         return new PersistedState(
                 new double[] {getX(), getY(), getZ()},

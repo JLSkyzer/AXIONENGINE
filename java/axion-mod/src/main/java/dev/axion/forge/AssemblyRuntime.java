@@ -318,43 +318,39 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     }
 
     /**
-     * L'état restauré de {@code CREATE_ASSEMBLY} (ADR-153 D3) : le corps racine à la pose et aux vitesses
-     * de la racine sauvegardée, chaque autre corps à celles du corps sauvegardé de même node racine, chaque
-     * joint à son état. {@code null}, avec un avertissement, si la sauvegarde ne correspond plus à la
-     * definition compilée — un corps ou un joint de plus ou de moins : l'assembly repart de sa pose de repos.
+     * L'état restauré de {@code CREATE_ASSEMBLY} (ADR-153 D3, ADR-175 D1, D2) : le corps racine à la pose et aux
+     * vitesses de la racine sauvegardée, chaque autre corps et chaque joint à l'état du même nom ({@link StateMatching}).
+     * Un corps nouveau prend sa pose de repos, relative à la racine ; ce qui a disparu est dit (E-7012), une fois.
+     * {@code null}, avec un avertissement, seulement si un corps nouveau ne sait pas où se poser : l'assembly repart de
+     * sa pose de repos.
      */
     private static SimCommandStream.Restored restoredOf(
             PersistedState saved, DefinitionCompiler.Summary summary, String definitionId) {
         int[] roots = summary.roots();
-        if (saved.bodies().size() != roots.length - 1 || saved.joints().size() != summary.joints()) {
-            LOGGER.warn("AXION : l'état sauvegardé d'une assembly de {} ne correspond plus à sa definition ({} corps "
-                    + "et {} joint(s) sauvegardés, {} et {} déclarés) ; elle repart de sa pose de repos",
-                    definitionId, saved.bodies().size() + 1, saved.joints().size(), roots.length, summary.joints());
+        // ADR-175 D1, D2 : chaque corps et chaque joint se rapproche par son nom ; ce qui manque se dit (E-7012).
+        List<String> nodeNames = AxionEntities.nodeNames(definitionId).orElse(List.of());
+        List<String> bodyNames = new ArrayList<>(roots.length);
+        for (int rootNode : Arrays.copyOfRange(roots, 1, roots.length)) {
+            bodyNames.add(StateMatching.nameOf(nodeNames, rootNode));
+        }
+        dev.axion.definition.Definition definition = AxionEntities.definitions().get(definitionId).orElse(null);
+        StateMatching.Outcome outcome = StateMatching.match(saved, bodyNames,
+                StateMatching.jointNames(definition == null ? null : definition.root(), summary.joints()),
+                summary.joints(), nodeNames,
+                AxionEntities.bodyRests(definitionId).orElse(dev.axion.definition.BodyRests.NONE));
+        if (outcome.restored() == null) {
+            LOGGER.warn("AXION : E-7012 l'état sauvegardé d'une assembly de {} n'est pas restauré : {} ; elle repart de"
+                    + " sa pose de repos", definitionId, outcome.refusal());
             return null;
         }
-        List<SimCommandStream.RestoredBody> restored = new ArrayList<>(roots.length);
-        restored.add(new SimCommandStream.RestoredBody(
-                saved.position(), saved.rotation(), saved.linear(), saved.angular()));
-        for (int rootNode : Arrays.copyOfRange(roots, 1, roots.length)) {
-            PersistedState.Body match = null;
-            for (PersistedState.Body candidate : saved.bodies()) {
-                if (candidate.node() == rootNode) {
-                    match = candidate;
-                }
-            }
-            if (match == null) {
-                LOGGER.warn("AXION : l'état sauvegardé d'une assembly de {} n'a pas le corps du node {} ; elle "
-                        + "repart de sa pose de repos", definitionId, rootNode);
-                return null;
-            }
-            restored.add(new SimCommandStream.RestoredBody(new double[] {match.x(), match.y(), match.z()},
-                    match.rotation(), match.linear(), match.angular()));
+        if (!outcome.lost().isEmpty() || !outcome.fresh().isEmpty() || outcome.legacy()) {
+            LOGGER.warn("AXION : E-7012 l'état sauvegardé d'une assembly de {} est restauré en partie{} : perdu — {} ;"
+                    + " nouveau, à sa pose de repos — {}", definitionId,
+                    outcome.legacy() ? " (état d'avant les noms, rapproché par les index d'alors)" : "",
+                    outcome.lost().isEmpty() ? "rien" : String.join(", ", outcome.lost()),
+                    outcome.fresh().isEmpty() ? "rien" : String.join(", ", outcome.fresh()));
         }
-        List<SimCommandStream.RestoredJoint> joints = new ArrayList<>(saved.joints().size());
-        for (PersistedState.Joint joint : saved.joints()) {
-            joints.add(new SimCommandStream.RestoredJoint(joint.broken(), joint.misalignment()));
-        }
-        return new SimCommandStream.Restored(List.copyOf(restored), List.copyOf(joints));
+        return outcome.restored();
     }
 
     /**

@@ -5294,11 +5294,13 @@ T-829  100 impacts par seconde sur 20 assemblies : trafic mesuré et borné
 ## 22.2 Format NBT
 
 ```text
-axion:v         int      version du schéma (5 depuis l'amendement A15)
+axion:v         int      version du schéma (6 depuis l'amendement A26)
 axion:def       long
 axion:pos       [double] 3        axion:rot  [float] 4
 axion:lvel      [float]  3        axion:avel [float] 3
 axion:flags     int
+axion:body_names list    le nom du node racine de chaque corps secondaire sauvegardé (ADR-175 D1, amendement A26)
+axion:joint_names list   le nom de chaque joint sauvegardé, dans le même ordre (idem)
 axion:parts     byte[]   8 octets par part : stage, flags, health u8, integrity u8,
                          absorbed f16, deform_max f16
 axion:links     byte[]   2 octets par liaison : integrity u8, flags u8
@@ -7967,7 +7969,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A23 | 2026-11-18 | audit de M5 (ADR-160 D8), constat sans règle changée | ANNEXE A.7 : CAP-01, CAP-40 (registres existants), CAP-44, CAP-46 à CAP-51 tenues, preuves vérifiées au code ; CAP-42 n'est **pas** tenue malgré A14 : `ContentCheck` refusait une definition qui nomme un contrôleur d'addon sans dire ce qu'il n'avait pas pu juger — corrigé le même jour, R-1757 précisée, CAP-42 tenue ; CAP-04 n'est pas tenue malgré ADR-163 : `hide_node`, `show_node`, `swap_mesh` et `set_material_param` ne s'exécutent pas |
 | A24 | 2026-11-18 | ADR-173, accepté par Killian (tenu le 2026-11-18) | les sources procédurales de l'ANNEXE A.4 se lisent par l'API, des deux côtés (`source(String)` sur `VehicleView` et `Assembly`, CAP-43) ; la phase d'enregistrement du client naît avec son premier registre (CAP-45) ; ANNEXE A.4 : la lecture par l'API ; A.7 : CAP-43 et CAP-45 tenues |
 | A25 | 2026-11-18 | ADR-174, accepté par Killian (en cours, tranche par tranche ; 9a1, 9a2, 9c, 9b et 9d1 le 2026-11-18, 9d2, 9e, 9f, 9g1 et 9g2 le 2026-11-19, close ce jour : C-71 `/axion events`, `/axion defs info` dit événements et capteurs, 31.4 l'overlay `sensors`, A.7 CAP-02, CAP-04, CAP-05 et CAP-16 tenues ; `registerAction`, `registerInteraction`, `open_container` délégué, `sensorOccupants` au 23.3, R-1782 étendue ; `sensors` au schéma 7, `SET_SENSOR` et ABI 29, descripteur 12 au 21.5, `sensor.<n>.count` en A.4 ; variables `scope: "seat"`, descripteur 11 au 21.5, `axion:vars` au 22.2, `var.<n>.<siège>` en A.4 ; R-1440, la grammaire de `trigger`, `weight_source` et `mask`, descripteur 10 au 21.5, `SET_WEIGHT` et ABI 28 ; schéma 7 et ses `events`, R-1782 avec `swap_mesh` par node et `emit_event`, R-1783, descripteur 9 au 21.5, `S2C_Event` et protocole 13 au 21.4, `axion:nodes` au 22.2 ; 23.3 : les écouteurs des sièges, des interactions et des événements, `Assembly.emit`, `E-1012` ; A.3 : `content.listener_strikes`, `net.events_per_player_tick`) | événements de contenu déclarés, message `EVENT` (protocole 13), écouteurs typés et refusables, état des nodes sauvegardé et répliqué, `trigger` à grammaire fermée, poids et masque d'une couche, capteurs déclarables, registres des actions et des interactions (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) |
-| A26 | 2026-11-18 | ADR-175, accepté par Killian (en cours, tranche par tranche) | corps et joints sauvegardés par nom (NBT 6), restauration partielle nommée (`E-7012`), `revision`, `migrations` et `replaces`, une instance tient sa definition, reliure à chaud après une recompilation (CAP-38, CAP-33) |
+| A26 | 2026-11-18 | ADR-175, accepté par Killian (en cours, tranche par tranche ; 10b le 2026-11-19 : 22.2 `axion:v` 6, `axion:body_names` et `axion:joint_names` ; A.1 `E-7012`) | corps et joints sauvegardés par nom (NBT 6), restauration partielle nommée (`E-7012`), `revision`, `migrations` et `replaces`, une instance tient sa definition, reliure à chaud après une recompilation (CAP-38, CAP-33) |
 | A27 | 2026-11-18 | ADR-176, accepté par Killian (en cours, tranche par tranche) | état natif du moteur et démarreur (`IGNITION`), énergie déclarée et simulée, usure des pneus par roue, mouillé par véhicule et facteur par matériau et par pneu, causes `axion` du moteur ouvertes (CAP-12, CAP-20) |
 | A28 | 2026-11-18 | ADR-177, accepté par Killian (en cours, tranche par tranche) | `seats[].occupant` (pose, échelle, œil), mannequin du joueur généré et vérifié, `axion.mixins.json` non obligatoire (R-1921) ; 26.2 : la cible `Entity.collide`, acceptée pour CAP-14 (ADR-177 D4), son injection exacte décidée par l'ADR de CAP-14 (CAP-13, CAP-56, CAP-14) |
 
@@ -8019,6 +8021,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | `E-7003` | definitions | schéma inconnu | refusée | mettre à jour |
 | `E-7010` | paramètres | écriture de variable refusée : un paramètre qu'elle règle sortirait de ses bornes, ou un modificateur actif deviendrait inactif (ADR-167 D2, D4) | la variable garde sa valeur ; au journal, une par seconde au plus | retirer le modificateur en conflit, ou élargir `tuning.ranges` |
 | `E-7011` | paramètres | modificateur relu ou repris que les bornes de la definition refusent, ou qui vise un paramètre qu'elle n'a plus ; contrôleur de véhicule relu qu'aucun mod n'enregistre plus (ADR-167 D7) | gardé posé mais inactif, journalisé | le retirer, élargir `tuning.ranges`, ou rendre le mod du contrôleur |
+| `E-7012` | sauvegarde | état sauvegardé d'une assembly restauré en partie : un corps ou un joint que la definition n'a plus, ou qu'elle a de nouveau ; ou un état d'avant les noms (schéma 5) rapproché par ses index (ADR-175 D2) | le reste est restauré ; ce qui manque repart de sa pose de repos, ce qui a disparu est perdu, chacun nommé, une fois par assembly | rétablir l'élément nommé dans la definition, ou accepter la perte |
 | `E-8001` | déformation | budget mémoire de déformation dépassé | nouvelle déformation refusée | augmenter le budget ou baisser la qualité |
 | `E-8010` | déformation | région dégénérée | asset refusé | corriger la région |
 | `E-8011` | structure | graphe structurel cyclique | asset refusé | corriger les liaisons |

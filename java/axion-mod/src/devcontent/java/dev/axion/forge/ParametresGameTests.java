@@ -124,7 +124,8 @@ public final class ParametresGameTests {
                             Modifier.Operation.MULTIPLY_BASE, 0.25), AssemblyParameters.COMMAND);
                     CompoundTag sauvegarde = new CompoundTag();
                     helper.assertTrue(assembly.save(sauvegarde), "sauvegarde refusée");
-                    helper.assertTrue(sauvegarde.getInt(AssemblyTags.VERSION) == 5, "schéma 5 : "
+                    helper.assertTrue(sauvegarde.getInt(AssemblyTags.VERSION) == dev.axion.entity.AssemblyBinding.NBT_SCHEMA,
+                            "schéma courant : "
                             + sauvegarde.getInt(AssemblyTags.VERSION));
                     helper.assertTrue(sauvegarde.getList(AssemblyTags.PARAMETERS, 10).size() == 2,
                             "deux modificateurs gardés : " + sauvegarde.get(AssemblyTags.PARAMETERS));

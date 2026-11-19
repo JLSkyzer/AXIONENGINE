@@ -1,8 +1,9 @@
-# AXION ENGINE — persistance, schéma 5
+# AXION ENGINE — persistance, schéma 6
 
-Forme publiée de ce qu'AXION écrit sur le disque (PARTIE 22) : le NBT d'une assembly au schéma 5 et le
+Forme publiée de ce qu'AXION écrit sur le disque (PARTIE 22) : le NBT d'une assembly au schéma 6 et le
 journal latéral de récupération (22.5.2). Décidé par [ADR-153](../decisions/ADR-153.md), les variables gardées par
-[ADR-163](../decisions/ADR-163.md) D2, les modificateurs posés par [ADR-167](../decisions/ADR-167.md) D7 ; ce document
+[ADR-163](../decisions/ADR-163.md) D2, les modificateurs posés par [ADR-167](../decisions/ADR-167.md) D7, les corps et
+les joints rangés par nom par [ADR-175](../decisions/ADR-175.md) D1 ; ce document
 en donne les octets. `PublishedPersistenceSchemaTest` et `PublishedJournalFormatTest` confrontent les
 valeurs ci-dessous au code : un changement de format qui n'y est pas reporté fait échouer le build.
 
@@ -16,7 +17,7 @@ réécrit telles quelles : une clé qu'une version ultérieure aurait posée ne 
 version-ci ne la comprend pas (R-1710). Les nombres d'un `byte[]` sont en little-endian.
 
 ```text
-axion:v       int       5
+axion:v       int       6
 axion:def     long      identifiant 64 bits de la definition
 axion:pos     [double]  3, position monde du corps racine, en blocs
 axion:rot     [float]   4, orientation du corps racine, quaternion (x, y, z, w)
@@ -25,6 +26,8 @@ axion:avel    [float]   3, vitesse angulaire du corps racine, rad/s
 axion:flags   int       bit 0 : endormie ; les autres réservés, écrits à 0, gardés
 axion:bodies  byte[]    68 octets par corps secondaire
 axion:joints  byte[]    8 octets par joint, dans l'ordre de la definition
+axion:body_names  list  le nom du node racine de chaque corps de axion:bodies, dans le même ordre
+axion:joint_names list  le nom de chaque joint de axion:joints, dans le même ordre
 axion:custom  byte[]    table CBOR des données personnalisées, absente si elle est vide
 axion:vars    compound  valeur de chaque variable gardée, par nom, absente sans elles
 axion:params  list      modificateurs posés, dans l'ordre de leur pose, absente sans eux
@@ -36,6 +39,16 @@ axion:ctrls   list      contrôleurs de véhicule attachés par l'API, dans l'or
   angulaire `f32[3]`.
 - **`axion:joints`**, pour chaque joint : `flags u8` (bit 0 : rompu ; les autres réservés), 3 octets
   réservés à 0, puis le désalignement `f32`, en blocs — le dernier que Java a commandé.
+- **`axion:body_names`** et **`axion:joint_names`** (schéma 6, ADR-175 D1) : une liste de textes, un par élément des
+  deux tableaux d'octets, dans leur ordre. C'est par eux que la lecture rapproche chaque corps et chaque joint de la
+  definition chargée : le `node u32` d'un corps n'est plus qu'un repère, qu'une definition réordonnée rend faux.
+  Absentes, ou d'un nombre différent de leurs éléments, elles ne se lisent pas : l'état est lu sans noms, comme au
+  schéma 5.
+- **Restauration partielle** (ADR-175 D2). Ce qui correspond par son nom est restauré. Un corps que la definition a
+  de nouveau prend sa pose de repos, relative à la racine restaurée et à sa vitesse ; un joint nouveau repart intact.
+  Ce que la sauvegarde gardait et que la definition n'a plus est perdu, et dit : un `E-7012` par assembly, une fois,
+  qui nomme chaque corps et chaque joint perdu ou nouveau. L'état n'est jamais appliqué à un autre élément, ni
+  abandonné en bloc tant que la racine existe.
 - **`axion:pos`** est écrite à chaque sauvegarde. L'entité se place par son `Pos` vanilla ; `axion:pos`
   sert au journal, où il n'y a pas d'entité.
 - **Lecture.** Un état incomplet ou illisible (longueur qui n'est pas un multiple de la taille d'un
@@ -90,9 +103,10 @@ illisible est gardée telle quelle, en lecture seule.
 | absente, ou inférieure à 2 | entité inerte, octets intacts : aucune version d'AXION ne l'a écrite |
 | 2 | migrée en 3 (T-434) : `axion:v` passe à 3, `axion:def`, `axion:rot` et toute autre clé gardées ; aucun état inventé, l'assembly repart de sa pose de repos, à vitesse nulle, endormie ; puis en 4 |
 | 3 | migrée en 4 : `axion:v` passe à 4, toute clé gardée ; ses variables repartent de leur défaut ; puis en 5 |
-| 4 | migrée en 5 : `axion:v` passe à 5, toute clé gardée ; aucun modificateur posé |
-| 5 | lue |
-| supérieure à 5 | entité inerte, octets réécrits à l'identique (T-433) |
+| 4 | migrée en 5 : `axion:v` passe à 5, toute clé gardée ; aucun modificateur posé ; puis en 6 |
+| 5 | migrée en 6 (ADR-175 D1) : `axion:v` passe à 6, toute clé gardée ; aucun nom inventé — la restauration nomme ses corps d'après l'asset chargé (le node de chacun) et rapproche ses joints par rang, seulement si leur nombre n'a pas changé, et le dit (`E-7012`) |
+| 6 | lue |
+| supérieure à 6 | entité inerte, octets réécrits à l'identique (T-433) |
 
 Le schéma 2 ne portait que `axion:v`, `axion:def` et `axion:rot`.
 

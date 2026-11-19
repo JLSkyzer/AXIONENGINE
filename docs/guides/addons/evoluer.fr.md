@@ -1,0 +1,39 @@
+# Faire évoluer son contenu
+
+Une assembly sauvegardée garde son état — la pose de chacun de ses corps, l'état de chacun de ses joints — pendant que
+ta definition change : tu ajoutes une porte, tu retires un joint, tu réordonnes tes corps
+([ADR-175](../../decisions/ADR-175.md)). Ce qui se retrouve par son nom est restauré ; le reste est dit, jamais
+appliqué à un mauvais élément.
+
+## Les corps et les joints se retrouvent par leur nom
+
+Depuis le schéma de sauvegarde 6, chaque corps est rangé sous le nom de son node racine, et chaque joint sous le nom que
+ta definition lui donne (`joints[].name`). Réordonner tes corps ou tes joints, ou changer l'index d'un node en
+réexportant ton modèle, ne mélange donc plus rien : « capot » garde l'état de « capot ».
+
+| Ce qui change dans ta definition | Ce que devient l'état sauvegardé |
+|---|---|
+| un corps ou un joint **renommé** | l'ancien est perdu, le nouveau repart de sa pose de repos |
+| un corps ou un joint **ajouté** | il prend sa pose de repos : un corps, relative au corps racine restauré et à sa vitesse ; un joint, intact |
+| un corps ou un joint **retiré** | son état est perdu |
+| le **corps racine** | toujours restauré : il est la pose de l'assembly |
+
+Renommer, c'est perdre : la restauration ne sait pas que « portiere » est l'ancienne « porte ». Les migrations
+déclarées, qui renomment sans perdre, viennent avec la révision d'une definition.
+
+## Ce que dit le journal
+
+Quand quelque chose est perdu ou nouveau, le journal du serveur le dit **une fois par assembly**, sous le code `E-7012` :
+
+```text
+AXION : E-7012 l'état sauvegardé d'une assembly de monmod:voiture est restauré en partie :
+perdu — corps « coffre », joint « attelage » ; nouveau, à sa pose de repos — corps « porte »
+```
+
+Rien d'autre ne change : l'assembly vit, au repos là où elle n'a pas d'état.
+
+## Les sauvegardes d'avant les noms
+
+Une assembly sauvegardée avant le schéma 6 n'a pas de noms. AXION nomme ses corps d'après l'asset chargé — le node que
+chacun portait — et rapproche ses joints par rang, seulement si leur nombre n'a pas changé ; le journal dit que l'état
+est « d'avant les noms ». À la première sauvegarde suivante, elle est au schéma 6 : plus de rapprochement par index.

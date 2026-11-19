@@ -3,6 +3,7 @@ package dev.axion.forge;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -169,7 +170,7 @@ class PersistedStateTest {
         v3.putLong("axion:def", 0x1234L);
         v3.putByteArray("axion:parts", new byte[] {4, 5});
         CompoundTag v5 = AssemblyTags.migrate(v3);
-        assertEquals(5, AssemblyTags.version(v5).orElseThrow());
+        assertEquals(6, AssemblyTags.version(v5).orElseThrow());
         assertEquals(AssemblyBinding.NBT_SCHEMA, AssemblyTags.version(v5).orElseThrow());
         assertArrayEquals(new byte[] {4, 5}, v5.getByteArray("axion:parts"), "une clé inconnue reste");
         assertTrue(AssemblyTags.variables(v5).isEmpty(), "le schéma 3 n'avait pas de variables : rien d'inventé");
@@ -185,10 +186,58 @@ class PersistedStateTest {
         v4.putLong("axion:def", 0x1234L);
         AssemblyTags.putVariables(v4, java.util.Map.of("gyrophare", 1.0));
         CompoundTag v5 = AssemblyTags.migrate(v4);
-        assertEquals(5, AssemblyTags.version(v5).orElseThrow());
+        assertEquals(6, AssemblyTags.version(v5).orElseThrow());
         assertEquals(java.util.Map.of("gyrophare", 1.0), AssemblyTags.variables(v5));
         assertTrue(AssemblyTags.parameters(v5).isEmpty());
         assertEquals(4, v4.getInt("axion:v"), "l'original n'est pas touché");
+    }
+
+    @Test
+    @DisplayName("ADR-175 D1 : un NBT au schéma 5 se migre au 6 sans nom inventé ; ses corps et ses joints restent sans nom")
+    void migration5Vers6() {
+        CompoundTag v5 = new CompoundTag();
+        v5.putInt("axion:v", 5);
+        v5.putLong("axion:def", 0x1234L);
+        v5.putByteArray("axion:parts", new byte[] {9});
+        new PersistedState(new double[] {1, 2, 3}, new float[] {0f, 0f, 0f, 1f}, new float[3], new float[3], false,
+                List.of(new PersistedState.Body(7, 2.5, 63.0, -3.0, new float[] {0f, 0f, 0f, 1f}, new float[3],
+                        new float[3])), List.of(new PersistedState.Joint(true, 0.5f))).write(v5);
+        CompoundTag v6 = AssemblyTags.migrate(v5);
+        assertEquals(6, AssemblyTags.version(v6).orElseThrow());
+        assertArrayEquals(new byte[] {9}, v6.getByteArray("axion:parts"), "une clé inconnue reste");
+        assertTrue(!v6.contains("axion:body_names") && !v6.contains("axion:joint_names"), "aucun nom inventé");
+        PersistedState lu = PersistedState.read(v6).orElseThrow();
+        assertEquals(7, lu.bodies().get(0).node());
+        assertNull(lu.bodies().get(0).name());
+        assertNull(lu.joints().get(0).name());
+        assertEquals(5, v5.getInt("axion:v"), "l'original n'est pas touché");
+    }
+
+    @Test
+    @DisplayName("ADR-175 D1 : les noms des corps et des joints voyagent avec leur état, et se relisent")
+    void nomsGardes() {
+        CompoundTag stored = new CompoundTag();
+        PersistedState attendu = new PersistedState(new double[] {1, 2, 3}, new float[] {0f, 0f, 0f, 1f},
+                new float[3], new float[3], false,
+                List.of(new PersistedState.Body(7, "capot", 2.5, 63.0, -3.0, new float[] {0f, 0f, 0f, 1f},
+                        new float[3], new float[3])),
+                List.of(new PersistedState.Joint(true, 0.5f, "charniere_capot"),
+                        new PersistedState.Joint(false, 0f, "attelage")));
+        attendu.write(stored);
+        assertEquals("capot", stored.getList("axion:body_names", 8).getString(0));
+        PersistedState lu = PersistedState.read(stored).orElseThrow();
+        assertEquals("capot", lu.bodies().get(0).name());
+        assertEquals(List.of("charniere_capot", "attelage"), lu.joints().stream().map(PersistedState.Joint::name).toList());
+        // Un état dont un élément n'a pas de nom n'écrit aucun nom, et retire ceux d'avant.
+        new PersistedState(new double[] {1, 2, 3}, new float[] {0f, 0f, 0f, 1f}, new float[3], new float[3], false,
+                List.of(new PersistedState.Body(7, 2.5, 63.0, -3.0, new float[] {0f, 0f, 0f, 1f}, new float[3],
+                        new float[3])), List.of()).write(stored);
+        assertTrue(!stored.contains("axion:body_names") && !stored.contains("axion:joint_names"));
+        // Des noms en nombre différent de leurs éléments ne se lisent pas : l'état reste lu, sans noms.
+        CompoundTag incoherent = new CompoundTag();
+        attendu.write(incoherent);
+        incoherent.getList("axion:body_names", 8).add(net.minecraft.nbt.StringTag.valueOf("de trop"));
+        assertNull(PersistedState.read(incoherent).orElseThrow().bodies().get(0).name());
     }
 
     @Test
@@ -232,7 +281,7 @@ class PersistedStateTest {
     @Test
     @DisplayName("T-433 : un schéma postérieur, ou antérieur à 2, traverse la migration intact (R-1710)")
     void autresVersionsIntactes() {
-        for (int version : new int[] {1, 5, 6, 9}) {
+        for (int version : new int[] {1, 6, 7, 9}) {
             CompoundTag gardees = new CompoundTag();
             gardees.putInt("axion:v", version);
             gardees.putLong("axion:def", 77L);

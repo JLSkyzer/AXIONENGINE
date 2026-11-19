@@ -51,6 +51,15 @@ record PersistedState(
     /** Joints : {@link Joint#BYTES} octets chacun. */
     static final String JOINTS = "axion:joints";
 
+    /**
+     * Le nom du node racine de chaque corps de {@link #BODIES}, dans le même ordre (schéma 6, ADR-175 D1) : ce qui
+     * rapproche un corps de celui de la definition, quel que soit l'index de son node.
+     */
+    static final String BODY_NAMES = "axion:body_names";
+
+    /** Le nom de chaque joint de {@link #JOINTS}, dans le même ordre (schéma 6, ADR-175 D1). */
+    static final String JOINT_NAMES = "axion:joint_names";
+
     /** Drapeau de {@link #FLAGS} : l'assembly dort. Les autres bits sont réservés. */
     static final int SLEEPING = 1;
 
@@ -58,7 +67,8 @@ record PersistedState(
      * Un corps autre que le corps racine : son node racine, sa position monde, son orientation et ses
      * vitesses monde.
      *
-     * @param node node racine du corps dans l'asset
+     * @param node node racine du corps dans l'asset, à l'écriture
+     * @param name le nom de ce node (ADR-175 D1), {@code null} pour un état de schéma 5, qui n'en avait pas
      * @param x position monde, en blocs
      * @param y idem
      * @param z idem
@@ -66,10 +76,16 @@ record PersistedState(
      * @param linear vitesse linéaire, en m/s
      * @param angular vitesse angulaire, en rad/s
      */
-    record Body(int node, double x, double y, double z, float[] rotation, float[] linear, float[] angular) {
+    record Body(int node, String name, double x, double y, double z, float[] rotation, float[] linear,
+            float[] angular) {
 
         /** Taille d'un corps dans {@link #BODIES}, en octets : node, position, orientation, vitesses. */
         static final int BYTES = 4 + 3 * 8 + 4 * 4 + 3 * 4 + 3 * 4;
+
+        /** Un corps sans nom : celui d'un état de schéma 5. */
+        Body(int node, double x, double y, double z, float[] rotation, float[] linear, float[] angular) {
+            this(node, null, x, y, z, rotation, linear, angular);
+        }
     }
 
     /**
@@ -77,8 +93,14 @@ record PersistedState(
      *
      * @param broken le joint est rompu
      * @param misalignment désalignement de son ancrage, en blocs
+     * @param name son nom (ADR-175 D1), {@code null} pour un état de schéma 5, qui n'en avait pas
      */
-    record Joint(boolean broken, float misalignment) {
+    record Joint(boolean broken, float misalignment, String name) {
+
+        /** Un joint sans nom : celui d'un état de schéma 5. */
+        Joint(boolean broken, float misalignment) {
+            this(broken, misalignment, null);
+        }
 
         /** Taille d'un joint dans {@link #JOINTS}, en octets : drapeaux, trois réservés, désalignement. */
         static final int BYTES = 8;
@@ -115,6 +137,35 @@ record PersistedState(
             joints.putFloat(joint.misalignment());
         }
         stored.putByteArray(JOINTS, joints.array());
+        // ADR-175 D1 : les noms, que la lecture rapproche de la definition ; sans nom pour tous, aucune clé.
+        putNames(stored, BODY_NAMES, bodies.stream().map(Body::name).toList());
+        putNames(stored, JOINT_NAMES, this.joints.stream().map(Joint::name).toList());
+    }
+
+    private static void putNames(CompoundTag stored, String key, List<String> names) {
+        if (names.isEmpty() || names.stream().anyMatch(java.util.Objects::isNull)) {
+            stored.remove(key);
+            return;
+        }
+        ListTag list = new ListTag();
+        names.forEach(name -> list.add(net.minecraft.nbt.StringTag.valueOf(name)));
+        stored.put(key, list);
+    }
+
+    /** {@return les noms gardés sous cette clé, ou {@code null} s'il en manque ou que leur nombre ne convient pas} */
+    private static List<String> names(CompoundTag stored, String key, int expected) {
+        if (!stored.contains(key, Tag.TAG_LIST)) {
+            return null;
+        }
+        ListTag list = stored.getList(key, Tag.TAG_STRING);
+        if (list.size() != expected) {
+            return null;
+        }
+        List<String> names = new ArrayList<>(expected);
+        for (int i = 0; i < expected; i++) {
+            names.add(list.getString(i));
+        }
+        return names;
     }
 
     /**
@@ -160,6 +211,17 @@ record PersistedState(
                 return Optional.empty();
             }
             joints.add(new Joint((flags & Joint.BROKEN) != 0, misalignment));
+        }
+        // ADR-175 D1 : au schéma 6, chaque corps et chaque joint porte son nom ; au 5, aucun.
+        List<String> bodyNames = names(stored, BODY_NAMES, bodies.size());
+        List<String> jointNames = names(stored, JOINT_NAMES, joints.size());
+        for (int i = 0; i < bodies.size() && bodyNames != null; i++) {
+            Body body = bodies.get(i);
+            bodies.set(i, new Body(body.node(), bodyNames.get(i), body.x(), body.y(), body.z(), body.rotation(),
+                    body.linear(), body.angular()));
+        }
+        for (int i = 0; i < joints.size() && jointNames != null; i++) {
+            joints.set(i, new Joint(joints.get(i).broken(), joints.get(i).misalignment(), jointNames.get(i)));
         }
         return Optional.of(new PersistedState(position, new float[] {q.x, q.y, q.z, q.w}, linear, angular,
                 (stored.getInt(FLAGS) & SLEEPING) != 0, List.copyOf(bodies), List.copyOf(joints)));

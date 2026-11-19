@@ -71,6 +71,7 @@ plugins:
             Caméras et tableau de bord: Vehicle cameras and dashboard
             Attaches: Attachments
             Écouter et refuser un geste: Listening to and refusing a gesture
+            Faire évoluer son contenu: Evolving your content
             Glossaire: Glossary
             Jouer et héberger: Play and host
             Configuration: Configuration
@@ -93,6 +94,7 @@ nav:
       - Caméras et tableau de bord: addons/cameras.md
       - Attaches: addons/attaches.md
       - Écouter et refuser un geste: addons/ecouter.md
+      - Faire évoluer son contenu: addons/evoluer.md
       - Glossaire: addons/glossaire.md
   - Jouer et héberger:
       - Configuration: CONFIGURATION.md

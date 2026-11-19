@@ -77,6 +77,8 @@ public final class AxionEntities {
     /** Les sièges et les interactions d'une definition compilée (ADR-158 D1), par identifiant. */
     private static volatile Function<String, Optional<Seating>> seatings = id -> Optional.empty();
     private static volatile Function<String, Optional<List<String>>> nodeNames = id -> Optional.empty();
+    private static volatile Function<String, Optional<dev.axion.definition.BodyRests>> bodyRests =
+            id -> Optional.empty();
 
     /** Les paramètres réglables d'une definition compilée (ADR-167 D1), par identifiant. */
     private static volatile Function<String, Optional<dev.axion.definition.Tuning>> tunings = id -> Optional.empty();
@@ -129,6 +131,7 @@ public final class AxionEntities {
         summaries = runtime::compiledDefinition;
         seatings = runtime::seating;
         nodeNames = runtime::assetNodeNames;
+        bodyRests = runtime::bodyRests;
         tunings = runtime::tuning;
         rays = runtime::raycastAssembly;
         boxes = runtime::boxTouchesAssembly;
@@ -162,6 +165,16 @@ public final class AxionEntities {
      */
     static Optional<List<String>> nodeNames(String id) {
         return nodeNames.apply(id);
+    }
+
+    /**
+     * {@return la pose de repos de chaque corps d'une definition compilée, vide tant qu'elle l'attend} Ce que prend un
+     * corps que la sauvegarde ne connaissait pas (ADR-175 D2).
+     *
+     * @param id identifiant de la definition
+     */
+    static Optional<dev.axion.definition.BodyRests> bodyRests(String id) {
+        return bodyRests.apply(id);
     }
 
     /**
