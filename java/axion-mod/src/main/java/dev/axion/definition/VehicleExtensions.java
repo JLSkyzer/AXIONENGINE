@@ -126,6 +126,68 @@ public final class VehicleExtensions {
         return new VehicleExtensions(Map.of(), Map.of(), Map.of(), true);
     }
 
+    /**
+     * Une action ou une interaction qu'un mod enregistre (ADR-174 D6).
+     *
+     * @param id son identifiant, {@code <modId>:<nom>}
+     * @param owner le mod qui la livre
+     * @param handler un {@link dev.axion.api.assembly.ActionHandler} ou un
+     *     {@link dev.axion.api.assembly.InteractionHandler}
+     */
+    public record Handler(String id, String owner, Object handler) {
+
+        /** Refuse un champ absent. */
+        public Handler {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(owner, "owner");
+            Objects.requireNonNull(handler, "handler");
+        }
+    }
+
+    private Map<String, Handler> actions = Map.of();
+    private Map<String, Handler> interactions = Map.of();
+
+    /**
+     * {@return ces extensions, avec les actions et les interactions des mods (ADR-174 D6)}
+     *
+     * @param registeredActions les actions, par identifiant
+     * @param registeredInteractions les interactions, par identifiant
+     */
+    public VehicleExtensions withHandlers(Map<String, Handler> registeredActions,
+            Map<String, Handler> registeredInteractions) {
+        VehicleExtensions copy = new VehicleExtensions(controllers, parameters, widgets, codeAbsent);
+        copy.actions = Map.copyOf(registeredActions);
+        copy.interactions = Map.copyOf(registeredInteractions);
+        return copy;
+    }
+
+    /**
+     * {@return une action enregistrée}
+     *
+     * @param id son identifiant
+     */
+    public Optional<Handler> action(String id) {
+        return Optional.ofNullable(actions.get(id));
+    }
+
+    /**
+     * {@return une interaction enregistrée}
+     *
+     * @param id son identifiant
+     */
+    public Optional<Handler> interaction(String id) {
+        return Optional.ofNullable(interactions.get(id));
+    }
+
+    /**
+     * {@return l'interaction à qui AXION délègue {@code open_container} : la première qu'un mod enregistre sous ce nom,
+     * dans l'ordre des mods}
+     */
+    public Optional<Handler> container() {
+        return interactions.values().stream().filter(handler -> handler.id().endsWith(":open_container"))
+                .sorted(java.util.Comparator.comparing(Handler::id)).findFirst();
+    }
+
     /** {@return vrai hors jeu : le code des mods n'est pas chargé, leurs extensions ne se jugent pas} */
     public boolean codeAbsent() {
         return codeAbsent;

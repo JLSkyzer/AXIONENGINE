@@ -1620,18 +1620,7 @@
           },
           "action": {
             "type": "string",
-            "enum": [
-              "sit",
-              "toggle_animation",
-              "play_animation",
-              "open_container",
-              "emit_event",
-              "set_variable",
-              "repair",
-              "attach",
-              "detach",
-              "actions"
-            ]
+            "pattern": "^(?:sit|toggle_animation|play_animation|open_container|emit_event|set_variable|repair|attach|detach|actions|[a-z0-9_.-]+:[a-z0-9/._-]+)$"
           },
           "animation": {
             "type": "string",
@@ -1751,6 +1740,12 @@
                   "additionalProperties": false
                 }
               },
+              "patternProperties": {
+                "^[a-z0-9_.-]+:[a-z0-9/._-]+$": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
               "additionalProperties": false
             },
             "minItems": 1,
@@ -1761,6 +1756,10 @@
             "type": "string",
             "pattern": "^[ -~]{1,64}$",
             "x-axion-refers": "event"
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {}
           }
         },
         "required": [

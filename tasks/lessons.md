@@ -2551,3 +2551,16 @@ a du temps libre (`haveTime()`) : entre deux ticks, une tâche « du tick suivan
 
 **Règle.** Une attente en ticks se compte sur `server.getTickCount()` (ou un événement de tick), jamais sur le nombre
 de `TickTask` enchaînées.
+
+## 2026-11-19 | T-365 rouge une fois sur le banc natif, vert au banc relancé seul
+
+**Ce qui a mal tourné.** La CI de 9g1 (qui ne touche ni le rendu ni les roues) a vu T-365 rouge sur le backend natif :
+angle × rayon / distance à 0,61 sur les quatre roues ; le banc des shaders a été sauté. Relancé seul juste après, le
+banc natif est vert, T-365 compris, puis celui des shaders.
+
+**Cause.** Non établie : la mesure intègre l'angle des roues image par image pendant la roue libre ; une hypothèse est
+un relevé fait sur des images où le rendu n'a pas avancé l'angle. Pas reproduite en un essai.
+
+**Règle.** Un rouge du banc sur une tranche qui ne touche pas ce qu'il mesure se relance une fois, seul, avant toute
+correction ; un second rouge est un vrai défaut à chercher. Noter ici chaque récidive de T-365, avec ses rapports.
+

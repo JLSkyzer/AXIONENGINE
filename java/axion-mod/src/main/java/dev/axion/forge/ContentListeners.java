@@ -151,6 +151,33 @@ final class ContentListeners {
         }
     }
 
+    /**
+     * Appelle une action ou une interaction d'un mod (ADR-174 D6), isolée comme un écouteur : une exception rend
+     * {@code fallback}, et {@code content.listener_strikes} de suite la désactivent pour la session ({@code E-1012}).
+     *
+     * @param handler ce qui est appelé
+     * @param modId le mod qui le livre
+     * @param what ce qui est fait, pour le journal
+     * @param body l'appel
+     * @param fallback ce que vaut un appel désactivé ou en faute
+     * @param <R> ce que l'appel rend
+     * @return ce que rend l'appel, ou {@code fallback}
+     */
+    static <R> R call(Object handler, String modId, String what, java.util.function.Supplier<R> body, R fallback) {
+        AuthoritativeThread.require();
+        if (disabled.contains(handler)) {
+            return fallback;
+        }
+        try {
+            R result = body.get();
+            strikes.remove(handler);
+            return result;
+        } catch (RuntimeException | LinkageError failure) {
+            fault(new ListenerEntry<>(modId, handler), what, failure);
+            return fallback;
+        }
+    }
+
     /** {@return vrai si cet écouteur a été désactivé pour la session} */
     static boolean disabled(Object listener) {
         return disabled.contains(listener);

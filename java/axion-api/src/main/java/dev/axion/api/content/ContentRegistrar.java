@@ -162,4 +162,35 @@ public interface ContentRegistrar {
         throw new UnsupportedOperationException("registerInteractionListener : ce registraire ne suit pas les"
                 + " interactions");
     }
+
+    /**
+     * Enregistre une action (ADR-174 D6, CAP-38) : {@code <modId>:<name>}, qu'une étape de la liste {@code actions}
+     * d'une interaction nomme, au schéma 7. Elle s'enregistre sur le serveur comme chez le client, avec le mod qui la
+     * livre : un joueur sans ce mod ne rejoint pas un serveur dont une definition la nomme (ADR-165). Une definition qui
+     * nomme une action que rien n'enregistre avertit, et l'étape ne fait rien. Un doublon est refusé et consigné.
+     *
+     * @param name chemin de l'action dans l'espace de noms du mod, par exemple {@code "klaxon_long"}
+     * @param handler ce qu'elle fait
+     * @throws IllegalArgumentException si le nom est vide ou sort de {@code [a-z0-9_./-]}
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void registerAction(String name, dev.axion.api.assembly.ActionHandler handler) {
+        throw new UnsupportedOperationException("registerAction : ce registraire n'enregistre pas d'actions");
+    }
+
+    /**
+     * Enregistre une interaction (ADR-174 D6, CAP-38) : {@code <modId>:<name>}, qu'une entrée {@code interaction} nomme
+     * dans son {@code action}, au schéma 7. Le nom {@code open_container} rend ce mod responsable de l'interaction
+     * {@code open_container} d'AXION, qui n'a pas d'inventaire ; si plusieurs mods l'enregistrent, celui dont
+     * l'identifiant vient le premier la tient. Mêmes règles que {@link #registerAction}.
+     *
+     * @param name chemin de l'interaction dans l'espace de noms du mod, par exemple {@code "coffre"}
+     * @param handler ce qu'elle fait
+     * @throws IllegalArgumentException si le nom est vide ou sort de {@code [a-z0-9_./-]}
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void registerInteraction(String name, dev.axion.api.assembly.InteractionHandler handler) {
+        throw new UnsupportedOperationException("registerInteraction : ce registraire n'enregistre pas"
+                + " d'interactions");
+    }
 }

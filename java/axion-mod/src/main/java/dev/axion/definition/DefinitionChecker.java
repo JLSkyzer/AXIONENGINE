@@ -224,7 +224,10 @@ final class DefinitionChecker {
         for (Map.Entry<String, JsonElement> member : members.entrySet()) {
             String child = StrictJson.member(path, member.getKey());
             Field field = object.fields().get(member.getKey());
-            if (field == null) {
+            if (field == null && object.addons() != null && DefinitionRegistry.isId(member.getKey())) {
+                // ADR-174 D6 : une clé qu'un mod enregistre, <modId>:<nom>.
+                walk(object.addons(), member.getValue(), child);
+            } else if (field == null) {
                 invalid(child, "clé inconnue du schéma " + version);
             } else {
                 walk(field.node(), member.getValue(), child);
@@ -299,6 +302,11 @@ final class DefinitionChecker {
             if (!oneOf.values().contains(value)) {
                 invalid(path, "« " + value + " » inconnu ; admis : "
                         + String.join(", ", oneOf.values()));
+            }
+        } else if (rule instanceof TextRule.OneOfOrAddon oneOf) {
+            if (!oneOf.values().contains(value) && !DefinitionRegistry.isId(value)) {
+                invalid(path, "« " + value + " » inconnu ; admis : " + String.join(", ", oneOf.values())
+                        + ", ou <modId>:<nom> d'un mod (ADR-174 D6)");
             }
         } else if (rule instanceof TextRule.Declares declares) {
             if (validName(value, path)) {

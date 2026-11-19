@@ -1,0 +1,13 @@
+{
+  "schema": 7,
+  "asset": "axion:models/test/siege.gltf",
+  "kind": "rigid_object",
+  "interaction": [
+    { "node": "porte_d", "action": "axion:test/coffre", "parameters": { "taille": 27 }, "actions": [
+        { "axion:test/compte": { "n": 2 } },
+        { "hide_node": "caisse_vue" }
+    ] },
+    { "node": "caisse_collideur", "action": "open_container" },
+    { "node": "siege_g_collideur", "action": "axion:test/absente" }
+  ]
+}

@@ -107,6 +107,39 @@ public final class ActionsGameTests {
     }
 
     /**
+     * ADR-174 D6 : une interaction et une action qu'un mod enregistre, jouées avec leurs paramètres et dans l'ordre de
+     * la liste ; {@code open_container} délégué au mod qui l'enregistre ; une interaction que rien n'enregistre ne fait
+     * rien.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr174_LesActionsEtInteractionsDesModsJouent(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/siege_addon", new Vec3(4.5, DESSUS_DALLE, 4.5),
+                new float[] {0f, 0f, 0f, 1f});
+        ServerPlayer joueur = SiegesGameTests.joueur(helper, "addon");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    helper.assertTrue(SiegesGameTests.cliquer(assembly, joueur, 2f, 0.5f, 0f) == InteractionResult.CONSUME,
+                            "l'interaction du mod a son effet");
+                    java.util.List<String> vus = ControleursDeTest.VUS.getOrDefault(assembly.getUUID(), java.util.List.of());
+                    helper.assertTrue(vus.equals(java.util.List.of("coffre porte_d taille=27.0",
+                            "compte n=2.0 par addon")), "l'interaction, puis l'action de la liste : " + vus);
+                    int caisse = AxionEntities.seating("axion:test/siege_addon").orElseThrow().actionNodes()
+                            .get("caisse_vue");
+                    helper.assertTrue(assembly.nodeStates().of(caisse) != null && assembly.nodeStates().of(caisse).hidden(),
+                            "l'action d'AXION qui suit la joue aussi");
+                    helper.assertTrue(SiegesGameTests.cliquer(assembly, joueur, -2f, 0.5f, 0f) == InteractionResult.PASS,
+                            "une interaction que rien n'enregistre ne fait rien");
+                    assembly.playInteraction(1, joueur);
+                    helper.assertTrue(ControleursDeTest.VUS.get(assembly.getUUID()).contains("conteneur caisse_collideur"),
+                            "open_container délégué : " + ControleursDeTest.VUS.get(assembly.getUUID()));
+                })
+                .thenSucceed();
+    }
+
+    /**
      * ADR-174 D5 : un capteur déclaré voit entrer une autre assembly — son compte monte et part avec le snapshot —,
      * puis la voit sortir quand elle disparaît.
      */
@@ -128,6 +161,9 @@ public final class ActionsGameTests {
                         "le ballon entre dans la porte : " + java.util.Arrays.toString(capteur.sensorCounts())))
                 .thenExecute(() -> {
                     helper.assertTrue(capteur.netState().sensors().count(0) == 1, "le snapshot porte le compte");
+                    // ADR-174 D5 : l'identité de ce qui entre, rendue à l'API seule.
+                    helper.assertTrue(capteur.sensorOccupants("porte").equals(java.util.List.of(ballon[0])),
+                            "le ballon est dans la porte : " + capteur.sensorOccupants("porte"));
                     ballon[0].discard();
                 })
                 .thenWaitUntil(() -> helper.assertTrue(capteur.sensorCounts()[0] == 0,

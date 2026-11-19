@@ -65,6 +65,9 @@ public final class ContentRegistry {
     /** Les contrôleurs de véhicule et les paramètres d'addon enregistrés (ADR-167 D1, D9), par identifiant. */
     private final Map<String, dev.axion.definition.VehicleExtensions.Controller> controllers = new TreeMap<>();
     private final Map<String, dev.axion.definition.VehicleExtensions.Widget> widgets = new TreeMap<>();
+    /** Les actions et les interactions des mods (ADR-174 D6), par identifiant. */
+    private final Map<String, dev.axion.definition.VehicleExtensions.Handler> actions = new TreeMap<>();
+    private final Map<String, dev.axion.definition.VehicleExtensions.Handler> interactions = new TreeMap<>();
     private final Map<String, dev.axion.definition.VehicleExtensions.Parameter> parameters = new TreeMap<>();
     /** Les écouteurs des attaches (ADR-171 D4), avec leur mod, dans l'ordre d'enregistrement. */
     private final List<AttachmentListenerEntry> attachmentListeners = new ArrayList<>();
@@ -142,7 +145,8 @@ public final class ContentRegistry {
 
     /** {@return les contrôleurs et les paramètres d'addon enregistrés (ADR-167 D1, D9)} */
     public dev.axion.definition.VehicleExtensions extensions() {
-        return new dev.axion.definition.VehicleExtensions(controllers, parameters, widgets);
+        return new dev.axion.definition.VehicleExtensions(controllers, parameters, widgets)
+                .withHandlers(actions, interactions);
     }
 
     /** {@return les erreurs consignées, dans leur ordre} */
@@ -431,6 +435,30 @@ public final class ContentRegistry {
         public void registerInteractionListener(dev.axion.api.assembly.InteractionListener listener) {
             ensureOpen();
             interactionListeners.add(new ListenerEntry<>(modId, Objects.requireNonNull(listener, "listener")));
+        }
+
+        @Override
+        public void registerAction(String name, dev.axion.api.assembly.ActionHandler handler) {
+            ensureOpen();
+            Objects.requireNonNull(handler, "handler");
+            String id = modId + ":" + checkedName(name);
+            if (actions.containsKey(id)) {
+                errors.add("doublon refusé : l'action " + id + " est déjà enregistrée par " + modId);
+                return;
+            }
+            actions.put(id, new dev.axion.definition.VehicleExtensions.Handler(id, modId, handler));
+        }
+
+        @Override
+        public void registerInteraction(String name, dev.axion.api.assembly.InteractionHandler handler) {
+            ensureOpen();
+            Objects.requireNonNull(handler, "handler");
+            String id = modId + ":" + checkedName(name);
+            if (interactions.containsKey(id)) {
+                errors.add("doublon refusé : l'interaction " + id + " est déjà enregistrée par " + modId);
+                return;
+            }
+            interactions.put(id, new dev.axion.definition.VehicleExtensions.Handler(id, modId, handler));
         }
 
         @Override

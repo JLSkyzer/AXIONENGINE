@@ -105,4 +105,18 @@ public interface Assembly {
     default void emit(String event, double value) {
         throw new UnsupportedOperationException("emit : cette assembly n'émet pas d'événements");
     }
+
+    /**
+     * {@return ce qui est dans un capteur que sa definition déclare (ADR-174 D5), dans l'ordre d'entrée} Les autres
+     * assemblies et les entités ; une qui n'est plus chargée n'y figure pas. L'identité de ce qui entre n'est rendue
+     * qu'ici : les événements du capteur ne disent que le compte.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755).
+     *
+     * @param sensor le nom du capteur
+     * @throws IllegalArgumentException si la definition ne déclare pas ce capteur
+     */
+    default java.util.List<Entity> sensorOccupants(String sensor) {
+        throw new UnsupportedOperationException("sensorOccupants : cette assembly n'a pas de capteurs");
+    }
 }

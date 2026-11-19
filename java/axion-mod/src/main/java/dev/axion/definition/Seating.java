@@ -250,8 +250,11 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         TOGGLE_ANIMATION("toggle_animation", null),
         /** Jouer un clip depuis son début. */
         PLAY_ANIMATION("play_animation", null),
-        /** Ouvrir un conteneur. */
-        OPEN_CONTAINER("open_container", "un système de conteneurs, qu'aucun chantier ne porte encore"),
+        /**
+         * Ouvrir un conteneur : une interaction déléguée (ADR-174 D6), que fait l'interaction {@code open_container}
+         * qu'un mod enregistre ; sans lui, elle avertit.
+         */
+        OPEN_CONTAINER("open_container", null),
         /** Émettre un événement de contenu (ADR-174 D2) ; avant le schéma 7, sans événement nommé, sans effet. */
         EMIT_EVENT("emit_event", null),
         /** Poser une variable de contenu (ADR-163 D2). */
@@ -263,7 +266,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         /** Défaire l'attache d'un socket (ADR-171 D4). */
         DETACH("detach", null),
         /** Ne jouer que la liste des actions de l'interaction (ADR-174 D3, schéma 7). */
-        ACTIONS("actions", null);
+        ACTIONS("actions", null),
+        /** Une interaction qu'un mod enregistre, {@code <modId>:<nom>} (ADR-174 D6, schéma 7). */
+        ADDON("<modId>:<nom>", null);
 
         private final String key;
         private final String awaits;
@@ -320,12 +325,36 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      */
     public record Interaction(int node, Action action, String animation, String clip, int layer, int seat,
             int variable, double value, String socket, java.util.Set<String> kinds, double distance,
-            List<NodeAction> actions) {
+            List<NodeAction> actions, String handler, Map<String, Object> parameters) {
 
         /** Copie les types et les actions. */
         public Interaction {
             kinds = kinds == null ? java.util.Set.of() : java.util.Set.copyOf(kinds);
             actions = actions == null ? List.of() : List.copyOf(actions);
+            parameters = parameters == null ? Map.of() : parameters;
+        }
+
+        /**
+         * Une interaction d'AXION, sans interaction d'addon.
+         *
+         * @param node l'index de son node
+         * @param action ce qu'elle fait
+         * @param animation l'animation jouée
+         * @param clip son clip
+         * @param layer sa couche
+         * @param seat le siège où elle assoit
+         * @param variable la variable qu'elle pose
+         * @param value la valeur posée
+         * @param socket le socket visé
+         * @param kinds les types permis
+         * @param distance la distance de recherche
+         * @param actions ses actions
+         */
+        public Interaction(int node, Action action, String animation, String clip, int layer, int seat,
+                int variable, double value, String socket, java.util.Set<String> kinds, double distance,
+                List<NodeAction> actions) {
+            this(node, action, animation, clip, layer, seat, variable, value, socket, kinds, distance, actions, null,
+                    Map.of());
         }
 
         /**
@@ -395,13 +424,41 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      *     {@code -1}) ; {@code NaN} pour une autre action
      */
     public record NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color, int with,
-            String withName, double value) {
+            String withName, double value, Map<String, Object> parameters) {
 
         /** Copie la teinte. */
         public NodeAction {
             java.util.Objects.requireNonNull(kind, "kind");
             java.util.Objects.requireNonNull(name, "name");
             color = color == null ? null : color.clone();
+            parameters = parameters == null ? Map.of() : parameters;
+        }
+
+        /**
+         * Une action d'AXION.
+         *
+         * @param kind ce qu'elle fait
+         * @param node l'index du node visé, -1 sans
+         * @param name son nom, ou celui de l'événement
+         * @param emissive l'émission posée, {@code NaN} sans
+         * @param color la teinte posée, {@code null} sans
+         * @param with l'index du remplaçant, -1 sans
+         * @param withName son nom, {@code null} sans
+         * @param value la valeur d'un événement
+         */
+        public NodeAction(NodeActionKind kind, int node, String name, float emissive, float[] color, int with,
+                String withName, double value) {
+            this(kind, node, name, emissive, color, with, withName, value, Map.of());
+        }
+
+        /**
+         * {@return une action qu'un mod enregistre (ADR-174 D6)}
+         *
+         * @param handler son identifiant, {@code <modId>:<nom>}
+         * @param parameters ses paramètres, tels que la definition les donne
+         */
+        public static NodeAction addon(String handler, Map<String, Object> parameters) {
+            return new NodeAction(NodeActionKind.ADDON, -1, handler, Float.NaN, null, -1, null, Double.NaN, parameters);
         }
 
         /**
@@ -455,7 +512,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         /** Montrer à sa place les maillages d'un autre node, ou revenir à l'original. */
         SWAP,
         /** Émettre un événement de contenu (ADR-174 D2) : le nom de l'action est celui de l'événement. */
-        EMIT
+        EMIT,
+        /** Une action qu'un mod enregistre (ADR-174 D6) : son nom est son identifiant. */
+        ADDON
     }
 
     /**
@@ -588,6 +647,11 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
             } else if (step.get("emit_event") instanceof JsonObject emit) {
                 actions.add(NodeAction.emit(emit.get("event").getAsString(),
                         emit.has("value") ? emit.get("value").getAsDouble() : 1.0));
+            } else if (step.size() == 1 && DefinitionRegistry.isId(step.keySet().iterator().next())) {
+                // ADR-174 D6 : une action d'addon, ses paramètres tels quels.
+                String handler = step.keySet().iterator().next();
+                actions.add(NodeAction.addon(handler, step.get(handler) instanceof JsonObject parameters
+                        ? JsonTrees.of(parameters) : Map.of()));
             } else if (step.get("set_material_param") instanceof JsonObject param) {
                 JsonElement value = param.get("value");
                 boolean emissive = "emissive".equals(param.get("param").getAsString());
@@ -657,7 +721,13 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         List<String> warnings = new ArrayList<>();
         for (JsonObject interaction : objects(root, "interaction")) {
             String path = "$.interaction[" + interactions.size() + "]";
-            Action action = Action.of(interaction.get("action").getAsString());
+            String named = interaction.get("action").getAsString();
+            Action action = Action.of(named);
+            // ADR-174 D6 : au schéma 7, une interaction d'addon, <modId>:<nom>.
+            String handler = action == null && DefinitionRegistry.isId(named) ? named : null;
+            if (handler != null) {
+                action = Action.ADDON;
+            }
             if (action == Action.EMIT_EVENT && interaction.get("event") == null) {
                 // Avant le schéma 7, emit_event ne nomme pas d'événement : sans effet.
                 warnings.add(path + " : l'action « emit_event » n'émet rien sans événement nommé, au schéma 7"
@@ -695,7 +765,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                     variable >= 0 && interaction.get("value") != null ? Variables.value(interaction.get("value")) : 0.0,
                     text(interaction, "socket"), kinds,
                     interaction.has("distance") ? interaction.get("distance").getAsDouble() : Double.NaN,
-                    interactionActions(action, interaction, path, byPath)));
+                    interactionActions(action, interaction, path, byPath), handler,
+                    interaction.get("parameters") instanceof JsonObject parameters ? JsonTrees.of(parameters)
+                            : Map.of()));
         }
         SocketTable sockets = SocketTable.of(root, byPath);
         return seats.isEmpty() && interactions.isEmpty() && variables.size() == 0 && sockets.isEmpty()

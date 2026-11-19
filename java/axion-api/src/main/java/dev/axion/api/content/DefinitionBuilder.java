@@ -2137,9 +2137,7 @@ public final class DefinitionBuilder {
         }
 
         /**
-         * {@code interaction[].action} : parmi {@code sit}, {@code toggle_animation}, {@code play_animation},
-         * {@code open_container}, {@code emit_event}, {@code set_variable}, {@code repair}, {@code attach},
-         * {@code detach}, {@code actions}.
+         * {@code interaction[].action}.
          *
          * @param value la valeur
          * @return ce réglage, pour enchaîner
@@ -2214,6 +2212,54 @@ public final class DefinitionBuilder {
          */
         public Interaction node(String value) {
             values.put("node", Objects.requireNonNull(value, "node"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].parameters}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction parameter(String name, boolean value) {
+            object(values, "parameters").put(Objects.requireNonNull(name, "name"), value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].parameters}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction parameter(String name, double value) {
+            object(values, "parameters").put(Objects.requireNonNull(name, "name"), value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].parameters}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction parameter(String name, String value) {
+            object(values, "parameters").put(Objects.requireNonNull(name, "name"), value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].parameters}. Toute valeur de JSON, vérifiée par {@link DefinitionDocument}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public Interaction parameter(String name, Object value) {
+            object(values, "parameters").put(Objects.requireNonNull(name, "name"), value);
             return this;
         }
 

@@ -192,6 +192,7 @@ public final class DefinitionRegistry {
             materialWarnings(definition, rules.physicsMaterials(), warnings);
             tireWarnings(definition, rules.tires(), warnings);
             unjudgedWarnings(definition, rules.extensions(), warnings);
+            handlerWarnings(definition, rules.extensions(), warnings);
         }
         return new DefinitionRegistry(accepted, byHash, refusals, refusalById, rules.collisionGroups(),
                 rules.physicsMaterials(), rules.tires(), rules.extensions(), warnings);
@@ -249,6 +250,74 @@ public final class DefinitionRegistry {
                 warnings.add(definition.location() + " — $.tuning : paramètre « " + name + " »" + cause);
             }
         }
+    }
+
+    /**
+     * ADR-174 D6, CAP-38 : une action ou une interaction d'addon que rien n'enregistre avertit, sans refuser la
+     * definition — elle ne fera rien ; hors jeu, elle n'a pas pu être jugée (CAP-42). {@code open_container} sans mod
+     * qui l'enregistre avertit de même.
+     */
+    private static void handlerWarnings(Definition definition, VehicleExtensions extensions, List<String> warnings) {
+        String absent = extensions.codeAbsent()
+                ? " non vérifiée : le code de son mod ne se charge pas hors jeu ; elle se juge au chargement en jeu"
+                : " : aucun mod ne l'enregistre, elle ne fera rien (ADR-174 D6)";
+        for (Named named : namedHandlers(definition.root())) {
+            boolean known = named.interaction() ? extensions.interaction(named.id()).isPresent()
+                    : extensions.action(named.id()).isPresent();
+            if (!known) {
+                warnings.add(definition.location() + " — " + named.path() + " : "
+                        + (named.interaction() ? "interaction" : "action") + " « " + named.id() + " »" + absent);
+            }
+        }
+        if (!extensions.codeAbsent() && extensions.container().isEmpty()
+                && definition.root().get("interaction") instanceof JsonArray interactions) {
+            for (int index = 0; index < interactions.size(); index++) {
+                if (interactions.get(index) instanceof JsonObject interaction
+                        && interaction.get("action") instanceof JsonPrimitive action
+                        && "open_container".equals(action.getAsString())) {
+                    warnings.add(definition.location() + " — $.interaction[" + index + "] : « open_container » : aucun"
+                            + " mod n'enregistre l'interaction open_container, elle ne fera rien (ADR-174 D6)");
+                }
+            }
+        }
+    }
+
+    /**
+     * Une action ou une interaction d'addon qu'une definition nomme.
+     *
+     * @param id son identifiant
+     * @param path son chemin
+     * @param interaction vrai pour une interaction, faux pour une action
+     */
+    private record Named(String id, String path, boolean interaction) {}
+
+    /** {@return les actions et les interactions d'addon qu'une definition nomme, dans l'ordre du document} */
+    private static List<Named> namedHandlers(JsonObject root) {
+        List<Named> found = new ArrayList<>();
+        if (!(root.get("interaction") instanceof JsonArray interactions)) {
+            return found;
+        }
+        for (int index = 0; index < interactions.size(); index++) {
+            if (!(interactions.get(index) instanceof JsonObject interaction)) {
+                continue;
+            }
+            String path = "$.interaction[" + index + "]";
+            if (interaction.get("action") instanceof JsonPrimitive action && isId(action.getAsString())) {
+                found.add(new Named(action.getAsString(), path + ".action", true));
+            }
+            if (interaction.get("actions") instanceof JsonArray steps) {
+                for (int step = 0; step < steps.size(); step++) {
+                    if (steps.get(step) instanceof JsonObject object) {
+                        for (String key : object.keySet()) {
+                            if (isId(key)) {
+                                found.add(new Named(key, path + ".actions[" + step + "]", false));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return found;
     }
 
     /** ADR-159 Q1 : comme un matériau, un pneu non déclaré avertit, et le pneu générique en tient lieu. */
@@ -661,6 +730,21 @@ public final class DefinitionRegistry {
         for (Definition definition : definitions.values()) {
             for (String widget : widgets(definition.root())) {
                 extensions.widget(widget).ifPresent(found -> owners.add(found.owner()));
+            }
+            // ADR-174 D6 : et ceux de leurs actions et interactions, open_container délégué compris.
+            boolean container = false;
+            for (Named named : namedHandlers(definition.root())) {
+                (named.interaction() ? extensions.interaction(named.id()) : extensions.action(named.id()))
+                        .ifPresent(found -> owners.add(found.owner()));
+            }
+            if (definition.root().get("interaction") instanceof JsonArray interactions) {
+                for (JsonElement interaction : interactions) {
+                    container |= interaction instanceof JsonObject object && object.get("action") instanceof JsonPrimitive
+                            action && "open_container".equals(action.getAsString());
+                }
+            }
+            if (container) {
+                extensions.container().ifPresent(found -> owners.add(found.owner()));
             }
         }
         return owners;

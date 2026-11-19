@@ -695,7 +695,10 @@ final class SchemaOne {
         }
         ObjBuilder interaction = obj()
                 .opt("node", refers(NameCategory.NODE))
-                .req("action", oneOf(kinds.toArray(String[]::new)))
+                .req("action", version >= 7
+                        // ADR-174 D6 : au schéma 7, une interaction qu'un mod enregistre, <modId>:<nom>.
+                        ? new Text(new TextRule.OneOfOrAddon(new java.util.LinkedHashSet<>(kinds)))
+                        : oneOf(kinds.toArray(String[]::new)))
                 .opt("animation", refers(NameCategory.ANIMATION))
                 .opt("seat", refers(NameCategory.SEAT));
         if (version >= 3) {
@@ -712,7 +715,9 @@ final class SchemaOne {
             // ADR-174 D3 : ce que l'interaction fait ensuite, dans l'ordre, au même tick ; D2 : l'événement
             // qu'emit_event émet, sa valeur dans « value ».
             interaction.opt("actions", new Arr(nodeAction(), 1, MAX_ACTIONS, true))
-                    .opt("event", refers(NameCategory.EVENT));
+                    .opt("event", refers(NameCategory.EVENT))
+                    // ADR-174 D6 : ce qu'une interaction d'addon reçoit, tel quel.
+                    .opt("parameters", new Dict(new TextRule.Free(), any(), Integer.MAX_VALUE));
         }
         return interaction.build();
     }
@@ -742,6 +747,8 @@ final class SchemaOne {
                         .req("param", oneOf("emissive", "color"))
                         .req("value", any())
                         .build())
+                // ADR-174 D6 : une action qu'un mod enregistre, <modId>:<nom>, et ses paramètres, tels quels.
+                .addons(new Dict(new TextRule.Free(), any(), Integer.MAX_VALUE))
                 .build();
     }
 
@@ -789,8 +796,16 @@ final class SchemaOne {
             return this;
         }
 
+        private SchemaNode addons;
+
+        /** Admet aussi les clés {@code <modId>:<nom>}, chacune de cette forme (ADR-174 D6). */
+        ObjBuilder addons(SchemaNode node) {
+            addons = node;
+            return this;
+        }
+
         SchemaNode build() {
-            return new Obj(Collections.unmodifiableMap(fields));
+            return new Obj(Collections.unmodifiableMap(fields), addons);
         }
     }
 

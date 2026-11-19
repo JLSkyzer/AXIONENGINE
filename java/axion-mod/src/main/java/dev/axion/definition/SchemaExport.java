@@ -147,6 +147,12 @@ public final class SchemaExport {
             if (required.size() > 0) {
                 out.add("required", required);
             }
+            if (object.addons() != null) {
+                // ADR-174 D6 : les clés qu'un mod enregistre.
+                JsonObject patterns = new JsonObject();
+                patterns.add(ID_PATTERN, node(object.addons()));
+                out.add("patternProperties", patterns);
+            }
             out.addProperty("additionalProperties", false);
         } else if (node instanceof Arr array) {
             out.addProperty("type", "array");
@@ -200,6 +206,10 @@ public final class SchemaExport {
             JsonArray values = new JsonArray();
             oneOf.values().forEach(values::add);
             out.add("enum", values);
+        } else if (rule instanceof TextRule.OneOfOrAddon oneOf) {
+            StringJoiner values = new StringJoiner("|", "^(?:", "|[a-z0-9_.-]+:[a-z0-9/._-]+)$");
+            oneOf.values().forEach(values::add);
+            out.addProperty("pattern", values.toString());
         } else if (rule instanceof TextRule.Declares declares) {
             out.addProperty("pattern", NAME_PATTERN);
             out.addProperty("x-axion-declares", declares.category().jsonName());

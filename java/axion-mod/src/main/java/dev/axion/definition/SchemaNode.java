@@ -18,7 +18,17 @@ sealed interface SchemaNode {
      *
      * @param fields champs, dans l'ordre de la documentation
      */
-    record Obj(Map<String, Field> fields) implements SchemaNode {}
+    record Obj(Map<String, Field> fields, SchemaNode addons) implements SchemaNode {
+
+        /**
+         * Un objet fermé : ses seules clés.
+         *
+         * @param fields ses champs
+         */
+        Obj(Map<String, Field> fields) {
+            this(fields, null);
+        }
+    }
 
     /**
      * Champ d'un objet.
@@ -93,6 +103,13 @@ sealed interface SchemaNode {
         record OneOf(Set<String> values) implements TextRule {}
 
         /**
+         * Valeur d'une liste fermée, ou identifiant {@code <modId>:<nom>} de ce qu'un mod enregistre (ADR-174 D6).
+         *
+         * @param values valeurs admises, dans l'ordre de la documentation
+         */
+        record OneOfOrAddon(Set<String> values) implements TextRule {}
+
+        /**
          * Nom qui déclare un élément.
          *
          * @param category catégorie du nom
@@ -109,7 +126,6 @@ sealed interface SchemaNode {
         /** Identifiant de ressource {@code <ns>:<chemin>}. */
         record Id() implements TextRule {}
 
-        /** Source procédurale de l'ANNEXE A.4. */
         /**
          * Une source de l'ANNEXE A.4, au schéma {@code version} : une famille n'existe qu'à partir du schéma qui l'a
          * ajoutée (R-2410).

@@ -99,3 +99,36 @@ entités (joueurs, créatures). Au schéma 7 ([ADR-174](../../decisions/ADR-174.
   (`event:sensor.porte.enter`), ton écouteur les reçoit comme les autres.
 - La source `sensor.porte.count` lit ce que le capteur compte, au serveur comme au client.
 - Les autres corps de la même assembly n'y comptent pas, ni le terrain. Une assembly qui disparaît dedans en sort.
+
+## Ajouter une action ou une interaction
+
+Les actions et les interactions d'une definition sont des listes fermées ; ton mod les étend
+([ADR-174](../../decisions/ADR-174.md) D6) :
+
+```java
+registrar.registerAction("klaxon_long", (assembly, parametres, acteur) -> {
+    // au serveur, au rang de l'action dans la liste, au même tick que les autres
+});
+registrar.registerInteraction("coffre", (assembly, node, joueur, parametres) -> {
+    // ouvre ton menu ; vrai si l'interaction a eu son effet
+    return true;
+});
+```
+
+La definition les nomme par `<modId>:<nom>`, au schéma 7 — une action comme une étape de `actions`, une interaction
+dans son `action`, avec ses `parameters` :
+
+```json
+{ "node": "malle", "action": "monmod:coffre", "parameters": { "taille": 27 },
+  "actions": [ { "monmod:klaxon_long": { "duree": 2 } }, { "hide_node": "verrou" } ] }
+```
+
+- Les paramètres arrivent tels que la definition les donne : objets en `Map`, tableaux en `List`, nombres en `Double`.
+- Une action ou une interaction que rien n'enregistre avertit au chargement, sans refuser la definition, et ne fait
+  rien. Le mod qui la livre devient exigé des joueurs, comme pour un contrôleur.
+- **`open_container`** : AXION n'a pas d'inventaire. Enregistre l'interaction `open_container`, et ton mod tient celle
+  de toutes les definitions ; sans mod, elle avertit.
+- Une exception n'interrompt rien ; `content.listener_strikes` exceptions de suite désactivent l'action pour la
+  session (`E-1012`), comme un écouteur.
+- **Qui est dans un capteur** : `assembly.sensorOccupants("porte")` rend les entités et les assemblies qui y sont ; les
+  événements du capteur ne disent que leur nombre.

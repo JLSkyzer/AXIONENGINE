@@ -99,3 +99,36 @@ creatures) enter and leave. From schema 7 ([ADR-174](../../decisions/ADR-174.md)
 - The source `sensor.door.count` reads what the sensor counts, on the server as on the client.
 - The other bodies of the same assembly do not count, nor does the terrain. An assembly that disappears inside it
   leaves it.
+
+## Adding an action or an interaction
+
+A definition's actions and interactions are closed lists; your mod extends them
+([ADR-174](../../decisions/ADR-174.md) D6):
+
+```java
+registrar.registerAction("long_horn", (assembly, parameters, actor) -> {
+    // on the server, at the action's rank in the list, on the same tick as the others
+});
+registrar.registerInteraction("chest", (assembly, node, player, parameters) -> {
+    // open your menu; true if the interaction had its effect
+    return true;
+});
+```
+
+The definition names them `<modId>:<name>`, from schema 7 — an action as a step of `actions`, an interaction in its
+`action`, with its `parameters`:
+
+```json
+{ "node": "trunk", "action": "mymod:chest", "parameters": { "size": 27 },
+  "actions": [ { "mymod:long_horn": { "duration": 2 } }, { "hide_node": "lock" } ] }
+```
+
+- Parameters arrive as the definition gives them: objects as `Map`, arrays as `List`, numbers as `Double`.
+- An action or interaction nothing registers warns at load, without refusing the definition, and does nothing. The
+  mod that ships it becomes required from players, as for a controller.
+- **`open_container`**: AXION has no inventory. Register the interaction `open_container`, and your mod holds that of
+  every definition; without a mod, it warns.
+- An exception interrupts nothing; `content.listener_strikes` exceptions in a row disable the action for the session
+  (`E-1012`), like a listener.
+- **Who is in a sensor**: `assembly.sensorOccupants("door")` returns the entities and assemblies inside it; the
+  sensor's events only give their number.

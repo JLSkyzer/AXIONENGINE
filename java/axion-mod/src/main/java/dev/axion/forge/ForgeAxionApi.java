@@ -529,5 +529,11 @@ public final class ForgeAxionApi implements AxionApi {
             AuthoritativeThread.require();
             entity.emitEvent(java.util.Objects.requireNonNull(event, "event"), value, "API");
         }
+
+        @Override
+        public java.util.List<net.minecraft.world.entity.Entity> sensorOccupants(String sensor) {
+            AuthoritativeThread.require();
+            return entity.sensorOccupants(java.util.Objects.requireNonNull(sensor, "sensor"));
+        }
     }
 }

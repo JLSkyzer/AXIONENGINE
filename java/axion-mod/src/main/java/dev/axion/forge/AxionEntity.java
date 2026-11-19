@@ -619,9 +619,28 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 || (interaction.action() == Seating.Action.EMIT_EVENT ? !interaction.actions().isEmpty()
                         : playAction(interaction, player));
         if (done && !interaction.actions().isEmpty()) {
-            runActions(interaction.actions(), "interaction (" + player.getName().getString() + ")");
+            runActions(interaction.actions(), "interaction (" + player.getName().getString() + ")", player);
         }
         return done;
+    }
+
+    /**
+     * Joue une interaction qu'un mod enregistre, ou {@code open_container} qu'AXION lui délègue (serveur, ADR-174 D6).
+     * Une interaction que rien n'enregistre ne fait rien : la definition l'a déjà dit à son chargement.
+     */
+    private boolean playHandler(Seating.Interaction interaction, Player player) {
+        dev.axion.definition.VehicleExtensions extensions = AxionEntities.definitions().extensions();
+        java.util.Optional<dev.axion.definition.VehicleExtensions.Handler> found =
+                interaction.action() == Seating.Action.OPEN_CONTAINER ? extensions.container()
+                        : extensions.interaction(interaction.handler());
+        if (found.isEmpty() || !(found.get().handler() instanceof dev.axion.api.assembly.InteractionHandler handler)) {
+            return false;
+        }
+        Seating seating = seating();
+        String node = interactionNode(seating == null ? -1 : seating.interactions().indexOf(interaction));
+        dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+        return ContentListeners.call(handler, found.get().owner(), "l'interaction " + found.get().id() + " sur " + node,
+                () -> handler.interact(view, node, player, interaction.parameters()), false);
     }
 
     /** L'état des nodes que les actions ont changé (serveur : l'autorité ; client : ce que le snapshot a porté). */
@@ -672,9 +691,28 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param writer qui les joue, pour le journal
      */
     void runActions(List<Seating.NodeAction> actions, String writer) {
+        runActions(actions, writer, null);
+    }
+
+    /**
+     * Exécute des actions (serveur, ADR-174 D3, D6), comme {@link #runActions(List, String)}, une action de mod
+     * comprise, à son rang.
+     *
+     * @param actions les actions
+     * @param writer qui les joue, pour le journal
+     * @param actor le joueur à l'origine de la liste, {@code null} sans
+     */
+    void runActions(List<Seating.NodeAction> actions, String writer, Player actor) {
         dev.axion.net.NodeStates next = nodeStates();
         try {
             for (Seating.NodeAction action : actions) {
+                if (action.kind() == Seating.NodeActionKind.ADDON) {
+                    // L'action d'un mod voit l'état des nodes que les précédentes ont laissé, et peut le changer.
+                    nodeStates = next;
+                    runHandler(action, writer, actor);
+                    next = nodeStates;
+                    continue;
+                }
                 dev.axion.net.NodeStates.State current = next.of(action.node());
                 boolean hidden = current != null && current.hidden();
                 float emissive = current == null ? Float.NaN : current.emissive();
@@ -891,6 +929,33 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
     }
 
+    /**
+     * {@return ce qui est dans un capteur déclaré, dans l'ordre d'entrée (serveur, ADR-174 D5)} Une entité qui n'est
+     * plus chargée n'y figure pas.
+     *
+     * @param sensor le nom du capteur
+     * @throws IllegalArgumentException si la definition ne le déclare pas
+     */
+    List<Entity> sensorOccupants(String sensor) {
+        dev.axion.definition.Sensors declared = dev.axion.definition.Sensors.of(
+                AxionEntities.definitions().get(definitionId).map(Definition::root).orElse(new com.google.gson.JsonObject()));
+        int rank = declared.indexOf(sensor);
+        if (rank < 0) {
+            throw new IllegalArgumentException("capteur « " + sensor + " » inconnu de " + definitionId);
+        }
+        List<Entity> inside = new ArrayList<>();
+        if (rank < sensorOccupants.size()) {
+            for (long key : sensorOccupants.get(rank)) {
+                // Une entité par son identifiant réseau ; une assembly par son handle, dont l'index est le sien.
+                Entity found = level().getEntity(key < 0 ? (int) (-1L - key) : (int) (key >>> 32));
+                if (found != null) {
+                    inside.add(found);
+                }
+            }
+        }
+        return inside;
+    }
+
     /** {@return ce que compte chaque capteur déclaré, dans l'ordre de la definition (serveur, ADR-174 D5)} */
     public int[] sensorCounts() {
         int[] counts = new int[sensorOccupants.size()];
@@ -908,7 +973,38 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                         current.swapped());
     }
 
+    /**
+     * Joue l'interaction de ce rang pour un joueur, comme son clic le ferait une fois jugé (serveur) : ce qu'un essai
+     * appelle sans viser son node.
+     *
+     * @param rank le rang de l'interaction dans la definition
+     * @param player le joueur
+     * @return vrai si elle a eu son effet
+     */
+    boolean playInteraction(int rank, Player player) {
+        Seating seating = seating();
+        return seating != null && rank >= 0 && rank < seating.interactions().size()
+                && play(seating.interactions().get(rank), player);
+    }
+
+    /** Une action qu'un mod enregistre (ADR-174 D6) ; que rien n'enregistre, elle ne fait rien. */
+    private void runHandler(Seating.NodeAction action, String writer, Player actor) {
+        java.util.Optional<dev.axion.definition.VehicleExtensions.Handler> found =
+                AxionEntities.definitions().extensions().action(action.name());
+        if (found.isEmpty() || !(found.get().handler() instanceof dev.axion.api.assembly.ActionHandler handler)) {
+            return;
+        }
+        dev.axion.api.assembly.Assembly view = ForgeAxionApi.view(this);
+        ContentListeners.call(handler, found.get().owner(), "l'action " + action.name() + " de " + writer, () -> {
+            handler.perform(view, action.parameters(), actor);
+            return null;
+        }, null);
+    }
+
     private boolean playAction(Seating.Interaction interaction, Player player) {
+        if (interaction.action() == Seating.Action.ADDON || interaction.action() == Seating.Action.OPEN_CONTAINER) {
+            return playHandler(interaction, player);
+        }
         if (interaction.action() == Seating.Action.SET_VARIABLE) {
             AssemblyVariables held = interaction.variable() < 0 ? null : variables();
             if (held == null) {

@@ -72,6 +72,30 @@ public final class ControleursDeTest {
     static final VehicleController EXCESSIF = (vue, sortie) ->
             sortie.modify(Parameters.ENGINE_TORQUE, Modifier.Operation.MULTIPLY_TOTAL, -2);
 
+    /** ADR-174 D6 : ce que les actions et interactions de test ont vu, par assembly ; les GameTests tournent ensemble. */
+    static final java.util.Map<java.util.UUID, java.util.List<String>> VUS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static void vu(dev.axion.api.assembly.Assembly assembly, String quoi) {
+        VUS.computeIfAbsent(assembly.id(), id -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(quoi);
+    }
+
+    /** Une action de test : elle note son paramètre {@code n} et qui l'a jouée. */
+    static final dev.axion.api.assembly.ActionHandler COMPTE = (assembly, parametres, acteur) ->
+            vu(assembly, "compte n=" + parametres.get("n") + " par " + (acteur == null ? "personne"
+                    : acteur.getName().getString()));
+
+    /** Une interaction de test : elle note son node et son paramètre {@code taille}, et a son effet. */
+    static final dev.axion.api.assembly.InteractionHandler COFFRE = (assembly, node, joueur, parametres) -> {
+        vu(assembly, "coffre " + node + " taille=" + parametres.get("taille"));
+        return true;
+    };
+
+    /** Le conteneur à qui AXION délègue {@code open_container}. */
+    static final dev.axion.api.assembly.InteractionHandler CONTENEUR = (assembly, node, joueur, parametres) -> {
+        vu(assembly, "conteneur " + node);
+        return true;
+    };
+
     private ControleursDeTest() {
         throw new AssertionError("non instanciable");
     }
@@ -90,6 +114,10 @@ public final class ControleursDeTest {
             registrar.registerController("test/excessif", EXCESSIF);
             registrar.registerController("test/regulateur", REGULATEUR);
             registrar.registerParameter("test/gain", "", 1.0, new Parameters.Range(0, true, 10, true));
+            // ADR-174 D6 : une action, une interaction, et le conteneur délégué.
+            registrar.registerAction("test/compte", COMPTE);
+            registrar.registerInteraction("test/coffre", COFFRE);
+            registrar.registerInteraction("open_container", CONTENEUR);
             if (ESSAI_SERVEUR_SEUL != null) {
                 registrar.registerController("test/serveur_seul", PROPULSION);
                 registrar.register("test/vehicule_serveur_seul",

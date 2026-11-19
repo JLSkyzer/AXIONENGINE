@@ -755,6 +755,19 @@ class DefinitionSchemaTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D6 : au schéma 7, une action et une interaction se nomment <modId>:<nom> ; avant, non")
+    void lesActionsEtInteractionsDesModsAuSchemaSept() {
+        assertDoesNotThrow(() -> read(septAvec("[{\"cadrans:bip\": {\"fort\": true, \"n\": [1, 2]}}]",
+                "cadrans:levier")));
+        assertThrows(DefinitionException.class, () -> read(septAvec("[{\"Cadrans:Bip\": {}}]", "actions")),
+                "un identifiant mal formé");
+        assertThrows(DefinitionException.class, () -> read(septAvec(null, "levier")), "une action sans mod");
+        JsonObject six = septAvec(null, "cadrans:levier");
+        six.addProperty("schema", 6);
+        assertThrows(DefinitionException.class, () -> read(six), "avant le schéma 7");
+    }
+
+    @Test
     @DisplayName("ADR-174 D5 : au schéma 7, une definition déclare ses capteurs ; leurs événements et leur compte se nomment")
     void lesCapteursDuSchemaSept() {
         JsonObject ok = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");

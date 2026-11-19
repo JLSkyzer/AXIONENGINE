@@ -220,6 +220,38 @@ class DefinitionRegistryTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D6 : une action ou une interaction d'un mod se nomme ; absente, elle avertit sans refuser,"
+            + " et son mod devient exigé")
+    void lesActionsEtInteractionsDesMods() {
+        VehicleExtensions extensions = new VehicleExtensions(java.util.Map.of(), java.util.Map.of()).withHandlers(
+                java.util.Map.of("cadrans:bip", new VehicleExtensions.Handler("cadrans:bip", "cadrans",
+                        (dev.axion.api.assembly.ActionHandler) (a, p, j) -> {})),
+                java.util.Map.of("coffres:open_container", new VehicleExtensions.Handler("coffres:open_container",
+                        "coffres", (dev.axion.api.assembly.InteractionHandler) (a, n, j, p) -> true)));
+        DefinitionRules regles = new DefinitionRules(true, Set.of(PICKUP)::contains, false,
+                CollisionGroupRegistry.empty(), PhysicsMaterials.empty(), TireProfiles.empty(), extensions);
+        FakeSource source = new FakeSource().put("mymod:axion/definitions/pickup.json",
+                "{\"schema\": 7, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"rigid_object\","
+                        + " \"interaction\": [{\"node\": \"d\", \"action\": \"open_container\", \"actions\":"
+                        + " [{\"cadrans:bip\": {\"fort\": true}}, {\"cadrans:absente\": {}}]},"
+                        + " {\"node\": \"e\", \"action\": \"leviers:levier\", \"parameters\": {\"course\": 3}}]}");
+        DefinitionRegistry registry = DefinitionRegistry.load(source, regles);
+        assertEquals(1, registry.size(), registry.refusals().toString());
+        assertEquals(List.of("mymod:axion/definitions/pickup.json — $.interaction[0].actions[1] : action"
+                + " « cadrans:absente » : aucun mod ne l'enregistre, elle ne fera rien (ADR-174 D6)",
+                "mymod:axion/definitions/pickup.json — $.interaction[1].action : interaction « leviers:levier » :"
+                + " aucun mod ne l'enregistre, elle ne fera rien (ADR-174 D6)"), registry.warnings());
+        assertEquals(new java.util.TreeSet<>(List.of("cadrans", "coffres")), registry.controllerOwners(),
+                "les mods de l'action et du conteneur délégué sont exigés");
+        Seating.Interaction levier = DefinitionRegistry.load(source, regles).get("mymod:pickup").map(definition ->
+                Seating.of(definition.root(), DefinitionChecker.assetReferences(definition.root()), new int[] {0, 1}))
+                .orElseThrow().interactions().get(1);
+        assertEquals(Seating.Action.ADDON, levier.action());
+        assertEquals("leviers:levier", levier.handler());
+        assertEquals(java.util.Map.of("course", 3.0), levier.parameters());
+    }
+
+    @Test
     @DisplayName("R-1032 : un matériau non déclaré avertit, avec son chemin ; la definition reste acceptée")
     void unMateriauNonDeclareAvertit() {
         PhysicsMaterials materiaux = PhysicsMaterials.load(new FakeSource()

@@ -3887,9 +3887,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
+     - [x] ADR-174, tranche 9g1 (2026-11-19) : `registerAction`, `registerInteraction`, `open_container` délégué,
+           `sensorOccupants`. Suite : 9g2 (diagnostics de la grille : `/axion defs info`, `/axion events`, overlay
+           `sensors` ; clôture).
      - [x] ADR-174, tranche 9f (2026-11-19) : capteurs déclarés, `SET_SENSOR` (ABI 29), événements
-           `sensor.<nom>.enter/exit`, source `sensor.<nom>.count`, descripteur 12. Suite : 9g (registres d'actions,
-           `open_container`, grille de clôture).
+           `sensor.<nom>.enter/exit`, source `sensor.<nom>.count`, descripteur 12.
      - [x] ADR-174, tranche 9e (2026-11-19) : variables `scope: "seat"`, une case par siège, `var.<nom>.<siège>`,
            descripteur 11, sauvegarde par nom de siège, API par siège.
      - [x] ADR-174, tranche 9d2 (2026-11-19) : `weight_source` évaluée au client et `SET_WEIGHT` (ABI 28), `mask`
