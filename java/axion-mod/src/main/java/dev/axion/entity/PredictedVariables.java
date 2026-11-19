@@ -62,7 +62,10 @@ public final class PredictedVariables {
      * @return les écritures refusées, à journaliser ; vide d'ordinaire
      */
     public List<String> step(long sequence, int seat, List<Seating.Binding> bindings, int mask) {
-        List<String> refusals = bindings.isEmpty() ? List.of() : variables.input(seat, bindings, mask, DRIVER);
+        // ADR-174 D2 : une variable par siège ne se prédit pas — elle arrive du serveur, siège par siège.
+        List<Seating.Binding> predicted = bindings.stream()
+                .filter(binding -> !variables.declared().get(binding.variable()).perSeat()).toList();
+        List<String> refusals = predicted.isEmpty() ? List.of() : variables.input(seat, predicted, mask, DRIVER);
         variables.tick();
         states.remove(sequence);
         states.put(sequence, variables.state());

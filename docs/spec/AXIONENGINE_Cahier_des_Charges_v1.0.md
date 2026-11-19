@@ -5147,6 +5147,9 @@ Entrée d'assembly dans un snapshot :
   masque des couches (descripteur 10, amendement A25) : après chaque couche d'animation
                   jouée, le nombre de nodes de son masque puis leurs index, croissants ;
                   256 au plus, aucun : tous
+  variables par siège (descripteur 11, amendement A25) : après le masque des variables
+                  présentes, celui des variables par siège ; chacune porte le nombre de sièges
+                  puis la valeur f32 de chacun, 16 au plus, au lieu de sa valeur
 ```
 
 - R-1660 : la quantification est **déclarée par champ**, jamais implicite.
@@ -5305,7 +5308,8 @@ axion:attach    list     attaches (uuid distant, type, sockets)
 axion:repair    compound réparation en cours
 axion:power     compound
 axion:custom    byte[]   CBOR, optionnel
-axion:vars      compound valeur de chaque variable persist, par nom (amendement A10)
+axion:vars      compound valeur de chaque variable persist, par nom (amendement A10) ; une variable
+                par siège, un compound de ses sièges par nom (amendement A25)
 axion:params    list     modificateurs posés sur les paramètres, dans l'ordre de leur pose :
                          cause, paramètre, opération, quantité (R-1086, amendement A15)
 axion:ctrls     list     contrôleurs de véhicule attachés par l'API, dans l'ordre de l'attache
@@ -7957,7 +7961,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A22 | 2026-11-18 | ADR-172, accepté par Killian | ANNEXE A.7 : CAP-60 à CAP-75 ; 37.2 : M5b reçoit chenilles, sous-marins, plus léger que l'air, marcheurs et entrées progressives ; M12 Optimisation client et serveur et M13 Espace, la Release passe en M14 ; 36.2 : les chenilles quittent les extensions V1.x ; R-190 : les plafonds se relèvent sur mesure en M12 ; CAP-36 complète en M14 |
 | A23 | 2026-11-18 | audit de M5 (ADR-160 D8), constat sans règle changée | ANNEXE A.7 : CAP-01, CAP-40 (registres existants), CAP-44, CAP-46 à CAP-51 tenues, preuves vérifiées au code ; CAP-42 n'est **pas** tenue malgré A14 : `ContentCheck` refusait une definition qui nomme un contrôleur d'addon sans dire ce qu'il n'avait pas pu juger — corrigé le même jour, R-1757 précisée, CAP-42 tenue ; CAP-04 n'est pas tenue malgré ADR-163 : `hide_node`, `show_node`, `swap_mesh` et `set_material_param` ne s'exécutent pas |
 | A24 | 2026-11-18 | ADR-173, accepté par Killian (tenu le 2026-11-18) | les sources procédurales de l'ANNEXE A.4 se lisent par l'API, des deux côtés (`source(String)` sur `VehicleView` et `Assembly`, CAP-43) ; la phase d'enregistrement du client naît avec son premier registre (CAP-45) ; ANNEXE A.4 : la lecture par l'API ; A.7 : CAP-43 et CAP-45 tenues |
-| A25 | 2026-11-18 | ADR-174, accepté par Killian (en cours, tranche par tranche ; 9a1, 9a2, 9c, 9b et 9d1 le 2026-11-18, 9d2 le 2026-11-19 : R-1440, la grammaire de `trigger`, `weight_source` et `mask`, descripteur 10 au 21.5, `SET_WEIGHT` et ABI 28 ; schéma 7 et ses `events`, R-1782 avec `swap_mesh` par node et `emit_event`, R-1783, descripteur 9 au 21.5, `S2C_Event` et protocole 13 au 21.4, `axion:nodes` au 22.2 ; 23.3 : les écouteurs des sièges, des interactions et des événements, `Assembly.emit`, `E-1012` ; A.3 : `content.listener_strikes`, `net.events_per_player_tick`) | événements de contenu déclarés, message `EVENT` (protocole 13), écouteurs typés et refusables, état des nodes sauvegardé et répliqué, `trigger` à grammaire fermée, poids et masque d'une couche, capteurs déclarables, registres des actions et des interactions (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) |
+| A25 | 2026-11-18 | ADR-174, accepté par Killian (en cours, tranche par tranche ; 9a1, 9a2, 9c, 9b et 9d1 le 2026-11-18, 9d2 et 9e le 2026-11-19 : variables `scope: "seat"`, descripteur 11 au 21.5, `axion:vars` au 22.2, `var.<n>.<siège>` en A.4 ; R-1440, la grammaire de `trigger`, `weight_source` et `mask`, descripteur 10 au 21.5, `SET_WEIGHT` et ABI 28 ; schéma 7 et ses `events`, R-1782 avec `swap_mesh` par node et `emit_event`, R-1783, descripteur 9 au 21.5, `S2C_Event` et protocole 13 au 21.4, `axion:nodes` au 22.2 ; 23.3 : les écouteurs des sièges, des interactions et des événements, `Assembly.emit`, `E-1012` ; A.3 : `content.listener_strikes`, `net.events_per_player_tick`) | événements de contenu déclarés, message `EVENT` (protocole 13), écouteurs typés et refusables, état des nodes sauvegardé et répliqué, `trigger` à grammaire fermée, poids et masque d'une couche, capteurs déclarables, registres des actions et des interactions (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) |
 | A26 | 2026-11-18 | ADR-175, accepté par Killian (en cours, tranche par tranche) | corps et joints sauvegardés par nom (NBT 6), restauration partielle nommée (`E-7012`), `revision`, `migrations` et `replaces`, une instance tient sa definition, reliure à chaud après une recompilation (CAP-38, CAP-33) |
 | A27 | 2026-11-18 | ADR-176, accepté par Killian (en cours, tranche par tranche) | état natif du moteur et démarreur (`IGNITION`), énergie déclarée et simulée, usure des pneus par roue, mouillé par véhicule et facteur par matériau et par pneu, causes `axion` du moteur ouvertes (CAP-12, CAP-20) |
 | A28 | 2026-11-18 | ADR-177, accepté par Killian (en cours, tranche par tranche) | `seats[].occupant` (pose, échelle, œil), mannequin du joueur généré et vérifié, `axion.mixins.json` non obligatoire (R-1921) ; 26.2 : la cible `Entity.collide`, acceptée pour CAP-14 (ADR-177 D4), son injection exacte décidée par l'ADR de CAP-14 (CAP-13, CAP-56, CAP-14) |
@@ -8302,7 +8306,8 @@ SIÈGE         seat.<n>.occupied
 PARTICULES    particles.<n>.max_stretch | torn_ratio
 TEMPS         time.seconds
 MONDE         world.time | sky_light | rain                       (V1.1)
-VARIABLE      var.<n>   (définie par l'API ou par une action déclarative)
+VARIABLE      var.<n>   (définie par l'API ou par une action déclarative) ; var.<n>.<siège> pour
+              une variable par siège lue à un siège nommé, var.<n> la lisant au siège du lecteur (A25)
 ```
 
 - R-2410 : l'ajout d'une source est une évolution de schéma versionnée.

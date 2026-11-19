@@ -1,0 +1,15 @@
+{
+  "schema": 7,
+  "asset": "axion:models/test/siege.gltf",
+  "kind": "rigid_object",
+  "variables": {
+    "radio": { "type": "int", "min": 0, "max": 9, "persist": true, "scope": "seat", "write": "seat" }
+  },
+  "seats": [
+    { "name": "conducteur", "node": "siege_g", "role": "driver", "exit_offsets": [[2.0, 0.0, 0.0]] },
+    { "name": "passager", "node": "siege_d", "exit_offsets": [[-2.0, 0.0, 0.0]] }
+  ],
+  "interaction": [
+    { "node": "porte_d", "action": "set_variable", "variable": "radio", "value": 3 }
+  ]
+}

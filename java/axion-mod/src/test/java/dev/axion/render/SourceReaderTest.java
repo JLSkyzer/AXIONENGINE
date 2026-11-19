@@ -49,6 +49,23 @@ class SourceReaderTest {
     }
 
     @Test
+    @DisplayName("ADR-174 D2 : var.<nom> d'une variable par siège se lit au siège du lecteur ; var.<nom>.<siège> au siège nommé")
+    void uneVariableParSiege() {
+        JsonObject definition = JsonParser.parseString("{\"schema\": 7, \"variables\": {\"radio\": {\"type\":"
+                + " \"int\", \"default\": 1, \"scope\": \"seat\"}}, \"seats\": [{\"name\": \"conducteur\"},"
+                + " {\"name\": \"passager\"}]}").getAsJsonObject();
+        ProceduralTracks.Frame trame = new ProceduralTracks.Frame(List.of(), new double[0],
+                Interpolation.VehiclePose.NONE, AssemblyState.VariableValues.of(new double[] {0},
+                        new double[][] {{4, 7}}), new boolean[] {true, true}, 0.0, 0f, 0f, 0f, new double[0]);
+        ProceduralTracks.Probe lue = ProceduralTracks.probe(definition, "var.radio");
+        assertEquals(1.0, lue.read(trame), "sans lecteur assis : le défaut");
+        assertEquals(7.0, lue.read(trame.from(1)), "depuis le passager");
+        assertEquals(4.0, ProceduralTracks.probe(definition, "var.radio.conducteur").read(trame.from(1)),
+                "le siège nommé, d'où qu'on lise");
+        assertEquals(null, ProceduralTracks.probe(definition, "var.radio.arriere"), "un siège inconnu");
+    }
+
+    @Test
     @DisplayName("ADR-173 D1 : un nom qui n'est pas une source, ou qui nomme ce que la definition n'a pas, lève")
     void unNomInconnuLeve() {
         SourceReader lecteur = new SourceReader(DEFINITION);

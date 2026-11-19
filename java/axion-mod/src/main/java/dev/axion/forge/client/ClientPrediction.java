@@ -949,8 +949,15 @@ public final class ClientPrediction {
                 shown.load(), view.gear(), shown.flags(), input.throttle(), input.brake(), input.steer(),
                 input.handbrake(), (float) Math.abs(view.speed()), (float) view.speed());
         float[] floats = new float[values.length];
+        // ADR-174 D2 : une variable par siège ne se prédit pas ; elle se lit telle que le serveur l'a envoyée.
+        dev.axion.net.AssemblyState.VariableValues received = vehicle.receivedVariables();
+        float[][] seats = new float[values.length][];
         for (int i = 0; i < values.length; i++) {
-            floats[i] = (float) values[i];
+            if (received.perSeat(i)) {
+                seats[i] = received.seats()[i];
+            } else {
+                floats[i] = (float) values[i];
+            }
         }
         long mask = values.length == 64 ? -1L : (1L << values.length) - 1L;
         net.minecraft.world.level.Level level = vehicle.level();
@@ -958,11 +965,17 @@ public final class ClientPrediction {
                 vehicle.getZ());
         long tick = level.getGameTime();
         return new dev.axion.render.ProceduralTracks.Frame(wheels, vehicle.wheelSpin().angles(), pose,
-                new dev.axion.net.AssemblyState.VariableValues(values.length, mask, floats), vehicle.seatsOccupied(),
-                tick * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0,
+                new dev.axion.net.AssemblyState.VariableValues(values.length, mask, floats, seats),
+                vehicle.seatsOccupied(), tick * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0,
                 dev.axion.render.ProceduralTracks.worldTime(level.getDayTime()),
                 level.getBrightness(net.minecraft.world.level.LightLayer.SKY, at), level.getRainLevel(1f),
-                vehicle.socketReadings());
+                vehicle.socketReadings(), localSeat(vehicle));
+    }
+
+    /** {@return le siège qu'occupe le joueur local dans cette assembly, -1 sans} Ce que lit {@code var.<nom>}. */
+    static int localSeat(AxionEntity assembly) {
+        net.minecraft.world.entity.player.Player local = net.minecraft.client.Minecraft.getInstance().player;
+        return local == null ? -1 : assembly.seatOf(local);
     }
 
     private static SimCommandStream control(VehicleInput input) {

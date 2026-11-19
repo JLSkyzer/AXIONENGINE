@@ -1824,7 +1824,8 @@
           "scope": {
             "type": "string",
             "enum": [
-              "assembly"
+              "assembly",
+              "seat"
             ]
           }
         },

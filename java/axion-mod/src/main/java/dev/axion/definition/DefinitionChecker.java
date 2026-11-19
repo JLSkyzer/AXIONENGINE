@@ -56,6 +56,11 @@ final class DefinitionChecker {
     private final Map<NameCategory, Map<String, String>> declared =
             new EnumMap<>(NameCategory.class);
     private final List<Reference> references = new ArrayList<>();
+    /**
+     * Au schéma 7, les sources {@code var.<reste>} : le reste nomme une variable, ou {@code <nom>.<siège>} pour une
+     * variable par siège (ADR-174 D2), ce qui ne se juge qu'avec toutes les variables et tous les sièges.
+     */
+    private final List<Reference> variableSources = new ArrayList<>();
 
     /** Version du schéma lu. */
     private int version = 1;
@@ -94,6 +99,9 @@ final class DefinitionChecker {
         }
         if (checker.version >= 3 && checker.issues.isEmpty()) {
             checker.checkVariables(root);
+            if (checker.version >= 7) {
+                checker.checkSeatScope(root);
+            }
         }
         if (checker.issues.isEmpty()) {
             VehicleSpec.check(root, checker::invalid);
@@ -389,6 +397,8 @@ final class DefinitionChecker {
                 // var.<n> : au schéma 3, une variable déclarée (ADR-163 D2) ; avant, un nom libre.
                 if (rest.isEmpty()) {
                     invalid(path, "variable sans nom");
+                } else if (version >= 7) {
+                    variableSources.add(new Reference(NameCategory.VARIABLE, rest, path));
                 } else if (version >= 3 && validName(rest, path)) {
                     references.add(new Reference(NameCategory.VARIABLE, rest, path));
                 }
@@ -516,7 +526,15 @@ final class DefinitionChecker {
             switch (parsed.kind()) {
                 case INTERACT -> known(path, key, "node qui porte une interaction", names(root, "interaction", "node"));
                 case EVENT -> known(path, key, "événement", keys(root, "events"));
-                case VAR -> known(path, key, "variable", keys(root, "variables"));
+                case VAR -> {
+                    Variables.Reading reading = Variables.of(root).resolve(key, Variables.seatNames(root));
+                    if (reading == null) {
+                        invalid(path, "variable « " + key + " » inconnue de la definition");
+                    } else if (reading.seat() == Variables.Reading.READER
+                            && Variables.of(root).get(reading.variable()).perSeat()) {
+                        invalid(path, "variable par siège « " + key + " » : nommer le siège, var:" + key + ".<siège>");
+                    }
+                }
                 case SEAT_ENTER, SEAT_EXIT -> known(path, key, "siège", names(root, "seats", "name"));
                 case STAGE -> {
                     int colon = key.lastIndexOf(':');
@@ -549,6 +567,40 @@ final class DefinitionChecker {
                 invalid("$.animations." + entry.getKey() + ".weight_source", "la couche " + layer
                         + " a déjà son poids piloté par l'animation « " + first + " »");
             }
+        }
+    }
+
+    /**
+     * ADR-174 D2 : au schéma 7, une variable par siège vit dans une definition qui a des sièges, et seul ce qui situe un
+     * siège la nomme — une commande liée d'un siège, une interaction {@code set_variable} (le siège de qui clique), une
+     * source ({@code var.<nom>} depuis le siège du lecteur, {@code var.<nom>.<siège>}). Ailleurs — un paramètre réglé,
+     * un treuil, une action d'étape — aucun siège ne la situe.
+     */
+    private void checkSeatScope(JsonObject root) {
+        Variables variables = Variables.of(root);
+        List<String> seats = Variables.seatNames(root);
+        for (Reference source : variableSources) {
+            if (variables.resolve(source.name(), seats) == null) {
+                invalid(source.path(), "« " + source.name() + " » : pas de variable de ce nom dans la definition, ni"
+                        + " <nom>.<siège> d'une variable par siège");
+            }
+        }
+        for (int i = 0; i < variables.size(); i++) {
+            if (variables.get(i).perSeat() && seats.isEmpty()) {
+                invalid(StrictJson.member("$.variables", variables.get(i).name()) + ".scope",
+                        "une variable par siège demande des sièges");
+            }
+        }
+        for (Reference reference : references) {
+            if (reference.category() != NameCategory.VARIABLE) {
+                continue;
+            }
+            int index = variables.indexOf(reference.name());
+            if (index < 0 || !variables.get(index).perSeat() || reference.path().contains(".bindings[")
+                    || reference.path().matches("\\$\\.interaction\\[\\d+]\\.variable")) {
+                continue;
+            }
+            invalid(reference.path(), "variable par siège « " + reference.name() + " » : aucun siège ne la situe ici");
         }
     }
 

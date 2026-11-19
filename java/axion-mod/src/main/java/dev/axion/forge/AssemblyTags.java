@@ -470,6 +470,53 @@ final class AssemblyTags {
     }
 
     /**
+     * {@return les valeurs gardées des variables par siège (ADR-174 D2), par nom puis par nom de siège} Une variable
+     * par siège se garde dans {@code axion:vars} comme une table de ses sièges.
+     *
+     * @param stored les clés gardées
+     */
+    static Map<String, Map<String, Double>> seatVariables(CompoundTag stored) {
+        Map<String, Map<String, Double>> saved = new LinkedHashMap<>();
+        if (stored.contains(VARIABLES, Tag.TAG_COMPOUND)) {
+            CompoundTag variables = stored.getCompound(VARIABLES);
+            for (String name : variables.getAllKeys()) {
+                if (variables.contains(name, Tag.TAG_COMPOUND)) {
+                    CompoundTag seats = variables.getCompound(name);
+                    Map<String, Double> bySeat = new LinkedHashMap<>();
+                    for (String seat : seats.getAllKeys()) {
+                        if (seats.contains(seat, Tag.TAG_DOUBLE)) {
+                            bySeat.put(seat, seats.getDouble(seat));
+                        }
+                    }
+                    saved.put(name, bySeat);
+                }
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Écrit les variables par siège gardées (ADR-174 D2), chacune une table de ses sièges, à côté des autres.
+     *
+     * @param stored les clés gardées
+     * @param persisted les valeurs, par nom puis par nom de siège
+     */
+    static void putSeatVariables(CompoundTag stored, Map<String, Map<String, Double>> persisted) {
+        if (persisted.isEmpty()) {
+            return;
+        }
+        CompoundTag variables = stored.contains(VARIABLES, Tag.TAG_COMPOUND)
+                ? stored.getCompound(VARIABLES).copy()
+                : new CompoundTag();
+        persisted.forEach((name, bySeat) -> {
+            CompoundTag seats = new CompoundTag();
+            bySeat.forEach(seats::putDouble);
+            variables.put(name, seats);
+        });
+        stored.put(VARIABLES, variables);
+    }
+
+    /**
      * Le schéma 2 passe au 3 (ADR-153 D5) : il ne portait ni vitesses, ni sommeil, ni corps secondaires,
      * ni état des joints, et la migration n'en invente pas — l'assembly repartira de sa pose de repos. Elle
      * garde {@code axion:def}, {@code axion:rot} et toute autre clé, et ne change que la version.

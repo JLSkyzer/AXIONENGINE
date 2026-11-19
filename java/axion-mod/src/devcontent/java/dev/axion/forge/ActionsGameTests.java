@@ -107,6 +107,63 @@ public final class ActionsGameTests {
     }
 
     /**
+     * ADR-174 D2 : une variable par siège — l'interaction l'écrit au siège de qui clique, debout elle est refusée ; la
+     * valeur de chaque siège part avec le snapshot et se sauvegarde par nom de siège.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr174_UneVariableParSiegeSEcritAuSiegeDeQuiClique(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/siege_radio",
+                new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        ServerPlayer joueur = SiegesGameTests.joueur(helper, "auditeur");
+        AxionEntity[] relue = new AxionEntity[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    dev.axion.entity.AssemblyVariables variables = assembly.variables();
+                    int radio = variables.declared().indexOf("radio");
+                    helper.assertTrue(variables.seats().equals(java.util.List.of("conducteur", "passager")),
+                            "une case par siège : " + variables.seats());
+                    helper.assertTrue(SiegesGameTests.cliquer(assembly, joueur, 2f, 0.5f, 0f) != InteractionResult.CONSUME,
+                            "debout, il n'a pas de siège où l'écrire");
+                    helper.assertTrue(variables.get(radio, 0) == 0 && variables.get(radio, 1) == 0, "rien n'a changé");
+                    helper.assertTrue(assembly.sit(joueur, 1), "il s'assoit au siège passager");
+                    helper.assertTrue(SiegesGameTests.cliquer(assembly, joueur, 2f, 0.5f, 0f) == InteractionResult.CONSUME,
+                            "assis, l'interaction joue");
+                    helper.assertTrue(variables.get(radio, 1) == 3 && variables.get(radio, 0) == 0,
+                            "écrite à son siège seulement : " + java.util.Arrays.toString(variables.seatValues(radio)));
+                    variables.set(radio, 0, 7, "test");
+                })
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    int radio = assembly.variables().declared().indexOf("radio");
+                    dev.axion.net.AssemblyState.VariableValues envoyees = assembly.netState().variables();
+                    helper.assertTrue(envoyees.perSeat(radio) && envoyees.seatValue(radio, 0) == 7f
+                            && envoyees.seatValue(radio, 1) == 3f, "le snapshot porte chaque siège : " + envoyees);
+                    joueur.stopRiding();
+                    CompoundTag sauvegarde = new CompoundTag();
+                    helper.assertTrue(assembly.save(sauvegarde), "sauvegarde refusée");
+                    CompoundTag gardee = sauvegarde.getCompound(AssemblyTags.VARIABLES).getCompound("radio");
+                    helper.assertTrue(gardee.getDouble("conducteur") == 7 && gardee.getDouble("passager") == 3,
+                            "gardée par nom de siège : " + gardee);
+                    assembly.discard();
+                    Entity entite = EntityType.loadEntityRecursive(sauvegarde, helper.getLevel(), e -> e);
+                    helper.assertTrue(entite instanceof AxionEntity, "la sauvegarde ne rend pas une assembly");
+                    helper.assertTrue(helper.getLevel().addFreshEntity(entite), "l'assembly relue n'entre pas");
+                    relue[0] = (AxionEntity) entite;
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].variables() != null, "variables relues"))
+                .thenExecute(() -> {
+                    int radio = relue[0].variables().declared().indexOf("radio");
+                    helper.assertTrue(java.util.Arrays.equals(relue[0].variables().seatValues(radio),
+                            new double[] {7, 3}), "relue telle quelle : "
+                            + java.util.Arrays.toString(relue[0].variables().seatValues(radio)));
+                })
+                .thenSucceed();
+    }
+
+    /**
      * ADR-174 D4 : le {@code trigger} d'une animation, évalué au serveur — une interaction et l'événement qu'elle émet
      * jouent chacun leur clip ; une variable qui devient non nulle joue le sien, revenue à 0 elle l'arrête. Le masque de
      * l'animation (ADR-174 D4) suit la couche.

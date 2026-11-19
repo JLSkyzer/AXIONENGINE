@@ -43,6 +43,42 @@ class AssemblyVariablesTest {
         return mask;
     }
 
+    private static final Variables PAR_SIEGE = Variables.of(JsonParser.parseString("""
+            { "variables": {
+                "phares": { "type": "bool", "persist": true },
+                "radio": { "type": "int", "min": 0, "max": 9, "persist": true, "scope": "seat", "write": "seat" },
+                "liseuse": { "type": "bool", "scope": "seat" } } }
+            """).getAsJsonObject());
+
+    @Test
+    @DisplayName("ADR-174 D2 : une variable par siège a une case par siège ; une commande écrit celle de son siège")
+    void parSiege() {
+        AssemblyVariables variables = new AssemblyVariables(PAR_SIEGE, List.of("conducteur", "passager"));
+        List<Seating.Binding> radio = List.of(new Seating.Binding(1, "radio", 1, Seating.Mode.CYCLE,
+                new double[] {0, 3, 7}));
+        variables.input(1, radio, bits(1), "passager");
+        assertEquals(3.0, variables.get(1, 1), "le passager change sa radio");
+        assertEquals(0.0, variables.get(1, 0), "celle du conducteur ne bouge pas");
+        assertEquals(0.0, variables.get(1), "sans siège : le défaut");
+        assertTrue(java.util.Arrays.equals(new double[] {0, 3}, variables.seatValues(1)));
+        assertThrows(IllegalArgumentException.class, () -> variables.set(1, 5, "API"), "nommer le siège");
+        assertThrows(IllegalArgumentException.class, () -> variables.set(1, 2, 5, "API"), "siège hors de la definition");
+        variables.set(1, 0, 7, "API");
+        assertEquals(7.0, variables.get(1, 0));
+        variables.set(0, 1, "API");
+        assertEquals(1.0, variables.get(0, 1), "une variable de l'assembly ignore le siège");
+
+        assertEquals(Map.of("phares", 1.0), variables.persisted());
+        assertEquals(Map.of("radio", Map.of("conducteur", 7.0, "passager", 3.0)), variables.persistedSeats());
+        AssemblyVariables relue = new AssemblyVariables(PAR_SIEGE, List.of("passager", "conducteur", "arriere"));
+        assertTrue(relue.restoreSeats(Map.of("radio", Map.of("conducteur", 7.0, "passager", 3.0, "parti", 1.0)))
+                .isEmpty());
+        assertTrue(java.util.Arrays.equals(new double[] {3, 7, 0}, relue.seatValues(1)), "chaque siège par son nom");
+        AssemblyVariables adoptee = new AssemblyVariables(PAR_SIEGE, List.of("passager"));
+        adoptee.adopt(variables);
+        assertEquals(3.0, adoptee.get(1, 0), "recompilée : le siège garde sa valeur par son nom");
+    }
+
     @Test
     @DisplayName("toggle bascule au front montant seulement, tenue ou non")
     void toggle() {

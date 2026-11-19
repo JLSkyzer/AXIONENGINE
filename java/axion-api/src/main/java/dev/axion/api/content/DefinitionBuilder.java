@@ -5466,7 +5466,7 @@ public final class DefinitionBuilder {
         }
 
         /**
-         * {@code variables.*.scope} : parmi {@code assembly}.
+         * {@code variables.*.scope} : parmi {@code assembly}, {@code seat}.
          *
          * @param value la valeur
          * @return ce réglage, pour enchaîner

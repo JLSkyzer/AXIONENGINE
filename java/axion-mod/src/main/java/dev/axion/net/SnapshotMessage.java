@@ -58,14 +58,14 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 10 depuis le masque de nodes d'une couche d'animation
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 11 depuis les variables par siège (ADR-174 D2) ; 10 depuis le masque de nodes d'une couche d'animation
      * (ADR-174 D4) ; 9 depuis l'état des nodes (ADR-174 D3) ; 8 depuis les réglages
      * des attaches ; 7 depuis les attaches (ADR-171 D7) ; 6 depuis les
      * modificateurs des paramètres (ADR-167 D8), après
      * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
      * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 10;
+    public static final int DESCRIPTOR_VERSION = 11;
 
     /**
      * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}
@@ -350,7 +350,16 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     }
 
     private static int variablesSize(AssemblyState.VariableValues variables) {
-        return varintSize(variables.count()) + (variables.count() + 7) / 8 + Float.BYTES * variables.present();
+        int size = varintSize(variables.count()) + 2 * ((variables.count() + 7) / 8);
+        float[][] seats = variables.seats();
+        for (int index = 0; index < variables.count(); index++) {
+            if (variables.perSeat(index)) {
+                size += varintSize(seats[index].length) + Float.BYTES * seats[index].length;
+            } else if (variables.has(index)) {
+                size += Float.BYTES;
+            }
+        }
+        return size;
     }
 
     private static int bodiesSize(List<AssemblyState.Body> bodies) {
@@ -567,8 +576,25 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         for (int octet = 0; octet < (count + 7) / 8; octet++) {
             writer.u8((int) (variables.mask() >>> (8 * octet) & 0xFF));
         }
+        // ADR-174 D2 : le masque des variables par siège, puis chaque présente — la valeur d'une variable de
+        // l'assembly, le nombre de sièges et la valeur de chacun pour une variable par siège.
+        long perSeat = 0L;
         for (int index = 0; index < count; index++) {
-            if (variables.has(index)) {
+            if (variables.perSeat(index)) {
+                perSeat |= 1L << index;
+            }
+        }
+        for (int octet = 0; octet < (count + 7) / 8; octet++) {
+            writer.u8((int) (perSeat >>> (8 * octet) & 0xFF));
+        }
+        float[][] seats = variables.seats();
+        for (int index = 0; index < count; index++) {
+            if (variables.perSeat(index)) {
+                writer.varUInt(seats[index].length);
+                for (float value : seats[index]) {
+                    writer.f32(value);
+                }
+            } else if (variables.has(index)) {
                 writer.f32(variables.value(index));
             }
         }
@@ -586,14 +612,29 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         for (int octet = 0; octet < (count + 7) / 8; octet++) {
             mask |= (long) reader.u8() << (8 * octet);
         }
+        long perSeat = 0L;
+        for (int octet = 0; octet < (count + 7) / 8; octet++) {
+            perSeat |= (long) reader.u8() << (8 * octet);
+        }
         float[] values = new float[count];
+        float[][] seats = new float[count][];
         for (int index = 0; index < count; index++) {
-            if ((mask >>> index & 1L) != 0) {
+            if ((perSeat >>> index & 1L) != 0) {
+                int seatCount = reader.varUInt();
+                if (seatCount < 0 || seatCount > AssemblyState.VariableValues.MAX_SEATS) {
+                    throw new MalformedPacketException("entité " + handle + ", variable " + index + " : " + seatCount
+                            + " sièges, au-delà de " + AssemblyState.VariableValues.MAX_SEATS);
+                }
+                seats[index] = new float[seatCount];
+                for (int seat = 0; seat < seatCount; seat++) {
+                    seats[index][seat] = reader.f32();
+                }
+            } else if ((mask >>> index & 1L) != 0) {
                 values[index] = reader.f32();
             }
         }
         try {
-            return new AssemblyState.VariableValues(count, mask, values);
+            return new AssemblyState.VariableValues(count, mask, values, seats);
         } catch (IllegalArgumentException refused) {
             throw new MalformedPacketException("entité " + handle + " : " + refused.getMessage());
         }

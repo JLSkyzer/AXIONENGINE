@@ -78,8 +78,15 @@ public final class ProceduralTracks {
      *
      * @param source la grandeur lue
      * @param index rang de la roue, du siège ou de la variable, 0 pour une autre source
+     * @param seat pour une variable par siège, le siège nommé ({@code var.<nom>.<siège>}) ;
+     *     {@link Variables.Reading#READER} : celui du lecteur (ADR-174 D2)
      */
-    private record Reading(Source source, int index) {}
+    private record Reading(Source source, int index, int seat) {
+
+        Reading(Source source, int index) {
+            this(source, index, Variables.Reading.READER);
+        }
+    }
 
     /** Ce qu'une source lit. Celles d'une roue ou d'un siège portent un rang. */
     private enum Source {
@@ -159,10 +166,42 @@ public final class ProceduralTracks {
      * @param rain pluie, de 0 à 1
      * @param sockets pour chaque socket, dans l'ordre de la definition, {@link #SOCKET_READINGS} valeurs : attaché
      *     (0 ou 1), longueur de la corde en blocs, tension en newtons, désalignement en blocs (ADR-171 D7)
+     * @param seat le siège du lecteur — celui qu'occupe le joueur local —, -1 sans : ce que lit {@code var.<nom>}
+     *     d'une variable par siège (ADR-174 D2)
      */
     public record Frame(List<Interpolation.WheelPose> wheels, double[] spinAngles, Interpolation.VehiclePose vehicle,
             AssemblyState.VariableValues variables, boolean[] seats, double seconds, float worldTime, float skyLight,
-            float rain, double[] sockets) {
+            float rain, double[] sockets, int seat) {
+
+        /**
+         * Un cadre sans lecteur assis.
+         *
+         * @param wheels état de chaque roue
+         * @param spinAngles angle de chaque roue
+         * @param vehicle état du véhicule
+         * @param variables variables reçues
+         * @param seats occupation de chaque siège
+         * @param seconds temps du serveur, en secondes
+         * @param worldTime heure du jour
+         * @param skyLight lumière du ciel
+         * @param rain pluie
+         * @param sockets lectures des sockets
+         */
+        public Frame(List<Interpolation.WheelPose> wheels, double[] spinAngles, Interpolation.VehiclePose vehicle,
+                AssemblyState.VariableValues variables, boolean[] seats, double seconds, float worldTime,
+                float skyLight, float rain, double[] sockets) {
+            this(wheels, spinAngles, vehicle, variables, seats, seconds, worldTime, skyLight, rain, sockets, -1);
+        }
+
+        /**
+         * {@return ce cadre, lu depuis ce siège (ADR-174 D2)}
+         *
+         * @param reader le siège du lecteur, -1 sans
+         */
+        public Frame from(int reader) {
+            return new Frame(wheels, spinAngles, vehicle, variables, seats, seconds, worldTime, skyLight, rain, sockets,
+                    reader);
+        }
 
         /** Les lectures d'un socket dans {@link #sockets} : attaché, longueur, tension, désalignement. */
         public static final int SOCKET_READINGS = 4;
@@ -410,7 +449,26 @@ public final class ProceduralTracks {
             Map<String, Integer> sockets, Variables variables) {
         Source kind = kind(source);
         Integer index = kind == null ? null : index(kind, source, wheels, seats, sockets, variables);
-        return kind == null || index == null ? null : new Reading(kind, index);
+        if (kind == null || index == null) {
+            return null;
+        }
+        if (kind == Source.VARIABLE) {
+            // ADR-174 D2 : var.<nom>.<siège> nomme le siège ; var.<nom> lit celui du lecteur.
+            return new Reading(kind, index,
+                    variables.resolve(source.substring(source.indexOf('.') + 1), names(seats)).seat());
+        }
+        return new Reading(kind, index);
+    }
+
+    /** Les noms d'une table nom → rang, rangés par rang. */
+    private static List<String> names(Map<String, Integer> ranks) {
+        String[] names = new String[ranks.size()];
+        ranks.forEach((name, rank) -> {
+            if (rank >= 0 && rank < names.length) {
+                names[rank] = name;
+            }
+        });
+        return java.util.Arrays.asList(names);
     }
 
     private static Channel channel(String channel) {
@@ -509,8 +567,8 @@ public final class ProceduralTracks {
             case SEAT_OCCUPIED -> seats.get(element(source));
             case ATTACH_LENGTH, ATTACH_TENSION, ATTACHED, SOCKET_MISALIGNMENT -> sockets.get(element(source));
             case VARIABLE -> {
-                int rank = variables.indexOf(source.substring(source.indexOf('.') + 1));
-                yield rank < 0 ? null : rank;
+                Variables.Reading read = variables.resolve(source.substring(source.indexOf('.') + 1), names(seats));
+                yield read == null ? null : read.variable();
             }
             default -> 0;
         };
@@ -656,13 +714,25 @@ public final class ProceduralTracks {
             case GEAR -> (double) vehicle.gear();
             case SHIFTING -> flag((vehicle.flags() & AssemblyState.Vehicle.SHIFTING) != 0);
             case SECONDS -> frame.seconds();
-            case VARIABLE -> frame.variables().has(track.index())
-                    ? (double) frame.variables().value(track.index())
-                    : defaults[track.index()];
+            case VARIABLE -> variable(track, frame);
             case WORLD_TIME -> (double) frame.worldTime();
             case SKY_LIGHT -> (double) frame.skyLight();
             case RAIN -> (double) frame.rain();
         };
+    }
+
+    /**
+     * Une variable : sa valeur reçue, son défaut sans. Une variable par siège se lit au siège nommé, sinon à celui du
+     * lecteur ; sans lecteur assis, ou sans valeur à ce siège, à son défaut (ADR-174 D2).
+     */
+    private double variable(Reading track, Frame frame) {
+        AssemblyState.VariableValues values = frame.variables();
+        int index = track.index();
+        if (values.perSeat(index)) {
+            float value = values.seatValue(index, track.seat() >= 0 ? track.seat() : frame.seat());
+            return Float.isNaN(value) ? defaults[index] : value;
+        }
+        return values.has(index) ? values.value(index) : defaults[index];
     }
 
     /** Une lecture d'un socket ; 0 pour un socket sans attache, que le cadre ne connaît pas. */

@@ -235,7 +235,10 @@ public final class DashboardOverlay {
             variableValues = new double[variables.size()];
             for (int i = 0; i < variables.size(); i++) {
                 variableNames.add(variables.get(i).name());
-                variableValues[i] = shown.variables().has(i) ? shown.variables().value(i) : variables.get(i).initial();
+                // ADR-174 D2 : une variable par siège se montre au siège du joueur local.
+                float atSeat = shown.variables().seatValue(i, ClientPrediction.localSeat(assembly));
+                variableValues[i] = shown.variables().perSeat(i) ? (Float.isNaN(atSeat) ? variables.get(i).initial()
+                        : atSeat) : shown.variables().has(i) ? shown.variables().value(i) : variables.get(i).initial();
             }
         }
         List<String> parameterNames = List.of();
@@ -357,7 +360,7 @@ public final class DashboardOverlay {
         return new ProceduralTracks.Frame(shown.wheels(), assembly.wheelSpin().angles(), shown.vehicle(),
                 shown.variables(), assembly.seatsOccupied(), renderTick * ServerClock.TICK_MILLIS / 1000.0,
                 ProceduralTracks.worldTime(level.getDayTime()), level.getBrightness(LightLayer.SKY, at),
-                level.getRainLevel(partialTick), assembly.socketReadings());
+                level.getRainLevel(partialTick), assembly.socketReadings(), ClientPrediction.localSeat(assembly));
     }
 
     private static ProceduralTracks.Probe[] probes(AxionRuntime runtime, AxionEntity assembly,

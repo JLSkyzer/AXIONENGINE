@@ -766,11 +766,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return;
         }
         for (String name : triggers.watchedVariables()) {
-            int index = held.declared().indexOf(name);
-            if (index < 0) {
+            // ADR-174 D2 : var:<nom>, ou var:<nom>.<siège> pour une variable par siège.
+            dev.axion.definition.Variables.Reading reading = held.declared().resolve(name, held.seats());
+            if (reading == null) {
                 continue;
             }
-            boolean on = held.values()[index] != 0.0;
+            boolean on = (reading.seat() < 0 ? held.get(reading.variable())
+                    : held.get(reading.variable(), reading.seat())) != 0.0;
             Boolean before = triggerVariables.put(name, on);
             if (before == null || before == on) {
                 continue;
@@ -854,8 +856,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             if (held == null) {
                 return false;
             }
+            // ADR-174 D2 : une variable par siège s'écrit au siège de qui clique ; debout, il n'en a pas.
+            int seat = held.declared().get(interaction.variable()).perSeat() ? seatOf(player) : 0;
+            if (seat < 0) {
+                logRefusals(List.of("variable par siège « " + held.declared().get(interaction.variable()).name()
+                        + " » : " + player.getName().getString() + " n'est assis à aucun siège"));
+                return false;
+            }
             try {
-                held.set(interaction.variable(), interaction.value(),
+                held.set(interaction.variable(), seat, interaction.value(),
                         "interaction (" + player.getName().getString() + ")");
             } catch (IllegalArgumentException refused) {
                 // ADR-167 D2 : ce que la variable règle sortirait de ses bornes ; rien ne change.
@@ -943,8 +952,16 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return null;
         }
         if (variables == null || variables.declared() != seating.variables()) {
-            AssemblyVariables fresh = new AssemblyVariables(seating.variables());
-            List<String> refusals = variables != null ? fresh.adopt(variables) : fresh.restore(AssemblyTags.variables(stored));
+            AssemblyVariables fresh = new AssemblyVariables(seating.variables(),
+                    seating.seats().stream().map(Seating.Seat::name).toList());
+            List<String> refusals = new ArrayList<>();
+            if (variables != null) {
+                refusals.addAll(fresh.adopt(variables));
+            } else {
+                refusals.addAll(fresh.restore(AssemblyTags.variables(stored)));
+                // ADR-174 D2 : celles de chaque siège, par son nom.
+                refusals.addAll(fresh.restoreSeats(AssemblyTags.seatVariables(stored)));
+            }
             for (String refusal : refusals) {
                 LOGGER.warn("AXION : assembly {} — {}", getUUID(), refusal);
             }
@@ -1266,16 +1283,18 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 : Interpolation.vehicleOf(state);
         AssemblyVariables held = variables();
         double[] values = held == null ? new double[0] : held.values();
-        float[] floats = new float[values.length];
+        // ADR-174 D2 : chaque siège d'une variable par siège ; au serveur, aucun lecteur n'est assis.
+        double[][] seats = new double[values.length][];
         for (int i = 0; i < values.length; i++) {
-            floats[i] = (float) values[i];
+            if (held.declared().get(i).perSeat()) {
+                seats[i] = held.seatValues(i);
+            }
         }
-        long mask = values.length == 64 ? -1L : (1L << values.length) - 1L;
         Level here = level();
         BlockPos at = BlockPos.containing(getX(), getY(), getZ());
         long tick = here.getGameTime();
         return new ProceduralTracks.Frame(wheels, sourceSpin.advance(tick, wheels).clone(), vehicle,
-                new AssemblyState.VariableValues(values.length, mask, floats), seatsOccupied(),
+                AssemblyState.VariableValues.of(values, seats), seatsOccupied(),
                 tick * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0, ProceduralTracks.worldTime(here.getDayTime()),
                 here.getBrightness(net.minecraft.world.level.LightLayer.SKY, at), here.getRainLevel(1f),
                 socketReadings());
@@ -2751,7 +2770,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
         driverOnly = onlyDriver;
         netVariablesVersion = variables.version();
-        return AssemblyState.VariableValues.of(variables.values()).only(sent);
+        // ADR-174 D2 : une variable par siège part avec la valeur de chaque siège.
+        double[][] seats = new double[variables.size()][];
+        for (int i = 0; i < seats.length; i++) {
+            if (variables.declared().get(i).perSeat()) {
+                seats[i] = variables.seatValues(i);
+            }
+        }
+        return AssemblyState.VariableValues.of(variables.values(), seats).only(sent);
     }
 
     /**
@@ -3091,6 +3117,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-163 D2 : les variables gardées, si l'assembly en a déjà ; sinon, celles que son NBT portait restent.
         if (!inert && variables != null) {
             AssemblyTags.putVariables(stored, variables.persisted());
+            AssemblyTags.putSeatVariables(stored, variables.persistedSeats());
         }
         // ADR-167 D7 : les modificateurs posés, si l'assembly en a déjà une table ; sinon, ceux que son NBT portait.
         if (!inert && parameters != null) {

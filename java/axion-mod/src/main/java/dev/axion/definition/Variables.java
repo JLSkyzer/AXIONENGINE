@@ -56,6 +56,14 @@ public record Variables(List<Variable> declared) {
         NONE
     }
 
+    /** Ce que couvre une variable (ADR-174 D2). */
+    public enum Scope {
+        /** Une valeur pour l'assembly entière. */
+        ASSEMBLY,
+        /** Une valeur par siège (schéma 7) : son occupant l'écrit, {@code var.<nom>} la lit depuis ce siège. */
+        SEAT
+    }
+
     /** Qui peut écrire une variable par une entrée : une commande liée à un siège. */
     public enum Write {
         /** Le seul siège {@code driver}. */
@@ -77,9 +85,21 @@ public record Variables(List<Variable> declared) {
      * @param persist sauvegardée avec l'assembly
      * @param replicate qui la reçoit
      * @param write qui peut l'écrire par une entrée
+     * @param scope ce qu'elle couvre : l'assembly, ou chaque siège
      */
     public record Variable(String name, Type type, double initial, double min, double max, boolean persist,
-            Replicate replicate, Write write) {
+            Replicate replicate, Write write, Scope scope) {
+
+        /** Une variable de l'assembly entière. */
+        public Variable(String name, Type type, double initial, double min, double max, boolean persist,
+                Replicate replicate, Write write) {
+            this(name, type, initial, min, max, persist, replicate, write, Scope.ASSEMBLY);
+        }
+
+        /** {@return vrai si elle a une valeur par siège (ADR-174 D2)} */
+        public boolean perSeat() {
+            return scope == Scope.SEAT;
+        }
 
         /**
          * {@return pourquoi cette valeur ne lui convient pas, {@code null} si elle convient} Une valeur hors de ses
@@ -124,6 +144,56 @@ public record Variables(List<Variable> declared) {
     }
 
     /**
+     * Ce qu'une source {@code var.<reste>} lit (ADR-174 D2).
+     *
+     * @param variable rang de la variable
+     * @param seat rang du siège nommé ; {@link #READER} : celui du lecteur, pour une variable par siège
+     */
+    public record Reading(int variable, int seat) {
+
+        /** Le siège du lecteur, ou l'assembly pour une variable de l'assembly. */
+        public static final int READER = -1;
+    }
+
+    /**
+     * {@return ce que lit {@code var.<rest>}, {@code null} si rien ne s'y lit} Le nom exact d'une variable d'abord —
+     * pour une variable par siège, depuis le siège du lecteur ; sinon {@code <nom>.<siège>}, une variable par siège lue
+     * à un siège nommé.
+     *
+     * @param rest ce qui suit {@code var.}
+     * @param seats le nom de chaque siège, dans l'ordre de la definition
+     */
+    public Reading resolve(String rest, List<String> seats) {
+        int exact = indexOf(rest);
+        if (exact >= 0) {
+            return new Reading(exact, Reading.READER);
+        }
+        int dot = rest.lastIndexOf('.');
+        if (dot <= 0) {
+            return null;
+        }
+        int variable = indexOf(rest.substring(0, dot));
+        int seat = seats.indexOf(rest.substring(dot + 1));
+        return variable >= 0 && seat >= 0 && declared.get(variable).perSeat() ? new Reading(variable, seat) : null;
+    }
+
+    /**
+     * {@return le nom de chaque siège d'une definition, dans son ordre}
+     *
+     * @param root document de la definition
+     */
+    public static List<String> seatNames(JsonObject root) {
+        List<String> names = new ArrayList<>();
+        if (root.get("seats") instanceof com.google.gson.JsonArray seats) {
+            for (JsonElement seat : seats) {
+                names.add(seat instanceof JsonObject object && object.get("name") instanceof JsonPrimitive name
+                        ? name.getAsString() : "");
+            }
+        }
+        return names;
+    }
+
+    /**
      * {@return la variable de ce rang}
      *
      * @param index son rang
@@ -159,7 +229,10 @@ public record Variables(List<Variable> declared) {
                             : Replicate.ALL,
                     spec.has("write")
                             ? Write.valueOf(spec.get("write").getAsString().toUpperCase(Locale.ROOT))
-                            : Write.DRIVER));
+                            : Write.DRIVER,
+                    spec.has("scope")
+                            ? Scope.valueOf(spec.get("scope").getAsString().toUpperCase(Locale.ROOT))
+                            : Scope.ASSEMBLY));
         }
         return new Variables(declared);
     }

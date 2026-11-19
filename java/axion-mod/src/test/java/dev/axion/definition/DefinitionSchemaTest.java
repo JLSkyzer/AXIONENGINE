@@ -754,6 +754,42 @@ class DefinitionSchemaTest {
                 "avant le schéma 7, mask n'existe pas");
     }
 
+    /** Une definition au schéma 7, deux sièges et une variable par siège ; {@code extra} s'ajoute à la racine. */
+    private static JsonObject parSiege(String extra) {
+        return JsonParser.parseString("{\"schema\": 7, \"asset\": \"mymod:models/pickup.glb\", \"kind\":"
+                + " \"rigid_object\", \"variables\": {\"radio\": {\"type\": \"int\", \"min\": 0, \"max\": 9,"
+                + " \"scope\": \"seat\", \"write\": \"seat\"}}, \"seats\": [{\"name\": \"conducteur\", \"node\":"
+                + " \"s0\", \"role\": \"driver\", \"bindings\": [{\"command\": 1, \"variable\": \"radio\","
+                + " \"mode\": \"cycle\", \"values\": [0, 3]}]}, {\"name\": \"passager\", \"node\": \"s1\"}]"
+                + (extra == null ? "" : ", " + extra) + "}").getAsJsonObject();
+    }
+
+    @Test
+    @DisplayName("ADR-174 D2 : au schéma 7, une variable par siège se lie, se lit au siège du lecteur ou nommé, se déclenche nommée")
+    void lesVariablesParSiege() {
+        assertDoesNotThrow(() -> read(parSiege("\"interaction\": [{\"node\": \"door\", \"action\": \"set_variable\","
+                + " \"variable\": \"radio\", \"value\": 3}], \"procedural\": [{\"node\": \"n\", \"channel\":"
+                + " \"visibility\", \"source\": \"var.radio\"}, {\"node\": \"m\", \"channel\": \"visibility\","
+                + " \"source\": \"var.radio.passager\"}], \"animations\": {\"a\": {\"clip\": \"x\","
+                + " \"trigger\": \"var:radio.passager\"}}")));
+
+        assertEquals("$.animations.a.trigger", assertThrows(DefinitionException.class, () -> read(parSiege(
+                "\"animations\": {\"a\": {\"clip\": \"x\", \"trigger\": \"var:radio\"}}"))).path(),
+                "un déclencheur nomme le siège");
+        assertEquals("$.procedural[0].source", assertThrows(DefinitionException.class, () -> read(parSiege(
+                "\"procedural\": [{\"node\": \"n\", \"channel\": \"visibility\", \"source\":"
+                + " \"var.radio.arriere\"}]"))).path(), "un siège inconnu");
+
+        JsonObject sansSiege = parSiege(null);
+        sansSiege.remove("seats");
+        assertEquals("$.variables.radio.scope", assertThrows(DefinitionException.class, () -> read(sansSiege)).path());
+
+        JsonObject six = parSiege(null);
+        six.addProperty("schema", 6);
+        assertEquals("$.variables.radio.scope", assertThrows(DefinitionException.class, () -> read(six)).path(),
+                "avant le schéma 7, scope ne vaut que assembly");
+    }
+
     @Test
     @DisplayName("ADR-174 D3 : une action à deux clés, une émission ou une teinte hors bornes, une liste absente : refusées")
     void lesActionsMalFormeesSontRefusees() {

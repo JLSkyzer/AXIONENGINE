@@ -3887,9 +3887,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
+     - [x] ADR-174, tranche 9e (2026-11-19) : variables `scope: "seat"`, une case par siège, `var.<nom>.<siège>`,
+           descripteur 11, sauvegarde par nom de siège, API par siège. Suite : 9f (capteurs), 9g (registres
+           d'actions, `open_container`).
      - [x] ADR-174, tranche 9d2 (2026-11-19) : `weight_source` évaluée au client et `SET_WEIGHT` (ABI 28), `mask`
-           de couche au descripteur 10, `AnimationControl.play` avec masque. Suite : 9e (variables par siège), 9f
-           (capteurs), 9g (registres d'actions, `open_container`).
+           de couche au descripteur 10, `AnimationControl.play` avec masque.
      - [x] ADR-174, tranche 9d1 (2026-11-18) : grammaire de `trigger`, évaluée au serveur.
      - [x] ADR-174, tranche 9c (2026-11-18, avant 9b) : `SeatListener`, `InteractionListener`, refus au joueur,
            isolement par `content.listener_strikes` (`E-1012`), guide « Écouter et refuser un geste ».

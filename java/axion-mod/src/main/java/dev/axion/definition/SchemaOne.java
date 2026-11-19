@@ -163,7 +163,7 @@ final class SchemaOne {
         if (version >= 3) {
             // ADR-163 D2 : 64 variables au plus, chacune par instance.
             root.opt("variables",
-                    new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(), Variables.MAX));
+                    new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(version), Variables.MAX));
         }
         if (version >= 7) {
             // ADR-174 D2 : les événements de contenu, et à qui chacun part.
@@ -561,10 +561,9 @@ final class SchemaOne {
 
     /**
      * ADR-163 D2 : une variable de contenu. Le type, le défaut et les bornes se jugent ensemble dans
-     * {@link DefinitionChecker} ; {@code scope} n'a qu'une valeur, l'assembly, tant que la portée par siège n'existe
-     * pas (Q4).
+     * {@link DefinitionChecker} ; {@code scope} vaut l'assembly, et au schéma 7 aussi le siège (ADR-174 D2).
      */
-    private static SchemaNode variable() {
+    private static SchemaNode variable(int version) {
         return obj()
                 .req("type", oneOf("bool", "int", "float"))
                 .opt("default", any())
@@ -573,7 +572,7 @@ final class SchemaOne {
                 .opt("persist", bool())
                 .opt("replicate", oneOf("all", "driver", "none"))
                 .opt("write", oneOf("driver", "seat", "none"))
-                .opt("scope", oneOf("assembly"))
+                .opt("scope", version >= 7 ? oneOf("assembly", "seat") : oneOf("assembly"))
                 .build();
     }
 

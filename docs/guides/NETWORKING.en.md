@@ -54,6 +54,24 @@ the ground ([ADR-168](../decisions/ADR-168.md), clarification 6d-1).
 says. A player receives at most `net.events_per_player_tick` per tick (16); beyond, they are not sent, and the server
 log says so once per second.
 
+### Per-seat variables
+
+From schema 7, a variable declares `"scope": "seat"` to have **one value per seat** — each place's radio, the
+passenger's reading light ([ADR-174](../decisions/ADR-174.md) D2). The definition must have seats.
+
+```json
+"variables": { "radio": { "type": "int", "min": 0, "max": 9, "scope": "seat", "write": "seat", "persist": true } }
+```
+
+- **Writing it**: a seat's bound command writes that seat's value; a `set_variable` interaction, the seat of whoever
+  clicks — standing, it is refused; the API, `variables().set("radio", "passenger", 3)`.
+- **Reading it**: `var.radio` reads the value of the seat the local player occupies (its default when not seated);
+  `var.radio.passenger` reads a named seat, which everyone sees. A trigger always names the seat:
+  `var:radio.passenger`. The API reads through `variables().get("radio", "passenger")`; `get("radio")` is refused.
+- **What is sent**: every player receives each seat's value, according to `replicate` (descriptor 11). It is saved by
+  seat name when it is `persist`. It is not predicted: the driver sees it change with the snapshot.
+- **What refuses it**: a tuned parameter, a winch, a stage action — nothing there locates a seat.
+
 ## Prediction of the driven vehicle
 
 A player who drives a vehicle on a remote server sees it answer their keys at once: their client simulates that vehicle

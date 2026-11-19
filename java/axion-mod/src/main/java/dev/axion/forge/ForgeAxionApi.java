@@ -172,7 +172,46 @@ public final class ForgeAxionApi implements AxionApi {
 
         @Override
         public double get(String name) {
-            return held().get(index(name));
+            int index = index(name);
+            requireAssembly(index, name);
+            return held().get(index);
+        }
+
+        @Override
+        public boolean perSeat(String name) {
+            return held().declared().get(index(name)).perSeat();
+        }
+
+        @Override
+        public double get(String name, String seat) {
+            int index = index(name);
+            return held().get(index, seat(index, name, seat));
+        }
+
+        @Override
+        public void set(String name, String seat, double value) {
+            int index = index(name);
+            held().set(index, seat(index, name, seat), value, "API");
+        }
+
+        /** ADR-174 D2 : une variable par siège se lit et s'écrit à un siège nommé. */
+        private void requireAssembly(int index, String name) {
+            if (held().declared().get(index).perSeat()) {
+                throw new IllegalArgumentException("variable par siège « " + name + " » : nommer le siège");
+            }
+        }
+
+        private int seat(int index, String name, String seat) {
+            dev.axion.entity.AssemblyVariables held = held();
+            if (!held.declared().get(index).perSeat()) {
+                throw new IllegalArgumentException("variable « " + name + " » : de l'assembly, pas par siège");
+            }
+            int rank = held.seats().indexOf(seat);
+            if (rank < 0) {
+                throw new IllegalArgumentException("siège « " + seat + " » que la definition " + entity.definitionId()
+                        + " ne déclare pas");
+            }
+            return rank;
         }
 
         @Override
@@ -182,7 +221,9 @@ public final class ForgeAxionApi implements AxionApi {
 
         @Override
         public void set(String name, double value) {
-            held().set(index(name), value, "API");
+            int index = index(name);
+            requireAssembly(index, name);
+            held().set(index, value, "API");
         }
 
         @Override

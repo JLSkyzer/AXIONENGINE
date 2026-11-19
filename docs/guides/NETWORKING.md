@@ -54,6 +54,24 @@ Les **événements de contenu** — un klaxon, une portière qui claque — part
 occupants, selon la definition. Un joueur en reçoit au plus `net.events_per_player_tick` par tick (16) ; au-delà, ils
 ne partent pas, et le journal du serveur le dit une fois par seconde.
 
+### Les variables par siège
+
+Au schéma 7, une variable déclare `"scope": "seat"` pour avoir **une valeur par siège** — la radio de chaque place, la
+liseuse du passager ([ADR-174](../decisions/ADR-174.md) D2). La definition doit avoir des sièges.
+
+```json
+"variables": { "radio": { "type": "int", "min": 0, "max": 9, "scope": "seat", "write": "seat", "persist": true } }
+```
+
+- **L'écrire** : une commande liée d'un siège écrit la valeur de ce siège ; une interaction `set_variable`, celle du
+  siège de qui clique — debout, elle est refusée ; l'API, `variables().set("radio", "passager", 3)`.
+- **La lire** : `var.radio` lit la valeur du siège qu'occupe le joueur local (son défaut s'il n'est pas assis) ;
+  `var.radio.passager` lit un siège nommé, ce que voit tout le monde. Un déclencheur nomme toujours le siège :
+  `var:radio.passager`. L'API lit par `variables().get("radio", "passager")` ; `get("radio")` est refusé.
+- **Ce qui part** : chaque joueur reçoit la valeur de chaque siège, selon `replicate` (descripteur 11). Elle se
+  sauvegarde par nom de siège si elle est `persist`. Elle ne se prédit pas : le conducteur la voit changer au snapshot.
+- **Ce qui la refuse** : un paramètre réglé, un treuil, une action d'étape — rien n'y situe un siège.
+
 ## La prédiction du véhicule piloté
 
 Un joueur qui conduit un véhicule, sur un serveur distant, le voit répondre à ses touches tout de suite : son client

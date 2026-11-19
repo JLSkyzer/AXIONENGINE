@@ -224,7 +224,9 @@ class SnapshotCodecTest {
                 "descripteur 8, antérieur à l'état des nodes (ADR-174 D3)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(9).varUInt(0).toByteArray(),
                 "descripteur 9, antérieur au masque des couches (ADR-174 D4)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(11).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(10).varUInt(0).toByteArray(),
+                "descripteur 10, antérieur aux variables par siège (ADR-174 D2)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(12).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -673,6 +675,25 @@ class SnapshotCodecTest {
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(direction), "direction -128");
         byte[] tronque = Arrays.copyOf(sain, sain.length - 1);
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(tronque), "tronqué");
+    }
+
+    @Test
+    @DisplayName("ADR-174 D2 : une variable par siège fait l'aller-retour avec la valeur de chaque siège")
+    void adr174VariablesParSiege() throws MalformedPacketException {
+        AssemblyState.VariableValues variables = AssemblyState.VariableValues.of(new double[] {1, 0, 4},
+                new double[][] {null, {2, 5.5}, null});
+        assertTrue(variables.perSeat(1) && !variables.perSeat(0));
+        assertEquals(5.5f, variables.seatValue(1, 1));
+        assertTrue(Float.isNaN(variables.seatValue(1, 2)) && Float.isNaN(variables.seatValue(0, 0)));
+        AssemblyState etat = avecRoues(roues(0.5f, 10f)).withVariables(variables);
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 40L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        assertEquals(variables, SnapshotMessage.decode(octets).entries().get(0).variables());
+        AssemblyState.VariableValues retiree = variables.only(0b101L);
+        assertTrue(!retiree.has(1) && !retiree.perSeat(1), "retirée du masque : ses sièges aussi");
+        assertThrows(IllegalArgumentException.class, () -> new AssemblyState.VariableValues(1, 1L, new float[] {1f},
+                new float[][] {{2f}}), "une variable par siège n'a pas de valeur d'assembly");
     }
 
     @Test

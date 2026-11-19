@@ -571,31 +571,61 @@ public record AssemblyState(
      *
      * @param count nombre de variables de la definition, au plus {@link #MAX_VARIABLES}
      * @param mask les variables présentes, un bit par rang
-     * @param values la valeur de chaque variable, 0 pour une absente ; copie
+     * @param values la valeur de chaque variable, 0 pour une absente ou par siège ; copie
+     * @param seats pour chaque variable par siège présente, la valeur de chaque siège ; {@code null} pour les autres
+     *     (ADR-174 D2, descripteur 11) ; copie
      */
-    public record VariableValues(int count, long mask, float[] values) {
+    public record VariableValues(int count, long mask, float[] values, float[][] seats) {
 
         /** Variables d'une definition, au plus (ADR-163 D2). */
         public static final int MAX_VARIABLES = 64;
 
+        /** Sièges d'une variable par siège, au plus : ceux d'une definition (ADR-158). */
+        public static final int MAX_SEATS = 16;
+
         /** Aucune variable. */
         public static final VariableValues NONE = new VariableValues(0, 0L, new float[0]);
 
+        /**
+         * Des variables toutes de l'assembly.
+         *
+         * @param count nombre de variables de la definition
+         * @param mask les variables présentes, un bit par rang
+         * @param values la valeur de chaque variable, 0 pour une absente
+         */
+        public VariableValues(int count, long mask, float[] values) {
+            this(count, mask, values, new float[count][]);
+        }
+
         /** Copie les valeurs, et refuse un nombre, un masque ou une valeur incohérents. */
         public VariableValues {
-            if (count < 0 || count > MAX_VARIABLES || values.length != count) {
+            if (count < 0 || count > MAX_VARIABLES || values.length != count || seats.length != count) {
                 throw new IllegalArgumentException(values.length + " valeurs pour " + count + " variables");
             }
             if (count < 64 && mask >>> count != 0) {
                 throw new IllegalArgumentException("bits de variables au-delà de la dernière");
             }
+            float[][] copied = new float[count][];
             for (int i = 0; i < count; i++) {
                 boolean present = (mask >>> i & 1L) != 0;
                 if (!Float.isFinite(values[i]) || (!present && Float.floatToRawIntBits(values[i]) != 0)) {
                     throw new IllegalArgumentException("variable " + i + " : valeur " + values[i]);
                 }
+                if (seats[i] == null) {
+                    continue;
+                }
+                if (!present || seats[i].length > MAX_SEATS || Float.floatToRawIntBits(values[i]) != 0) {
+                    throw new IllegalArgumentException("variable " + i + " : sièges incohérents");
+                }
+                for (float seat : seats[i]) {
+                    if (!Float.isFinite(seat)) {
+                        throw new IllegalArgumentException("variable " + i + " : valeur de siège " + seat);
+                    }
+                }
+                copied[i] = seats[i].clone();
             }
             values = values.clone();
+            seats = copied;
         }
 
         /**
@@ -604,13 +634,32 @@ public record AssemblyState(
          * @param values la valeur de chacune, dans l'ordre de la definition
          */
         public static VariableValues of(double[] values) {
+            return of(values, new double[values.length][]);
+        }
+
+        /**
+         * {@return les variables d'une assembly, toutes présentes : une valeur par variable de l'assembly, une par siège
+         * pour une variable par siège (ADR-174 D2)}
+         *
+         * @param values la valeur de chacune, dans l'ordre de la definition ; ignorée pour une variable par siège
+         * @param seats pour chacune, la valeur de chaque siège, ou {@code null} pour une variable de l'assembly
+         */
+        public static VariableValues of(double[] values, double[][] seats) {
             float[] floats = new float[values.length];
+            float[][] bySeat = new float[values.length][];
             long mask = 0L;
             for (int i = 0; i < values.length; i++) {
-                floats[i] = (float) values[i];
+                if (seats[i] != null) {
+                    bySeat[i] = new float[seats[i].length];
+                    for (int seat = 0; seat < seats[i].length; seat++) {
+                        bySeat[i][seat] = (float) seats[i][seat];
+                    }
+                } else {
+                    floats[i] = (float) values[i];
+                }
                 mask |= 1L << i;
             }
-            return new VariableValues(values.length, mask, floats);
+            return new VariableValues(values.length, mask, floats, bySeat);
         }
 
         /**
@@ -624,12 +673,14 @@ public record AssemblyState(
                 return this;
             }
             float[] filtered = new float[count];
+            float[][] filteredSeats = new float[count][];
             for (int i = 0; i < count; i++) {
                 if ((kept >>> i & 1L) != 0) {
                     filtered[i] = values[i];
+                    filteredSeats[i] = seats[i];
                 }
             }
-            return new VariableValues(count, kept, filtered);
+            return new VariableValues(count, kept, filtered, filteredSeats);
         }
 
         /**
@@ -642,7 +693,16 @@ public record AssemblyState(
         }
 
         /**
-         * {@return la valeur d'une variable présente, 0 sinon}
+         * {@return vrai si cette variable est présente, avec une valeur par siège (ADR-174 D2)}
+         *
+         * @param index son rang
+         */
+        public boolean perSeat(int index) {
+            return has(index) && seats[index] != null;
+        }
+
+        /**
+         * {@return la valeur d'une variable présente de l'assembly, 0 sinon}
          *
          * @param index son rang
          */
@@ -650,10 +710,31 @@ public record AssemblyState(
             return has(index) ? values[index] : 0f;
         }
 
+        /**
+         * {@return la valeur d'une variable par siège présente à ce siège ; NaN si elle est absente, pas par siège, ou
+         * le siège hors des siens (ADR-174 D2)}
+         *
+         * @param index son rang
+         * @param seat le rang du siège
+         */
+        public float seatValue(int index, int seat) {
+            return perSeat(index) && seat >= 0 && seat < seats[index].length ? seats[index][seat] : Float.NaN;
+        }
+
         /** {@return les valeurs, copie} */
         @Override
         public float[] values() {
             return values.clone();
+        }
+
+        /** {@return la valeur de chaque siège de chaque variable par siège, {@code null} pour les autres ; copie} */
+        @Override
+        public float[][] seats() {
+            float[][] copy = new float[count][];
+            for (int i = 0; i < count; i++) {
+                copy[i] = seats[i] == null ? null : seats[i].clone();
+            }
+            return copy;
         }
 
         /** {@return le nombre de variables présentes} */
@@ -664,18 +745,18 @@ public record AssemblyState(
         @Override
         public boolean equals(Object other) {
             return other instanceof VariableValues that && count == that.count && mask == that.mask
-                    && Arrays.equals(values, that.values);
+                    && Arrays.equals(values, that.values) && Arrays.deepEquals(seats, that.seats);
         }
 
         @Override
         public int hashCode() {
-            return 31 * (31 * count + Long.hashCode(mask)) + Arrays.hashCode(values);
+            return 31 * (31 * (31 * count + Long.hashCode(mask)) + Arrays.hashCode(values)) + Arrays.deepHashCode(seats);
         }
 
         @Override
         public String toString() {
             return "VariableValues[count=" + count + ", mask=" + Long.toBinaryString(mask) + ", values="
-                    + Arrays.toString(values) + "]";
+                    + Arrays.toString(values) + ", seats=" + Arrays.deepToString(seats) + "]";
         }
     }
 
