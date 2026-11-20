@@ -68,6 +68,8 @@ pub struct WheelState {
     pub slip_long: f32,
     /// Glissement latéral, en radians.
     pub slip_lat: f32,
+    /// Usure du pneu, dans [0, 1] (ADR-176 D4) : en `f64`, comme le carburant, parce qu'un sous-pas en ajoute peu.
+    pub wear: f64,
     /// Origine du dernier rayon, en repère du monde physique.
     pub anchor: Vec3,
     /// Bout du dernier rayon : le contact, ou sa portée.
@@ -454,6 +456,23 @@ impl PhysicsWorld {
         true
     }
 
+    /// Pose l'usure d'une roue (ADR-176 D4) : un NaN garde la valeur, une valeur hors de [0, 1] y est ramenée. Ne réveille
+    /// pas le véhicule. Rend faux si l'assembly n'est pas un véhicule ou n'a pas cette roue.
+    pub fn set_wheel_wear(&mut self, assembly: Handle, wheel: usize, wear: f32) -> bool {
+        let Some(state) = self
+            .vehicles
+            .iter_mut()
+            .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))
+            .and_then(|vehicle| vehicle.wheels.get_mut(wheel))
+        else {
+            return false;
+        };
+        if wear.is_finite() {
+            state.wear = f64::from(wear).clamp(0.0, 1.0);
+        }
+        true
+    }
+
     /// L'état des roues d'un véhicule, ou `None` si l'assembly n'en est pas un.
     #[must_use]
     pub fn vehicle_wheels(&self, assembly: Handle) -> Option<&[WheelState]> {
@@ -500,6 +519,7 @@ impl PhysicsWorld {
                     steer_angle: state.steer_angle,
                     slip_long: state.slip_long,
                     slip_lat: state.slip_lat,
+                    wear: state.wear as f32,
                 });
             }
         }
@@ -536,6 +556,7 @@ impl PhysicsWorld {
                     slip_lat: wheel.slip_lat,
                     torque: drive.torque,
                     on_ground: wheel.on_ground,
+                    wear: wheel.wear,
                 })
                 .collect(),
         })
@@ -582,6 +603,11 @@ impl PhysicsWorld {
             wheel.slip_long = saved.slip_long;
             wheel.slip_lat = saved.slip_lat;
             wheel.on_ground = saved.on_ground;
+            wheel.wear = if saved.wear.is_finite() {
+                saved.wear.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             // La rotation de la roue vit dans son entraînement : `spin_speed` n'en est que la copie publiée.
             drive.spin = saved.spin_speed;
             drive.slip_long = saved.slip_long;
@@ -916,6 +942,15 @@ impl PhysicsWorld {
             if !drive.grounded {
                 continue;
             }
+            // ADR-176 D4 : le pneu s'use du travail que son glissement fait contre le sol, en kilojoules : la charge, par
+            // la vitesse à laquelle la gomme glisse, par le temps du sous-pas. Un pneu qui roule sans glisser s'use à
+            // peine ; un burnout l'use vite. En `f64`, additions simples, sans `mul_add` (INV-14).
+            if wheel.wear_rate > 0.0 {
+                let slip_speed = f64::from(drive.spin * wheel.radius - contact.ground_speed).abs()
+                    + f64::from(drive.lateral_speed).abs();
+                let work = f64::from(drive.load) * slip_speed * f64::from(dt) / 1000.0;
+                state.wear = (state.wear + f64::from(wheel.wear_rate) * work).min(1.0);
+            }
             if drive.share > 0.0 {
                 vehicle.traction_slip = vehicle.traction_slip.max(brakes::traction_slip(
                     drive.spin * wheel.radius,
@@ -1080,7 +1115,10 @@ impl PhysicsWorld {
             let material = self.collider_materials.get(&collider);
             drive.grounded = true;
             drive.load = load;
-            drive.surface = material.map_or(1.0, |m| m.friction);
+            // ADR-176 D4 : un pneu usé adhère moins ; l'usure agit ici, sur ce que le matériau laisse, et jamais sur la
+            // description du pneu, que les réglages d'une instance refont à chaque pas (ADR-167 D6).
+            let worn = (1.0 - state.wear as f32 * wheel.wear_grip_loss).clamp(0.0, 1.0);
+            drive.surface = material.map_or(1.0, |m| m.friction) * worn;
             drive.ground_speed = v_long;
             drive.lateral_speed = v_lat;
             drive.slip_lat = slip_lat;

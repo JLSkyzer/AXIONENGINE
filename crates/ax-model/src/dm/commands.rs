@@ -89,6 +89,8 @@ pub mod opcode {
     pub const SET_SENSOR: u32 = 27;
     /// Poser le carburant et la batterie d'un véhicule ([`super::SetEnergy`]). ADR-176 D3.
     pub const SET_ENERGY: u32 = 28;
+    /// Poser l'usure d'un pneu ([`super::SetWear`]). ADR-176 D4.
+    pub const SET_WEAR: u32 = 29;
 }
 
 /// Les formes d'un capteur déclaré, champ `shape` de [`SetSensor`] (ADR-174 D5).
@@ -141,6 +143,25 @@ pub struct SetEnergy {
 }
 
 impl SetEnergy {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 16;
+}
+
+/// Payload de `SET_WEAR` (ADR-176 D4) : 16 octets. L'usure d'une roue d'un véhicule, dans [0, 1] ; **NaN** garde la
+/// valeur. Une valeur hors de [0, 1] y est ramenée. Ne réveille pas le véhicule. Posée à la création d'une assembly relue
+/// d'une sauvegarde, avant son premier pas, et quand on change un pneu.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetWear {
+    /// L'assembly.
+    pub handle: Handle,
+    /// Le rang de la roue dans `wheels` de la definition.
+    pub wheel: u32,
+    /// L'usure.
+    pub wear: f32,
+}
+
+impl SetWear {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 16;
 }
@@ -1161,6 +1182,11 @@ mod tests {
     fn adr174_capteur_disposition_figee() {
         assert_eq!(opcode::SET_SENSOR, 27);
         assert_eq!(opcode::SET_ENERGY, 28);
+        assert_eq!(opcode::SET_WEAR, 29);
+        assert_eq!(size_of::<SetWear>(), SetWear::BYTES);
+        assert_eq!(align_of::<SetWear>(), 4);
+        assert_eq!(offset_of!(SetWear, wheel), 8);
+        assert_eq!(offset_of!(SetWear, wear), 12);
         assert_eq!(size_of::<SetEnergy>(), SetEnergy::BYTES);
         assert_eq!(align_of::<SetEnergy>(), 4);
         assert_eq!(offset_of!(SetEnergy, fuel), 8);

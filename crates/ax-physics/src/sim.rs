@@ -1621,6 +1621,13 @@ impl SimDriver {
             .is_some_and(|world| world.set_vehicle_energy(handle, fuel, battery))
     }
 
+    /// Applique `SET_WEAR` (ADR-176 D4) : l'usure de la roue de rang `wheel` ; NaN garde la valeur. Faux si l'assembly est
+    /// inconnue, n'est pas un véhicule, ou n'a pas cette roue.
+    pub fn apply_set_wear(&mut self, handle: Handle, wheel: usize, wear: f32) -> bool {
+        self.assembly_world(handle)
+            .is_some_and(|world| world.set_wheel_wear(handle, wheel, wear))
+    }
+
     /// Applique `SET_SENSOR` (ADR-174 D5) : le capteur déclaré de rang `index`, sur le corps de node racine
     /// `body_node` de l'assembly. Faux pour une assembly, un corps ou une forme inconnus, ou une taille invalide.
     pub fn apply_set_sensor(&mut self, sensor: &ax_model::dm::commands::SetSensor) -> bool {

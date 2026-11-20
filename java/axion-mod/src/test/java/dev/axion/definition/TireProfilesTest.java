@@ -61,4 +61,30 @@ class TireProfilesTest {
             assertTrue(refus.get(0).contains(cas[2]), refus.toString());
         }
     }
+
+    @Test
+    @DisplayName("ADR-176 D4 : wear est optionnel : sans lui le pneu ne s'use pas ; avec lui, un taux et une perte d'adhérence")
+    void usure() {
+        TireProfiles.Tire sans = TireProfiles.load(VehicleSpecTest.source(Map.of("m:axion/tires/x.json", GLACE)))
+                .resolve("m:tire/x");
+        assertEquals(0f, sans.wearRate());
+        assertEquals(TireProfiles.DEFAULT_GRIP_LOSS, sans.wearGripLoss());
+        assertEquals(0f, TireProfiles.GENERIC.wearRate());
+
+        String avec = GLACE.replace("\"schema\": 1,", "\"schema\": 1, \"wear\": {\"rate\": 0.02, \"grip_loss\": 0.25},");
+        TireProfiles.Tire use = TireProfiles.load(VehicleSpecTest.source(Map.of("m:axion/tires/x.json", avec)))
+                .resolve("m:tire/x");
+        assertEquals(0.02f, use.wearRate());
+        assertEquals(0.25f, use.wearGripLoss());
+
+        String taux = GLACE.replace("\"schema\": 1,", "\"schema\": 1, \"wear\": {\"rate\": 0.5},");
+        assertEquals(TireProfiles.DEFAULT_GRIP_LOSS, TireProfiles.load(VehicleSpecTest.source(
+                Map.of("m:axion/tires/x.json", taux))).resolve("m:tire/x").wearGripLoss(), "grip_loss par défaut");
+        for (String faute : new String[] {"{\"rate\": -1}", "{\"grip_loss\": 1.5}", "{\"rate\": 1e9}",
+            "{\"vitesse\": 1}", "3"}) {
+            List<String> refus = refus(GLACE.replace("\"schema\": 1,", "\"schema\": 1, \"wear\": " + faute + ","));
+            assertEquals(1, refus.size(), faute + " : " + refus);
+            assertTrue(refus.get(0).contains("$.wear"), refus.toString());
+        }
+    }
 }

@@ -68,6 +68,8 @@ mod tests_support {
                 tail_slip: 0.6,
                 tail_value: 0.8,
             },
+            wear_rate: 0.0,
+            wear_grip_loss: 0.4,
         };
         VehicleDesc {
             flags: vehicle_flags::POWERTRAIN,

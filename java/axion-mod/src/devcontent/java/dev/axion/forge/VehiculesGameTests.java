@@ -357,4 +357,30 @@ public final class VehiculesGameTests {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D4 : le profil de pneu d'une roue arrive au natif ({@code wear.rate} de {@code axion:tire/test/usable}) : plein
+     * gaz de l'arrêt, les roues motrices patinent et s'usent, plus que les roues avant, qui roulent ; le rapport du natif
+     * en porte l'usure.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void adr176_LePneuQuiPatineSUse(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_pneus",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), new float[] {0f, 0f, 0f, 1f});
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.wheelNodes().size() == 4,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> vehicule.drive(new dev.axion.api.vehicle.DriverInput(1.0, 0, 0, 0, 0, 1)))
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.wheelWear(2) > 0.001f && vehicule.wheelWear(3) > 0.001f,
+                        "les roues motrices s'usent : " + vehicule.wheelWear(2) + ", " + vehicule.wheelWear(3)))
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.wheelWear(2) > vehicule.wheelWear(0),
+                            "plus que les roues avant, qui roulent : " + vehicule.wheelWear(2) + " contre "
+                                    + vehicule.wheelWear(0));
+                    helper.assertTrue(vehicule.wheelWear(2) <= 1f, "bornée à 1");
+                    vehicule.drive(dev.axion.api.vehicle.DriverInput.NONE);
+                })
+                .thenSucceed();
+    }
 }

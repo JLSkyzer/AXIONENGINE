@@ -22,13 +22,23 @@ import java.util.List;
  * @param compression compression relative à la pose du modèle, en fraction du débattement : 0 à sa
  *     position dans le modèle posé, positive quand la roue monte
  * @param steerAngle angle de braquage, en radians
+ * @param wear usure du pneu, dans [0, 1] (ADR-176 D4)
  */
 public record WheelReport(
         int handleIndex, int handleGeneration, int index, int flags, float spinSpeed, float compression,
-        float steerAngle, float slipLong, float slipLat) {
+        float steerAngle, float slipLong, float slipLat, float wear) {
 
-    /** Taille de la structure sur la frontière, en octets : 32 depuis les glissements ({@code SIM_OUT} schéma 5). */
-    public static final int BYTES = 32;
+    /** Un rapport sans usure : ce que rend un pneu qui ne s'use pas. */
+    public WheelReport(int handleIndex, int handleGeneration, int index, int flags, float spinSpeed,
+            float compression, float steerAngle, float slipLong, float slipLat) {
+        this(handleIndex, handleGeneration, index, flags, spinSpeed, compression, steerAngle, slipLong, slipLat, 0f);
+    }
+
+    /**
+     * Taille de la structure sur la frontière, en octets : 32 depuis les glissements ({@code SIM_OUT} schéma 5), 40
+     * depuis l'usure du pneu (ADR-176 D4) : 4 octets réservés gardent les enregistrements alignés sur 8.
+     */
+    public static final int BYTES = 40;
 
     /** Sa taille avant les glissements ({@code SIM_OUT} schémas 3 et 4) ; ils y valent 0. */
     public static final int BYTES_WITHOUT_SLIPS = 24;
@@ -69,7 +79,8 @@ public record WheelReport(
                 buffer.getFloat(base + 16),
                 buffer.getFloat(base + 20),
                 slips ? buffer.getFloat(base + 24) : 0f,
-                slips ? buffer.getFloat(base + 28) : 0f);
+                slips ? buffer.getFloat(base + 28) : 0f,
+                slips ? buffer.getFloat(base + 32) : 0f);
     }
 
     /**

@@ -95,6 +95,8 @@ mod tests {
             mu_lat: 1.0,
             long: COURBE,
             lat: COURBE,
+            wear_rate: 0.0,
+            wear_grip_loss: 0.4,
         }
     }
 

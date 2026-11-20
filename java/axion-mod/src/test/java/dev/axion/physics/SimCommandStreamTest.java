@@ -818,4 +818,24 @@ class SimCommandStreamTest {
         tronquee.putInt(1).putInt(0).putInt(7).putInt(1).putInt(16).putInt(0);
         assertEquals(java.util.List.of(), AssemblyStateReport.decodeSection(tronquee, 0), "tronquée : rien");
     }
+
+    @Test
+    void encodeLUsureD_UnPneu() throws IOException {
+        // ADR-176 D4 : SetWear, 16 octets — handle, rang de la roue, usure.
+        byte[] bytes = new SimCommandStream().setWear(7, 3, 2, 0.375f).toBytes();
+        assertEquals(8 + 8 + SimCommandStream.SET_WEAR_BYTES, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_WEAR, b.getInt(8), "opcode");
+        assertEquals(16, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(3, b.getInt(20), "handle.generation");
+        assertEquals(2, b.getInt(24), "rang de la roue");
+        assertEquals(0.375f, b.getFloat(28), "usure");
+        Path source = Path.of(System.getProperty("axion.crates.dir"), "ax-model", "src", "dm", "commands.rs");
+        String rust = Files.readString(source, StandardCharsets.UTF_8);
+        assertTrue(rust.contains("pub const SET_WEAR: u32 = " + SimCommandStream.OP_SET_WEAR + ";"));
+        Matcher taille = Pattern.compile("impl SetWear \\{[^}]*?pub const BYTES: usize = (\\d+);").matcher(rust);
+        assertTrue(taille.find(), "SetWear::BYTES dans commands.rs");
+        assertEquals(Integer.parseInt(taille.group(1)), SimCommandStream.SET_WEAR_BYTES);
+    }
 }

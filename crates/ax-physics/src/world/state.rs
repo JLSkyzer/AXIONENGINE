@@ -14,8 +14,8 @@
 //!            conducteur u8 | contact tenu u8 (ADR-176 D1) | régime f32 | boîte (rang i8, cible i8) |
 //!            moteur (phase u8, contact du pas précédent u8) | minuteur f32 | maintien f32 | direction f32 | patinage f32 |
 //!            charge f32 | temps restant au démarreur f32 | carburant f64 | batterie f64 (ADR-176 D3)
-//! roues      32 o chacune : rotation, compression, braquage, charge, glissement long, glissement latéral, couple
-//!            posé f32 | contact u8 | 3 o à 0
+//! roues      40 o chacune : rotation, compression, braquage, charge, glissement long, glissement latéral, couple
+//!            posé f32 | contact u8 | 3 o à 0 | usure f64 (ADR-176 D4)
 //! ```
 //!
 //! Le bloc ne porte ni les paramètres réglés (ADR-167 D6), que Java renvoie, ni l'état de contact que rapier garde d'un
@@ -32,7 +32,7 @@ use crate::body::BodyId;
 use ax_model::dm::handle::Handle;
 
 /// Version du format.
-pub const STATE_VERSION: u16 = 2;
+pub const STATE_VERSION: u16 = 3;
 /// Octets de l'en-tête.
 pub const HEADER_BYTES: usize = 16;
 /// Octets d'un corps.
@@ -42,7 +42,7 @@ pub const JOINT_BYTES: usize = 8;
 /// Octets de l'état du véhicule, roues à part.
 pub const VEHICLE_BYTES: usize = 72;
 /// Octets d'une roue.
-pub const WHEEL_BYTES: usize = 32;
+pub const WHEEL_BYTES: usize = 40;
 /// Drapeau d'en-tête : l'assembly est un véhicule.
 const FLAG_VEHICLE: u16 = 1;
 /// Écart toléré du carré de la norme d'un quaternion à 1.
@@ -112,6 +112,8 @@ pub struct WheelSnapshot {
     pub torque: f32,
     /// Le rayon touchait le sol.
     pub on_ground: bool,
+    /// Usure du pneu, dans [0, 1] (ADR-176 D4).
+    pub wear: f64,
 }
 
 /// L'état interne d'un véhicule, d'un pas au suivant.
@@ -254,6 +256,7 @@ impl AssemblyState {
                 }
                 out.push(u8::from(wheel.on_ground));
                 out.extend_from_slice(&[0; 3]);
+                out.extend_from_slice(&wheel.wear.to_le_bytes());
             }
         }
         out
@@ -402,8 +405,14 @@ impl AssemblyState {
                     slip_lat: reader.f32()?,
                     torque: reader.f32()?,
                     on_ground: reader.u8()? != 0,
+                    wear: 0.0,
                 };
                 reader.skip(3)?;
+                let wear = reader.f64()?;
+                if !(wear.is_finite() && (0.0..=1.0).contains(&wear)) {
+                    return Err(StateError::NotFinite);
+                }
+                let wheel = WheelSnapshot { wear, ..wheel };
                 let values = [
                     wheel.spin_speed,
                     wheel.compression,

@@ -49,7 +49,7 @@ final class VehicleSpec {
     static final float MAX_STARTER_TIME = 10f;
 
     /** Taille d'une roue, en octets. */
-    static final int WHEEL_BYTES = 88;
+    static final int WHEEL_BYTES = 96;
 
     /** Taille d'une surface portante, en octets. */
     static final int SURFACE_BYTES = 16;
@@ -489,6 +489,8 @@ final class VehicleSpec {
             put(out, tire.muLong(), tire.muLat());
             put(out, tire.longitudinal());
             put(out, tire.lateral());
+            // ADR-176 D4 : l'usure du pneu.
+            put(out, tire.wearRate(), tire.wearGripLoss());
         }
         if (engine != null && engine.get("torque_curve") instanceof JsonArray curve) {
             for (JsonElement point : curve) {

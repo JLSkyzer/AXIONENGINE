@@ -34,7 +34,11 @@ public final class TireProfiles {
     /** Seule version de format lue. */
     public static final int SCHEMA = 1;
 
-    private static final Set<String> KEYS = Set.of("schema", "mu_long", "mu_lat", "long", "lat");
+    private static final Set<String> KEYS = Set.of("schema", "mu_long", "mu_lat", "long", "lat", "wear");
+    private static final Set<String> WEAR_KEYS = Set.of("rate", "grip_loss");
+
+    /** La perte d'adhérence d'un pneu usé à fond, quand le profil ne la dit pas (ADR-176 D4). */
+    public static final float DEFAULT_GRIP_LOSS = 0.4f;
     private static final Set<String> CURVE_KEYS = Set.of("peak_slip", "peak_value", "tail_slip", "tail_value");
 
     /**
@@ -55,13 +59,16 @@ public final class TireProfiles {
      * @param muLat coefficient latéral
      * @param longitudinal courbe longitudinale
      * @param lateral courbe latérale
+     * @param wearRate usure par kilojoule de travail de frottement ; 0 : le pneu ne s'use pas (ADR-176 D4)
+     * @param wearGripLoss part de l'adhérence que perd un pneu usé à fond, dans [0, 1]
      */
-    public record Tire(String id, float muLong, float muLat, Curve longitudinal, Curve lateral) {}
+    public record Tire(String id, float muLong, float muLat, Curve longitudinal, Curve lateral, float wearRate,
+            float wearGripLoss) {}
 
     /** Le pneu d'une roue qui n'en nomme pas, ou n'en nomme aucun de déclaré : choix d'ADR-159, un pneu routier. */
     public static final Tire GENERIC = new Tire(null, 1.0f, 1.0f,
             new Curve(0.12f, 1.0f, 0.5f, 0.75f),
-            new Curve(0.15f, 1.0f, 0.6f, 0.8f));
+            new Curve(0.15f, 1.0f, 0.6f, 0.8f), 0f, DEFAULT_GRIP_LOSS);
 
     private static final TireProfiles EMPTY = new TireProfiles(new TreeMap<>(), List.of());
 
@@ -149,7 +156,34 @@ public final class TireProfiles {
                 positive(root, "$", "mu_long"),
                 positive(root, "$", "mu_lat"),
                 curve(root, "long"),
-                curve(root, "lat"));
+                curve(root, "lat"),
+                wear(root, "rate"),
+                wear(root, "grip_loss"));
+    }
+
+    /**
+     * ADR-176 D4 : {@code wear.rate}, de 0 (le défaut : il ne s'use pas) à 1 000 000 par kilojoule, et
+     * {@code wear.grip_loss}, de 0 à 1 (0,4 par défaut). Seul champ optionnel d'un pneu.
+     */
+    private static float wear(JsonObject root, String key) throws DefinitionException {
+        boolean rate = "rate".equals(key);
+        float fallback = rate ? 0f : DEFAULT_GRIP_LOSS;
+        if (root.get("wear") == null) {
+            return fallback;
+        }
+        if (!(root.get("wear") instanceof JsonObject wear)) {
+            throw DefinitionException.invalid("$.wear", "un objet : rate, grip_loss");
+        }
+        known(wear, "$.wear", WEAR_KEYS);
+        if (wear.get(key) == null) {
+            return fallback;
+        }
+        float value = value(wear, "$.wear", key);
+        if (value < 0f || value > (rate ? 1_000_000f : 1f)) {
+            throw DefinitionException.invalid(StrictJson.member("$.wear", key),
+                    rate ? "de 0 à 1 000 000 par kilojoule" : "de 0 à 1");
+        }
+        return value;
     }
 
     private static Curve curve(JsonObject root, String name) throws DefinitionException {

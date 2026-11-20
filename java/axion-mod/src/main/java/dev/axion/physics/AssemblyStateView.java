@@ -17,8 +17,8 @@ import java.nio.ByteOrder;
  *                  | maintien f32 | direction f32 | patinage f32 | charge f32 | temps restant au démarreur f32
  *                  | carburant f64 | batterie f64 (ADR-176 D3)
  *                  (ADR-176 D1 : ces trois octets et ces quatre octets étaient du remplissage à zéro ; Java ne les lit pas)
- * roue      32 o : rotation f32 | compression f32 | braquage f32 | charge f32 | glissement long f32 | latéral f32
- *                  | couple posé f32 | au sol u8 | 3 o
+ * roue      40 o : rotation f32 | compression f32 | braquage f32 | charge f32 | glissement long f32 | latéral f32
+ *                  | couple posé f32 | au sol u8 | 3 o | usure f64 (ADR-176 D4)
  * </pre>
  */
 public final class AssemblyStateView {
@@ -27,7 +27,7 @@ public final class AssemblyStateView {
     private static final int BODY_BYTES = 64;
     private static final int JOINT_BYTES = 8;
     private static final int VEHICLE_BYTES = 72;
-    private static final int WHEEL_BYTES = 32;
+    private static final int WHEEL_BYTES = 40;
     private static final int FLAGS_OFFSET = 2;
     private static final int BODIES_OFFSET = 4;
     private static final int JOINTS_OFFSET = 6;
@@ -55,9 +55,10 @@ public final class AssemblyStateView {
      * @param slipLat glissement latéral, en radians
      * @param torque couple posé par les contrôleurs (R-1082), en N·m
      * @param onGround le rayon touchait le sol
+     * @param wear l'usure du pneu, dans [0, 1] (ADR-176 D4)
      */
     public record Wheel(float spin, float compression, float steer, float slipLong, float slipLat, float torque,
-            boolean onGround) {}
+            boolean onGround, double wear) {}
 
     /**
      * Le véhicule d'un bloc.
@@ -112,7 +113,7 @@ public final class AssemblyStateView {
         for (int i = 0; i < wheels; i++) {
             int w = at + VEHICLE_BYTES + i * WHEEL_BYTES;
             list.add(new Wheel(b.getFloat(w), b.getFloat(w + 4), b.getFloat(w + 8), b.getFloat(w + 16),
-                    b.getFloat(w + 20), b.getFloat(w + 24), b.get(w + 28) != 0));
+                    b.getFloat(w + 20), b.getFloat(w + 24), b.get(w + 28) != 0, b.getDouble(w + 32)));
         }
         return new Vehicle(rpm, gear, b.getDouble(at + 56), b.getDouble(at + 64), java.util.List.copyOf(list));
     }

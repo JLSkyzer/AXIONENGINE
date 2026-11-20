@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "mu_long": 1.0,
+  "mu_lat": 1.0,
+  "long": { "peak_slip": 0.12, "peak_value": 1.0, "tail_slip": 0.5, "tail_value": 0.75 },
+  "lat": { "peak_slip": 0.15, "peak_value": 1.0, "tail_slip": 0.6, "tail_value": 0.8 },
+  "wear": { "rate": 0.5, "grip_loss": 0.4 }
+}

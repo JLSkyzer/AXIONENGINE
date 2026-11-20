@@ -39,7 +39,8 @@ pub mod wheel_report_flags {
 /// `SIM_OUT` : leur nombre (`u32`), 4 octets réservés, puis un enregistrement par roue d'un véhicule
 /// éveillé.
 ///
-/// **Disposition figée** : 24 octets, alignement 4, comme [`super::joints::JointState`].
+/// **Disposition figée** : 40 octets, alignement 4 : le handle, le rang, les drapeaux, la rotation, la compression, le
+/// braquage, les deux glissements, l'usure, puis 4 octets réservés.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WheelReport {
@@ -60,11 +61,14 @@ pub struct WheelReport {
     pub slip_long: f32,
     /// Glissement latéral du pneu, en radians.
     pub slip_lat: f32,
+    /// Usure du pneu, dans [0, 1] (ADR-176 D4).
+    pub wear: f32,
 }
 
 impl WheelReport {
-    /// Taille sur la frontière, en octets : 32 depuis les glissements (`SIM_OUT` schéma 5, ADR-167 D9).
-    pub const BYTES: usize = 32;
+    /// Taille sur la frontière, en octets : 32 depuis les glissements (`SIM_OUT` schéma 5, ADR-167 D9), 40 depuis
+    /// l'usure (ADR-176 D4) : 4 octets réservés gardent les enregistrements alignés sur 8.
+    pub const BYTES: usize = 40;
 
     /// Taille de l'en-tête de la section des roues dans `SIM_OUT` : leur nombre et 4 octets réservés,
     /// pour garder les enregistrements alignés sur 8.
@@ -82,9 +86,11 @@ impl WheelReport {
             self.steer_angle,
             self.slip_long,
             self.slip_lat,
+            self.wear,
         ] {
             out.extend_from_slice(&value.to_le_bytes());
         }
+        out.extend_from_slice(&[0u8; 4]);
     }
 
     /// Lit une roue au début de `bytes` ; `None` si elle est tronquée.
@@ -102,6 +108,7 @@ impl WheelReport {
             steer_angle: f32_at(20),
             slip_long: f32_at(24),
             slip_lat: f32_at(28),
+            wear: f32_at(32),
         })
     }
 
@@ -473,11 +480,15 @@ pub struct WheelDesc {
     pub long: TireCurve,
     /// Courbe latérale.
     pub lat: TireCurve,
+    /// Usure du pneu par kilojoule de travail de frottement ; 0 : le pneu ne s'use pas (ADR-176 D4).
+    pub wear_rate: f32,
+    /// Part de l'adhérence que perd un pneu usé à fond, dans [0, 1] (ADR-176 D4).
+    pub wear_grip_loss: f32,
 }
 
 impl WheelDesc {
-    /// Taille d'une roue, en octets.
-    pub const BYTES: usize = 88;
+    /// Taille d'une roue, en octets : 88, puis l'usure du pneu (ADR-176 D4).
+    pub const BYTES: usize = 96;
 }
 
 /// Le moteur (12.5).
@@ -728,6 +739,15 @@ impl Cursor<'_> {
         let mu_lat = self.f32("wheels.tire")?;
         let long = self.curve()?;
         let lat = self.curve()?;
+        let wear_rate = self.f32("wheels.wear")?;
+        let wear_grip_loss = self.f32("wheels.wear")?;
+        if !(wear_rate.is_finite()
+            && wear_rate >= 0.0
+            && wear_grip_loss.is_finite()
+            && (0.0..=1.0).contains(&wear_grip_loss))
+        {
+            return Err(DefnError::Field("wheels.wear"));
+        }
         if flags & !wheel_flags::ALL != 0 {
             return Err(DefnError::Field("wheels.flags"));
         }
@@ -760,6 +780,8 @@ impl Cursor<'_> {
             mu_lat,
             long,
             lat,
+            wear_rate,
+            wear_grip_loss,
         })
     }
 }
@@ -881,6 +903,7 @@ impl VehicleDesc {
             );
             put_curve(out, &wheel.long);
             put_curve(out, &wheel.lat);
+            put(out, &[wheel.wear_rate, wheel.wear_grip_loss]);
         }
         for point in &self.torque_curve {
             put(out, point);
@@ -1116,7 +1139,8 @@ mod tests {
         use crate::dm::handle::Handle;
         use std::mem::{align_of, offset_of, size_of};
 
-        assert_eq!(size_of::<WheelReport>(), WheelReport::BYTES);
+        // 36 octets de champs, 4 réservés sur le fil pour garder les enregistrements alignés sur 8.
+        assert_eq!(size_of::<WheelReport>() + 4, WheelReport::BYTES);
         assert_eq!(align_of::<WheelReport>(), 4);
         assert_eq!(offset_of!(WheelReport, handle), 0);
         assert_eq!(offset_of!(WheelReport, index), 8);
@@ -1126,6 +1150,7 @@ mod tests {
         assert_eq!(offset_of!(WheelReport, steer_angle), 20);
         assert_eq!(offset_of!(WheelReport, slip_long), 24);
         assert_eq!(offset_of!(WheelReport, slip_lat), 28);
+        assert_eq!(offset_of!(WheelReport, wear), 32);
         let roue = WheelReport {
             handle: Handle::new(7, 3),
             index: 2,
@@ -1135,6 +1160,7 @@ mod tests {
             steer_angle: 0.5,
             slip_long: 0.125,
             slip_lat: -0.0625,
+            wear: 0.375,
         };
         let mut octets = Vec::new();
         roue.write_le(&mut octets);
@@ -1143,7 +1169,8 @@ mod tests {
         assert_eq!(&octets[12..16], &(-12.5f32).to_le_bytes());
         assert_eq!(WheelReport::read_le(&octets), Some(roue));
         assert_eq!(&octets[24..28], &0.125f32.to_le_bytes());
-        assert_eq!(WheelReport::read_le(&octets[..31]), None);
+        assert_eq!(&octets[32..36], &0.375f32.to_le_bytes());
+        assert_eq!(WheelReport::read_le(&octets[..39]), None);
 
         let mut section = Vec::new();
         WheelReport::write_section(&[roue, roue], &mut section);
@@ -1190,6 +1217,8 @@ mod tests {
             mu_lat: 0.9,
             long: courbe(),
             lat: courbe(),
+            wear_rate: 0.0,
+            wear_grip_loss: 0.4,
         }
     }
 
@@ -1434,5 +1463,34 @@ mod tests {
             Some(DefnError::Field("energy.consumption")),
             "pas de réservoir, pas de consommation"
         );
+    }
+
+    #[test]
+    fn adr176_d4_l_usure_du_pneu_d_une_roue_se_relit_et_ses_refus_sont_nommes() {
+        let mut avec = vehicule();
+        avec.wheels[0].wear_rate = 0.02;
+        avec.wheels[0].wear_grip_loss = 0.25;
+        let octets_usure = octets(&avec);
+        assert_eq!(octets_usure.len(), octets(&vehicule()).len());
+        assert_eq!(lire(&octets_usure), Ok((avec.clone(), octets_usure.len())));
+
+        let refus = |mutation: &dyn Fn(&mut VehicleDesc)| {
+            let mut d = avec.clone();
+            mutation(&mut d);
+            lire(&octets(&d)).err()
+        };
+        assert_eq!(
+            refus(&|d| d.wheels[0].wear_rate = -1.0),
+            Some(DefnError::Field("wheels.wear"))
+        );
+        assert_eq!(
+            refus(&|d| d.wheels[0].wear_rate = f32::NAN),
+            Some(DefnError::Field("wheels.wear"))
+        );
+        assert_eq!(
+            refus(&|d| d.wheels[0].wear_grip_loss = 1.5),
+            Some(DefnError::Field("wheels.wear"))
+        );
+        assert_eq!(WheelDesc::BYTES, 96);
     }
 }

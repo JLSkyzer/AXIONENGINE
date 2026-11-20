@@ -100,6 +100,8 @@ fn roue() -> WheelDesc {
         mu_lat: 1.0,
         long: courbe(),
         lat: courbe(),
+        wear_rate: 0.0,
+        wear_grip_loss: 0.4,
     }
 }
 
@@ -1983,4 +1985,118 @@ fn adr176_d3_le_rapport_porte_le_carburant_et_la_batterie() {
     assert_eq!(rapports[0].fuel, etat.energy.fuel as f32);
     assert_eq!(rapports[0].battery, etat.energy.battery as f32);
     assert!(rapports[0].fuel > 0.0 && rapports[0].fuel < 0.5);
+}
+
+/// La berline dont les pneus s'usent de `taux` par kilojoule de frottement (ADR-176 D4).
+fn berline_a_pneus_uses(taux: f32) -> VehicleDesc {
+    let mut d = berline();
+    for roue in &mut d.wheels {
+        roue.wear_rate = taux;
+        roue.wear_grip_loss = 0.4;
+    }
+    d
+}
+
+fn usures(world: &PhysicsWorld) -> Vec<f64> {
+    world
+        .vehicle_snapshot(ASSEMBLY)
+        .expect("véhicule")
+        .wheels
+        .iter()
+        .map(|roue| roue.wear)
+        .collect()
+}
+
+#[test]
+fn adr176_d4_un_pneu_qui_patine_s_use_et_un_pneu_qui_roule_a_peine() {
+    // Plein gaz de l'arrêt : les roues motrices (les deux dernières) patinent, les roues avant roulent.
+    let (mut world, _) = sur_le_plat(berline_a_pneus_uses(0.02), [300.0, 300.0], 1.0);
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    avancer(&mut world, 3.0);
+    let depart = usures(&world);
+    assert!(
+        depart[2] > 0.0 && depart[3] > 0.0,
+        "les roues motrices s'usent : {depart:?}"
+    );
+    assert!(
+        depart[2] > 4.0 * depart[0].max(1e-12) && depart[3] > 4.0 * depart[1].max(1e-12),
+        "bien plus que les roues avant, qui roulent : {depart:?}"
+    );
+    // Lancé, puis laissé rouler en ligne droite, sans gaz ni frein : le pneu ne glisse plus, l'usure ne monte presque plus.
+    conduire(&mut world, entree(0.0, 0.0, 0.0));
+    avancer(&mut world, 2.0);
+    let avant = usures(&world);
+    avancer(&mut world, 3.0);
+    let apres = usures(&world);
+    let gain = apres[2] - avant[2];
+    assert!(
+        gain >= 0.0 && gain < 0.2 * (depart[2]).max(1e-9),
+        "à vitesse établie, peu d'usure ({gain}) devant celle du départ ({})",
+        depart[2]
+    );
+}
+
+#[test]
+fn adr176_d4_un_pneu_use_adhere_moins_et_un_pneu_sans_taux_ne_s_use_jamais() {
+    let course = |usure: f32| {
+        let (mut world, v) = sur_le_plat(berline_a_pneus_uses(0.0), [300.0, 300.0], 1.0);
+        for roue in 0..4 {
+            assert!(world.set_wheel_wear(ASSEMBLY, roue, usure));
+        }
+        conduire(&mut world, entree(1.0, 0.0, 0.0));
+        avancer(&mut world, 3.0);
+        (vers_l_avant(&world, v), usures(&world))
+    };
+    let (neuf, usures_neuf) = course(0.0);
+    let (use_, _) = course(1.0);
+    assert!(
+        use_ < neuf,
+        "un pneu usé à fond accélère moins : {use_} contre {neuf}"
+    );
+    assert!(
+        usures_neuf.iter().all(|u| *u == 0.0),
+        "sans taux, aucune usure : {usures_neuf:?}"
+    );
+}
+
+#[test]
+fn adr176_d4_un_vehicule_endormi_n_use_rien_et_set_wheel_wear_ne_le_reveille_pas() {
+    let (mut world, _) = sur_le_plat(berline_a_pneus_uses(0.05), [100.0, 100.0], 1.0);
+    avancer(&mut world, 3.0);
+    assert!(world.vehicle_reports().is_empty(), "il dort");
+    assert!(usures(&world).iter().all(|u| *u == 0.0));
+    assert!(world.set_wheel_wear(ASSEMBLY, 1, 0.25));
+    assert!(
+        world.vehicle_reports().is_empty(),
+        "poser l'usure ne réveille pas"
+    );
+    assert!(world.set_wheel_wear(ASSEMBLY, 2, f32::NAN), "NaN garde");
+    assert!(world.set_wheel_wear(ASSEMBLY, 3, 9.0));
+    assert!(!world.set_wheel_wear(ASSEMBLY, 9, 0.5), "pas de roue 9");
+    assert!(!monde().set_wheel_wear(ASSEMBLY, 0, 0.5), "pas de véhicule");
+    let u = usures(&world);
+    assert_eq!(u, vec![0.0, f64::from(0.25f32), 0.0, 1.0], "borné à [0, 1]");
+}
+
+#[test]
+fn adr176_d4_l_usure_se_relit_dans_le_bloc_d_etat_et_se_rend() {
+    let (mut world, _) = sur_le_plat(berline_a_pneus_uses(0.02), [300.0, 300.0], 1.0);
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    avancer(&mut world, 2.0);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(etat.wheels.iter().any(|roue| roue.wear > 0.0));
+    let bloc = ax_physics::state::AssemblyState {
+        bodies: Vec::new(),
+        joints: Vec::new(),
+        vehicle: Some(etat.clone()),
+    };
+    let octets = bloc.encode();
+    assert_eq!(octets.len() % 8, 0, "un bloc reste un multiple de 8");
+    let relu = ax_physics::state::AssemblyState::decode(&octets).expect("lisible");
+    assert_eq!(relu.vehicle.as_ref(), Some(&etat), "l'usure se relit");
+    avancer(&mut world, 2.0);
+    assert!(world.restore_vehicle(ASSEMBLY, &etat));
+    assert_eq!(world.vehicle_snapshot(ASSEMBLY), Some(etat), "et se rend");
+    let rapports = world.wheel_reports();
+    assert!(rapports.iter().all(|r| r.wear >= 0.0 && r.wear <= 1.0));
 }

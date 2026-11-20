@@ -869,6 +869,8 @@ mod tests {
                 mu_lat: 1.0,
                 long: courbe,
                 lat: courbe,
+                wear_rate: 0.0,
+                wear_grip_loss: 0.4,
             }],
             torque_curve: Vec::new(),
             gears: Vec::new(),

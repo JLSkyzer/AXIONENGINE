@@ -809,7 +809,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             AxionEntity entity = wheel.handleGeneration() == GENERATION ? ledger.entity(wheel.handleIndex()) : null;
             if (entity != null) {
                 entity.setWheelState(wheel.index(), wheel.onGround(), wheel.spinSpeed(), wheel.compression(),
-                        wheel.steerAngle(), wheel.slipLong(), wheel.slipLat());
+                        wheel.steerAngle(), wheel.slipLong(), wheel.slipLat(), wheel.wear());
             }
         }
         // ADR-163 D1 : le motopropulseur de chaque véhicule éveillé ; un véhicule endormi garde le sien.

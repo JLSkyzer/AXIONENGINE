@@ -115,6 +115,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private float[] wheelSlipLong = new float[0];
 
     private float[] wheelSlipLat = new float[0];
+    private float[] wheelWear = new float[0];
 
     /** L'angle de chaque roue, intégré au rendu (client, ADR-159 D9). */
     private final ProceduralTracks.Spin wheelVisualSpin = new ProceduralTracks.Spin();
@@ -2896,7 +2897,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param slipLat glissement latéral, en radians
      */
     void setWheelState(int wheel, boolean grounded, float spin, float compression, float steer, float slipLong,
-            float slipLat) {
+            float slipLat, float wear) {
         AuthoritativeThread.require();
         if (wheel < 0 || wheel >= AssemblyState.Wheels.MAX_WHEELS) {
             return;
@@ -2908,6 +2909,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             wheelGround = Arrays.copyOf(wheelGround, wheel + 1);
             wheelSlipLong = Arrays.copyOf(wheelSlipLong, wheel + 1);
             wheelSlipLat = Arrays.copyOf(wheelSlipLat, wheel + 1);
+            wheelWear = Arrays.copyOf(wheelWear, wheel + 1);
         }
         wheelCompression[wheel] = compression;
         wheelSpin[wheel] = spin;
@@ -2915,6 +2917,16 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         wheelGround[wheel] = grounded;
         wheelSlipLong[wheel] = slipLong;
         wheelSlipLat[wheel] = slipLat;
+        wheelWear[wheel] = wear;
+    }
+
+    /**
+     * {@return l'usure du pneu d'une roue, de 0 à 1, telle que le natif l'a rapportée (ADR-176 D4) ; 0 sans rapport}
+     *
+     * @param wheel le rang de la roue dans la definition
+     */
+    public float wheelWear(int wheel) {
+        return wheel >= 0 && wheel < wheelWear.length ? wheelWear[wheel] : 0f;
     }
 
     /**
