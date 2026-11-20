@@ -27,6 +27,14 @@ public interface Assembly {
     /** {@return la definition dont l'assembly est issue}. Thread : quelconque. */
     DefinitionRef definition();
 
+    /**
+     * {@return la révision de la definition que l'assembly lit : celle de son document, 1 sans {@code revision} (ADR-175
+     * D3)} Elle change quand un rechargement relie l'assembly à une definition révisée. Thread : quelconque.
+     */
+    default int revision() {
+        return 1;
+    }
+
     /** {@return l'entité Minecraft qui porte l'assembly}. Thread : quelconque. */
     Entity entity();
 

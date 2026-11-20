@@ -3890,7 +3890,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [x] ADR-175, tranche 10e (2026-11-20) : reliure à chaud des assemblies vivantes après un rechargement
            (`content.rebind_per_tick`), occupants repris par nom de siège ; écart avec D6 : pas de clé native
            `(id, sha256)`, inutile (le natif clone à la création). Reste : le film (un modèle qui change entre deux
-           révisions, Blender), puis la clôture d'ADR-175 (grille ADR-160 D7).
+           révisions, Blender), puis la clôture d'ADR-175 (grille ADR-160 D7). `Assembly.revision()` ajoutée ; coût
+           mesuré : pire tick de reliure à 4 assemblies = 27,9 ms (maximum, JVM froide, avec journal).
      - [x] ADR-175, tranche 10d (2026-11-20) : une instance tient sa definition (`HeldDefinition`), prise à la
            création de son corps natif. Suite : 10e (reliure à chaud, clé native `(id, sha256)`, film).
      - [x] ADR-175, tranche 10c (2026-11-19) : `revision`, `migrations`, `replaces` au schéma 7, `axion:rev`,

@@ -471,6 +471,11 @@ public final class ForgeAxionApi implements AxionApi {
         }
 
         @Override
+        public int revision() {
+            return entity.definitionRevision();
+        }
+
+        @Override
         public Transform transform() {
             return new Transform(entity.position(), entity.orientation(), new Vec3(1, 1, 1));
         }

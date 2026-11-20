@@ -35,6 +35,8 @@ public final class RechargementGameTests {
             "{\"schema\": 1, \"asset\": \"axion:models/test/cube.gltf\", \"kind\": \"rigid_object\"}"
                     .getBytes(StandardCharsets.UTF_8);
 
+    private static final org.slf4j.Logger JOURNAL = com.mojang.logging.LogUtils.getLogger();
+
     private RechargementGameTests() {}
 
     /**
@@ -138,7 +140,9 @@ public final class RechargementGameTests {
      * definition nouvelle sans changer de place, et son occupant garde son siège par nom : « conducteur » était au
      * rang 0, il est au rang 1.
      */
-    @GameTest(template = "test/plancher", batch = "rechargement_definitions", timeoutTicks = 400)
+    // Un lot à lui : les tests d'un même lot tournent ensemble, et chacun recharge les definitions — l'autre verrait la sienne
+    // revenir sous ses pieds.
+    @GameTest(template = "test/plancher", batch = "rechargement_reliure", timeoutTicks = 400)
     public static void adr175_UnRechargementRelieLesAssembliesVivantesEtGardeLeursOccupants(GameTestHelper helper) {
         AxionRuntime runtime = RuntimeAccess.get();
         helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
@@ -167,6 +171,7 @@ public final class RechargementGameTests {
                 .thenIdle(20)
                 .thenExecute(() -> {
                     helper.assertTrue(assembly.sit(joueur, 0), "le joueur s'assoit au siège conducteur");
+                    helper.assertTrue(assembly.definitionRevision() == 1, "elle lit la révision 1");
                     avant[0] = assembly.held();
                     place[0] = assembly.position();
                     runtime.onDefinitionReload(revisee);
@@ -177,6 +182,8 @@ public final class RechargementGameTests {
                 .thenExecute(() -> {
                     helper.assertTrue(assembly.held().seating().seats().get(0).name().equals("passager"),
                             "elle lit les sièges de la révision 2");
+                    helper.assertTrue(assembly.definitionRevision() == 2,
+                            "elle lit la révision 2 : " + assembly.definitionRevision());
                     helper.assertTrue(joueur.getVehicle() == assembly, "le joueur est toujours à bord");
                     helper.assertTrue(assembly.seatOf(joueur) == 1,
                             "il garde son siège « conducteur », devenu le rang 1 : " + assembly.seatOf(joueur));
@@ -184,6 +191,75 @@ public final class RechargementGameTests {
                             "elle n'a pas bougé : " + assembly.position().distanceTo(place[0]));
                     joueur.stopRiding();
                     // Les autres tests retrouvent les definitions enregistrées.
+                    runtime.onDefinitionReload(courantes);
+                })
+                .thenSucceed();
+    }
+
+    /** Combien d'assemblies le test de coût relie d'un coup. */
+    private static final int POUR_LE_COUT = 24;
+
+    /**
+     * ADR-175 D5, le coût : {@value #POUR_LE_COUT} assemblies vivantes d'une definition qui change sont reliées à raison de
+     * {@code content.rebind_per_tick} par tick, toutes, et ce que coûte un tick de reliure se mesure — la valeur est
+     * écrite au journal, c'est elle que consigne l'ADR.
+     */
+    // Un lot à lui, comme le test des occupants.
+    @GameTest(template = "test/plancher", batch = "rechargement_cout", timeoutTicks = 600)
+    public static void adr175_LaReliureDeNAssembliesSeFaitParTickEtSeMesure(GameTestHelper helper) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
+        AssetSource revisee = new AssetSource() {
+            @Override
+            public List<String> list() {
+                return courantes.list();
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                return CHEMIN_SIEGE.equals(path)
+                        ? SIEGE_REVISE.getBytes(StandardCharsets.UTF_8)
+                        : courantes.read(path);
+            }
+        };
+        List<AxionEntity> lot = new ArrayList<>();
+        for (int i = 0; i < POUR_LE_COUT; i++) {
+            lot.add(AssembliesDeTest.poser(helper, "axion:test/siege",
+                    new Vec3(2.5 + (i % 4) * 1.5, DESSUS_DALLE + 2.0 + (i / 4) * 2.5, 2.5 + (i % 3) * 1.5),
+                    new float[] {0f, 0f, 0f, 1f}));
+        }
+        dev.axion.diag.JavaMetrics.Metric reliees = dev.axion.diag.JavaMetrics.GLOBAL
+                .counter(dev.axion.diag.EntityMetrics.PREFIX + "rebound", "count");
+        dev.axion.diag.JavaMetrics.Metric duree = dev.axion.diag.JavaMetrics.GLOBAL
+                .gauge(dev.axion.diag.EntityMetrics.PREFIX + "rebind_ns", "ns");
+        long[] depart = {0L};
+        long[] pire = {0L};
+        int[] ticks = {0};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(
+                        lot.stream().allMatch(a -> a.hasPhysicalBounds() && a.held() != null),
+                        "les assemblies sont simulées"))
+                .thenExecute(() -> {
+                    depart[0] = reliees.value();
+                    runtime.onDefinitionReload(revisee);
+                })
+                .thenWaitUntil(() -> {
+                    if (duree.value() > pire[0]) {
+                        pire[0] = duree.value();
+                    }
+                    ticks[0]++;
+                    helper.assertTrue(lot.stream().allMatch(a -> a.definitionRevision() == 2),
+                            "les " + POUR_LE_COUT + " assemblies sont reliées à la révision 2");
+                })
+                .thenExecute(() -> {
+                    long n = reliees.value() - depart[0];
+                    helper.assertTrue(n >= POUR_LE_COUT, "au moins " + POUR_LE_COUT + " reliures comptées : " + n);
+                    helper.assertTrue(lot.stream().noneMatch(AxionEntity::isInert), "aucune n'est devenue inerte");
+                    JOURNAL.info("AXION : MESURE reliure — {} assemblies reliées, au plus {} µs"
+                            + " pour un tick (content.rebind_per_tick = {}), {} ticks d'attente", n, pire[0] / 1000,
+                            runtime.outcome().config().getInt("content.rebind_per_tick"), ticks[0]);
+                    lot.forEach(AxionEntity::discard);
                     runtime.onDefinitionReload(courantes);
                 })
                 .thenSucceed();

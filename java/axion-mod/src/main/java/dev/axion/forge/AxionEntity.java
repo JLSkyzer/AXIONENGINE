@@ -3565,6 +3565,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return !isRemoved();
     }
 
+    /**
+     * {@return la révision de la definition que cette instance tient (ADR-175 D3), 1 si elle n'en tient pas ou n'en
+     * déclare pas}
+     */
+    public int definitionRevision() {
+        dev.axion.definition.HeldDefinition tenue = held();
+        return tenue == null ? 1 : dev.axion.definition.Revisions.of(tenue.definition().root()).revision();
+    }
+
     /** {@return l'identifiant de la definition, ou ce qu'on sait d'une definition inconnue} */
     public String definitionId() {
         return definitionId;

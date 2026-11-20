@@ -31,6 +31,8 @@ public final class EntityMetrics {
     private final JavaMetrics.Metric spawnRefused;
     private final JavaMetrics.Metric bodies;
     private final JavaMetrics.Metric applyNanos;
+    private final JavaMetrics.Metric rebound;
+    private final JavaMetrics.Metric rebindNanos;
 
     /**
      * Déclare les métriques de l'entité.
@@ -44,6 +46,8 @@ public final class EntityMetrics {
         spawnRefused = metrics.counter(PREFIX + "spawn_refused", "count");
         bodies = metrics.gauge(PREFIX + "bodies", "count");
         applyNanos = metrics.gauge(PREFIX + "apply_states_ns", "ns");
+        rebound = metrics.counter(PREFIX + "rebound", "count");
+        rebindNanos = metrics.gauge(PREFIX + "rebind_ns", "ns");
     }
 
     /**
@@ -84,5 +88,16 @@ public final class EntityMetrics {
      */
     public void applied(long nanos) {
         applyNanos.set(Math.max(0, nanos));
+    }
+
+    /**
+     * Des assemblies viennent d'être reliées à leur definition rechargée (ADR-175 D5).
+     *
+     * @param count assemblies reliées pendant ce tick
+     * @param nanos durée de leur reliure, en nanosecondes
+     */
+    public void rebound(int count, long nanos) {
+        rebound.add(count);
+        rebindNanos.set(Math.max(0, nanos));
     }
 }

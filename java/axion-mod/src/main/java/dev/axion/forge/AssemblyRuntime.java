@@ -654,12 +654,17 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 due.add(entity);
             }
         });
+        if (due.isEmpty()) {
+            return;
+        }
+        long start = System.nanoTime();
         for (AxionEntity assembly : due) {
             assembly.rebind();
             releaseBody(assembly, false);
             LOGGER.info("AXION : assembly {} reliée à la definition rechargée {}", assembly.getUUID(),
                     assembly.definitionId());
         }
+        EntityMetrics.GLOBAL.rebound(due.size(), System.nanoTime() - start);
     }
 
     /**

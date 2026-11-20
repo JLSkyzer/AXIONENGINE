@@ -72,6 +72,8 @@ attachments and occupants. The log reports each rebind.
 - **Pace**: `content.rebind_per_tick` (4 by default) assemblies per tick. The others live, until their turn, entirely on
   the previous definition — never on a mix of both.
 - **One tick without a body**: the native body is removed then recreated on the next tick; the assembly has not moved.
+- **Reading the revision**: `assembly.revision()` gives the revision of the definition the assembly reads; it goes up
+  once the rebind has happened. `axion.entity.rebound` and `axion.entity.rebind_ns` measure rebinds.
 
 ## Saves from before names
 

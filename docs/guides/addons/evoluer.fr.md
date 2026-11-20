@@ -73,6 +73,8 @@ leur vitesse, leurs corps, leurs attaches et leurs occupants. Le journal dit cha
 - **Le rythme** : `content.rebind_per_tick` (4 par défaut) assemblies par tick. Les autres vivent, jusqu'à leur tour,
   entièrement sur la definition d'avant — jamais sur un mélange des deux.
 - **Un tick sans corps** : le corps natif est retiré puis recréé au tick suivant ; l'assembly n'a pas bougé.
+- **Lire la révision** : `assembly.revision()` dit la révision de la definition que l'assembly lit ; elle monte quand
+  la reliure a eu lieu. `axion.entity.rebound` et `axion.entity.rebind_ns` mesurent les reliures.
 
 ## Les sauvegardes d'avant les noms
 
