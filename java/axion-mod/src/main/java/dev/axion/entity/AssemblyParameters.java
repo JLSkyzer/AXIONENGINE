@@ -63,6 +63,9 @@ public final class AssemblyParameters {
     /** Une sortie de contrôleur, pour un tick (D9). */
     public static final String CONTROLLER = "contrôleur";
 
+    /** L'origine des causes que le moteur pose lui-même, en lecture seule (ADR-176 D2). */
+    public static final String ENGINE = "moteur";
+
     /** Les origines, chacune au rang de son code sur le fil ({@link AssemblyState.Posed}). */
     static final List<String> ORIGINS = List.of(API, COMMAND, SAVE);
 
@@ -75,6 +78,8 @@ public final class AssemblyParameters {
     private final List<Entry> entries = new ArrayList<>();
     /** Les sorties des contrôleurs pour ce tick, dans l'ordre des contrôleurs (D9). */
     private final List<Entry> controlled = new ArrayList<>();
+    /** Les causes du moteur (ADR-176 D2), lues de l'état répliqué, jamais sauvegardées. */
+    private final List<Entry> engine = new ArrayList<>();
     private final double[] values;
     /** La valeur de chaque paramètre sans les sorties des contrôleurs : celle qu'ils lisent. */
     private final double[] uncontrolled;
@@ -89,7 +94,8 @@ public final class AssemblyParameters {
         private String reason;
 
         private Entry(Modifier modifier, String origin) {
-            if (!ORIGINS.contains(origin) && !VARIABLE.equals(origin) && !CONTROLLER.equals(origin)) {
+            if (!ORIGINS.contains(origin) && !VARIABLE.equals(origin) && !CONTROLLER.equals(origin)
+                    && !ENGINE.equals(origin)) {
                 throw new IllegalArgumentException("origine « " + origin + " » : " + ORIGINS + " attendue");
             }
             this.modifier = modifier;
@@ -137,6 +143,39 @@ public final class AssemblyParameters {
         other.declared.forEach(entry -> declared.add(entry.copy()));
         other.entries.forEach(entry -> entries.add(entry.copy()));
         other.controlled.forEach(entry -> controlled.add(entry.copy()));
+        other.engine.forEach(entry -> engine.add(entry.copy()));
+    }
+
+    /**
+     * Pose, remplace ou retire la cause que le moteur porte sur un paramètre (ADR-176 D2) : une addition, bornée par
+     * la seule limite du paramètre, qui passe après les réglages. Elle ne se sauvegarde ni ne s'envoie : elle se
+     * recalcule des deux côtés. Elle change {@link #controlVersion} quand la valeur effective change, jamais
+     * {@link #version} : les crans du carburant ne renvoient pas la liste posée à chaque snapshot.
+     *
+     * @param cause la cause, dans l'espace de noms {@code axion:}
+     * @param parameter le paramètre
+     * @param amount la quantité ajoutée ; 0 retire la cause
+     * @return vrai si la valeur effective du paramètre a changé ; faux aussi pour un paramètre que l'assembly n'a pas
+     */
+    public boolean engineCause(String cause, String parameter, double amount) {
+        if (!cause.startsWith(ENGINE_NAMESPACE)) {
+            throw new IllegalArgumentException("cause « " + cause + " » : une cause du moteur est dans l'espace de noms axion");
+        }
+        int index = tuning.indexOf(parameter);
+        if (index < 0) {
+            return false;
+        }
+        double before = values[index];
+        engine.removeIf(entry -> entry.modifier.cause().equals(cause) && entry.modifier.parameter().equals(parameter));
+        if (amount != 0.0) {
+            engine.add(new Entry(new Modifier(cause, parameter, Modifier.Operation.ADD, amount), ENGINE));
+        }
+        replay(index);
+        if (Double.compare(before, values[index]) == 0) {
+            return false;
+        }
+        controlVersion++;
+        return true;
     }
 
     /**
@@ -376,8 +415,9 @@ public final class AssemblyParameters {
      * definition, puis les posés, dans l'ordre de leur pose, puis les sorties des contrôleurs de ce tick}
      */
     public List<Parameters.Applied> applied() {
-        List<Parameters.Applied> applied = new ArrayList<>(declared.size() + entries.size() + controlled.size());
-        for (List<Entry> group : List.of(declared, entries, controlled)) {
+        List<Parameters.Applied> applied =
+                new ArrayList<>(declared.size() + entries.size() + controlled.size() + engine.size());
+        for (List<Entry> group : List.of(declared, entries, controlled, engine)) {
             for (Entry entry : group) {
                 applied.add(new Parameters.Applied(entry.modifier, entry.origin, entry.active, entry.reason));
             }
@@ -595,6 +635,19 @@ public final class AssemblyParameters {
                 List<Modifier> with = new ArrayList<>(active);
                 with.add(entry.modifier);
                 entry.reason = parameter.refusal(compose(parameter.base(), with));
+            }
+        }
+        // ADR-176 D2 : les causes du moteur passent après les réglages, bornées par la seule limite du paramètre, et font
+        // partie de ce que les contrôleurs lisent : la masse que ceux-ci voient est celle du véhicule plein ou à demi.
+        for (Entry entry : engine) {
+            if (!entry.modifier.parameter().equals(parameter.name())) {
+                continue;
+            }
+            active.add(entry.modifier);
+            entry.reason = parameter.limitRefusal(compose(parameter.base(), active));
+            entry.active = entry.reason == null;
+            if (!entry.active) {
+                active.remove(active.size() - 1);
             }
         }
         uncontrolled[index] = compose(parameter.base(), active);

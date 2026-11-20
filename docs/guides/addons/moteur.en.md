@@ -66,5 +66,10 @@ A schema 7 definition can declare its energy ([ADR-176](../../decisions/ADR-176.
 - **A sleeping vehicle burns nothing**: combustion follows being awake, like the rest of the simulation.
 - With no `energy`, nothing changes.
 
+- **Mass follows fuel**: `physics.mass` is the **dry** mass, and the engine adds `unit_mass` × the remaining fuel — in steps
+  of 1/255 of the capacity, so the vehicle is not woken for every drop. The cause is called `axion:energy`, it shows in
+  `/axion params`, and it is not saved: it is recomputed.
+- **Saving**: fuel and battery are kept (`axion:energy`); a reloaded vehicle resumes with the fuel it had, not a full tank.
+
 The native side holds the energy (fuel and battery), deterministic, which the client replays; reading it from Java, saving,
 the `energy.*` sources and the API come with the next slices of ADR-176.

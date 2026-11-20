@@ -530,4 +530,52 @@ public final class PersistanceGameTests {
                 "clé texte réécrite");
         helper.succeed();
     }
+
+    /**
+     * ADR-176 D3 : le carburant et la batterie se sauvent ({@code axion:energy}) et se relisent : une assembly relue à
+     * demi pleine repart du natif à demi pleine — {@code SET_ENERGY} avant son premier pas —, non pleine comme tout corps
+     * neuf, et sa masse suit.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void adr176_LEnergieSeSauveEtSeRelit(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_reservoir",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), DROIT);
+        AxionEntity[] relue = {null};
+        double[] sauve = {0.0};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.ignitionVariable() >= 0,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    vehicule.variables().set(vehicule.ignitionVariable(), 1.0, "test");
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.fuel() < 39.9995 && vehicule.fuel() > 0.0,
+                        "le natif a brûlé du carburant : " + vehicule.fuel()))
+                .thenExecute(() -> {
+                    CompoundTag sauvegarde = new CompoundTag();
+                    helper.assertTrue(vehicule.save(sauvegarde), "sauvegarde refusée");
+                    helper.assertTrue(sauvegarde.contains("axion:energy"), "l'énergie se sauve");
+                    sauve[0] = sauvegarde.getCompound("axion:energy").getDouble("fuel");
+                    helper.assertTrue(sauve[0] < 39.9995 && sauve[0] > 0.0, "le carburant sauvé : " + sauve[0]);
+                    helper.assertTrue(sauvegarde.getCompound("axion:energy").getDouble("battery") > 0.5, "et la batterie");
+                    vehicule.discard();
+                    relue[0] = rechargerSauvegarde(helper, sauvegarde);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].hasPhysicalBounds() && relue[0].ignitionVariable() >= 0,
+                        "l'assembly relue est simulée"))
+                .thenExecute(() -> {
+                    helper.assertTrue(relue[0].fuel() < 39.9995, "Java tient le carburant sauvé : " + relue[0].fuel());
+                    // Un véhicule relu dort, et le natif ne rapporte pas un véhicule qui dort : on le démarre.
+                    relue[0].variables().set(relue[0].ignitionVariable(), 1.0, "test");
+                    relue[0].drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].vehicleReport() != null,
+                        "le natif de l'assembly relue a rapporté"))
+                .thenExecute(() -> helper.assertTrue(
+                        relue[0].vehicleReport().fuel() <= sauve[0] + 1e-4 && relue[0].vehicleReport().fuel() > 0f,
+                        "le natif repart du carburant sauvé, non du plein : " + relue[0].vehicleReport().fuel()
+                                + " pour " + sauve[0]))
+                .thenSucceed();
+    }
 }

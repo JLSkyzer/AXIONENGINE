@@ -64,6 +64,7 @@ class PublishedPersistenceSchemaTest {
                 dev.axion.api.assembly.Modifier.Operation.ADD, -80)));
         AssemblyTags.putControllers(stored, List.of("turbo:gestion"));
         AssemblyTags.putRevision(stored, 3, "0".repeat(64));
+        AssemblyTags.putEnergy(stored, 12.5, 0.75);
 
         Set<String> publiees = new TreeSet<>();
         Matcher matcher = KEY_LINE.matcher(published());

@@ -491,6 +491,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // ADR-167 D9 : les contrôleurs lisent l'état du début du tick, avant que les entrées partent au natif.
         control(stream);
         drive(stream);
+        energy(stream);
         tune(stream, tick);
         export(stream);
         return stream;
@@ -574,6 +575,18 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
         }
         return true;
+    }
+
+    /**
+     * Pousse au natif l'énergie que Java tient d'une assembly relue d'une sauvegarde, ou dont le corps a été recréé
+     * (ADR-176 D3) : {@code SET_ENERGY}, après la création, avant son premier pas ; il ne réveille pas.
+     */
+    private void energy(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            if (assembly.takeEnergyPush()) {
+                stream.setEnergy(index, GENERATION, (float) assembly.fuel(), (float) assembly.battery());
+            }
+        });
     }
 
     /**

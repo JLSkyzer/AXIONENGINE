@@ -288,4 +288,31 @@ public final class VehiculesGameTests {
                         "le natif a brûlé du carburant sur un réservoir de 40 litres : " + vehicule.vehicleReport()))
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D2, D3 : un réservoir plein pèse sa masse à sec plus celle de son carburant — la cause {@code axion:energy}
+     * du paramètre {@code mass}, d'origine « moteur », qui ne se sauvegarde pas — et cette masse est celle du corps natif.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr176_LeCarburantPeseSurLaMasseDeLAssembly(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_reservoir",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), new float[] {0f, 0f, 0f, 1f});
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.parameters() != null,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    dev.axion.entity.AssemblyParameters table = vehicule.parameters();
+                    int masse = table.tuning().indexOf(dev.axion.api.assembly.Parameters.MASS);
+                    helper.assertTrue(masse >= 0, "la definition déclare physics.mass");
+                    helper.assertTrue(Math.abs(table.value(masse) - (340.0 + 30.0)) < 1e-6,
+                            "340 kg à sec + 40 l × 0,75 : " + table.value(masse));
+                    helper.assertTrue(table.applied().stream().anyMatch(a -> a.modifier().cause().equals("axion:energy")
+                            && a.origin().equals(dev.axion.entity.AssemblyParameters.ENGINE) && a.active()),
+                            "la cause du moteur se voit");
+                    helper.assertTrue(table.modifiers().isEmpty(), "et ne se sauvegarde pas");
+                    helper.assertTrue(vehicule.fuel() == 40.0 && vehicule.battery() == 1.0, "plein à la création");
+                })
+                .thenSucceed();
+    }
 }

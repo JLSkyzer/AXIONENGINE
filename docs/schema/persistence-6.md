@@ -34,6 +34,7 @@ axion:params  list      modificateurs posés, dans l'ordre de leur pose, absente
 axion:ctrls   list      contrôleurs de véhicule attachés par l'API, dans l'ordre de l'attache, absente sans eux
 axion:rev     int       révision de la definition à laquelle l'état a été écrit (ADR-175 D3), 1 si absente
 axion:sha     string    empreinte SHA-256 du contenu de cette definition, en hexadécimal
+axion:energy  compound  carburant et batterie d'un véhicule à énergie déclarée (ADR-176 D3), absente sans énergie
 ```
 
 - **`axion:bodies`**, pour chaque corps autre que le corps racine : `node u32` (node racine du corps dans
@@ -92,6 +93,14 @@ les bornes de la definition refusent désormais, ou qui vise un paramètre qu'el
 se journalise (`E-7011`) ; il n'est pas jeté. Une entrée illisible — un champ manquant, une opération inconnue, une
 cause mal formée, une quantité non finie — est ignorée, et une cause de l'espace de noms `axion`, réservé au moteur,
 écartée.
+
+### `axion:energy`
+
+Le carburant et la charge de la batterie d'un véhicule dont la definition déclare `energy` (ADR-176 D3) : un compound
+`fuel` (`double`, litres) et `battery` (`double`, unités de charge), tels que le natif les a rapportés. Une valeur
+absente, non finie ou négative vaut zéro, et la capacité de la definition borne le reste : un NBT ne fait pas foi. Une
+assembly relue avec cette clé envoie son énergie au natif (`SET_ENERGY`) avant son premier pas ; sans elle, elle naît
+pleine. Le schéma NBT reste à 6 : la clé est optionnelle, et un build qui l'ignore la garde à la réécriture.
 
 ### `axion:ctrls`
 

@@ -59,6 +59,9 @@ final class AssemblyTags {
      */
     static final String PARAMETERS = "axion:params";
 
+    /** Le carburant et la batterie (ADR-176 D3) : {@code {fuel, battery}}, en {@code double}. */
+    static final String ENERGY = "axion:energy";
+
     /**
      * Contrôleurs de véhicule attachés par l'API (ADR-167 D7, D9) : leurs identifiants, dans l'ordre de l'attache ;
      * absente sans eux.
@@ -333,6 +336,41 @@ final class AssemblyTags {
             list.add(net.minecraft.nbt.StringTag.valueOf(id));
         }
         stored.put(CONTROLLERS, list);
+    }
+
+    /**
+     * Écrit le carburant et la batterie (ADR-176 D3).
+     *
+     * @param stored les clés gardées
+     * @param fuel le carburant, en litres
+     * @param battery la charge de la batterie
+     */
+    static void putEnergy(CompoundTag stored, double fuel, double battery) {
+        CompoundTag energy = new CompoundTag();
+        energy.putDouble("fuel", fuel);
+        energy.putDouble("battery", battery);
+        stored.put(ENERGY, energy);
+    }
+
+    /**
+     * {@return le carburant et la batterie gardés, {@code {fuel, battery}}, ou {@code null} sans {@code axion:energy}}
+     * Une valeur absente, non finie ou négative vaut zéro : un NBT ne fait pas foi (obligation 3.13) ; la capacité de la
+     * definition les borne ensuite.
+     *
+     * @param stored les clés gardées
+     */
+    static double[] energy(CompoundTag stored) {
+        if (!stored.contains(ENERGY, Tag.TAG_COMPOUND)) {
+            return null;
+        }
+        CompoundTag energy = stored.getCompound(ENERGY);
+        double[] saved = new double[2];
+        String[] keys = {"fuel", "battery"};
+        for (int i = 0; i < saved.length; i++) {
+            double value = energy.contains(keys[i], Tag.TAG_DOUBLE) ? energy.getDouble(keys[i]) : 0.0;
+            saved[i] = Double.isFinite(value) && value > 0.0 ? value : 0.0;
+        }
+        return saved;
     }
 
     /**

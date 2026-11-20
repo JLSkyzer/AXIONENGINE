@@ -225,6 +225,26 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared, List<S
          * @param value la valeur effective envisagée
          */
         public String refusal(double value) {
+            String limited = limitRefusal(value);
+            if (limited != null) {
+                return limited;
+            }
+            double sent = (float) value;
+            if (!range.contains(sent)) {
+                return "« " + name + " » vaudrait " + value + (unit.isEmpty() ? "" : " " + unit) + ", hors de "
+                        + range + " (plage de la definition, tuning.ranges)";
+            }
+            return null;
+        }
+
+        /**
+         * {@return pourquoi cette valeur sort de la seule limite du schéma, {@code null} sinon} Les causes du moteur
+         * (ADR-176 D2) n'ont que cette borne : la plage que la definition se donne règle ce que ses auteurs et ses
+         * joueurs posent, pas ce que le moteur y ajoute.
+         *
+         * @param value la valeur effective envisagée
+         */
+        public String limitRefusal(double value) {
             if (!Double.isFinite(value) || Math.abs(value) > FLOAT_MAX) {
                 return "« " + name + " » vaudrait " + value + ", hors de ce que le moteur physique porte";
             }
@@ -232,10 +252,6 @@ public record Tuning(List<Parameter> parameters, List<Declared> declared, List<S
             if (!limit.contains(sent)) {
                 return "« " + name + " » vaudrait " + value + (unit.isEmpty() ? "" : " " + unit) + ", hors de "
                         + limit + " (limite du schéma)";
-            }
-            if (!range.contains(sent)) {
-                return "« " + name + " » vaudrait " + value + (unit.isEmpty() ? "" : " " + unit) + ", hors de "
-                        + range + " (plage de la definition, tuning.ranges)";
             }
             return null;
         }

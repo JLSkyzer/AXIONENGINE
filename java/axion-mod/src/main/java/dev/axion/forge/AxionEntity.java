@@ -129,6 +129,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private VehicleReport vehicleReport;
 
+    /** Le carburant et la batterie (ADR-176 D3) ; {@code NaN} tant qu'on ne les a pas lus. */
+    private double fuel = Double.NaN;
+    private double battery = Double.NaN;
+    /** L'énergie gardée par la sauvegarde, ou {@code null}. */
+    private double[] savedEnergy;
+    /** Vrai tant que le natif n'a pas reçu l'énergie que Java tient ({@code SET_ENERGY}). */
+    private boolean energyPending;
+
     /** {@return le dernier rapport du natif sur le motopropulseur, ou {@code null} tant qu'il n'en a pas envoyé} */
     VehicleReport vehicleReport() {
         return vehicleReport;
@@ -1320,6 +1328,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 LOGGER.warn("AXION : E-7011 assembly {} — {}", getUUID(), line);
             }
             parameters = fresh;
+            if (!Double.isNaN(fuel)) {
+                syncFuelMass();
+            }
         } else if (held != null && (held != variedBy || held.version() != variedVersion)) {
             parameters.vary(held.values());
             variedBy = held;
@@ -2884,6 +2895,80 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     void setVehicleState(VehicleReport report) {
         AuthoritativeThread.require();
         vehicleReport = report;
+        // ADR-176 D3 : le natif tient l'énergie ; ce que Java en sait vient de ses rapports. Tant que l'énergie relue
+        // d'une sauvegarde n'est pas partie au natif, un rapport ne la remplace pas.
+        if (energySpec().declared() && !energyPending) {
+            initEnergy();
+            fuel = report.fuel();
+            battery = report.battery();
+            syncFuelMass();
+        }
+    }
+
+    /** Ce que la definition déclare de réservoir et de batterie (ADR-176 D3). */
+    private dev.axion.definition.EnergySpec energySpec() {
+        dev.axion.definition.HeldDefinition tenue = held();
+        return tenue == null ? dev.axion.definition.EnergySpec.NONE : tenue.energy();
+    }
+
+    /**
+     * Donne au carburant et à la batterie leur valeur de départ, la première fois qu'on les lit : celle que la sauvegarde
+     * gardait, bornée aux capacités, ou le plein d'une assembly neuve (ADR-176 D3). L'énergie relue part au natif, qui
+     * naît plein.
+     */
+    private void initEnergy() {
+        if (!Double.isNaN(fuel)) {
+            return;
+        }
+        dev.axion.definition.EnergySpec spec = energySpec();
+        if (savedEnergy != null) {
+            fuel = Math.min(savedEnergy[0], spec.fuelCapacity());
+            battery = Math.min(savedEnergy[1], spec.batteryCapacity());
+            energyPending = true;
+        } else {
+            fuel = spec.fuelCapacity();
+            battery = spec.batteryCapacity();
+        }
+        syncFuelMass();
+    }
+
+    /** {@return le carburant restant, en litres ; 0 sans réservoir (ADR-176 D3)} */
+    public double fuel() {
+        initEnergy();
+        return energySpec().fuelCapacity() > 0f ? fuel : 0.0;
+    }
+
+    /** {@return la charge de la batterie ; 0 sans batterie (ADR-176 D3)} */
+    public double battery() {
+        initEnergy();
+        return energySpec().batteryCapacity() > 0f ? battery : 0.0;
+    }
+
+    /**
+     * {@return vrai une seule fois, quand l'énergie relue d'une sauvegarde — ou celle que Java tient d'une assembly dont
+     * le corps natif a été recréé — doit partir au natif} Il la reçoit par {@code SET_ENERGY}, avant son premier pas.
+     */
+    boolean takeEnergyPush() {
+        if (!energySpec().declared()) {
+            return false;
+        }
+        initEnergy();
+        boolean push = energyPending;
+        energyPending = false;
+        return push;
+    }
+
+    /**
+     * La masse du carburant que le réservoir porte, posée comme la cause {@code axion:energy} du paramètre {@code mass}
+     * (ADR-176 D2, D3) : au cran de 1/255 de la capacité, la masse de la definition étant la masse à sec.
+     */
+    private void syncFuelMass() {
+        dev.axion.definition.EnergySpec spec = energySpec();
+        if (parameters == null || level().isClientSide() || !(spec.unitMass() > 0f)) {
+            return;
+        }
+        parameters.engineCause(dev.axion.definition.EnergySpec.MASS_CAUSE, dev.axion.api.assembly.Parameters.MASS,
+                spec.fuelMass(fuel));
     }
 
     /**
@@ -2971,6 +3056,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Son corps natif est retiré (fin de suivi) : jusqu'à son prochain état, ses corps n'existent plus. */
     void forgetSimulation() {
         simulated = false;
+        // Le prochain corps natif naît plein : l'énergie que Java tient lui est rendue.
+        if (!Double.isNaN(fuel) && energySpec().declared()) {
+            energyPending = true;
+        }
     }
 
     /** {@return vrai si la physique a endormi l'assembly} */
@@ -3360,6 +3449,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                         bound.id(), note)));
         // ADR-153 D3 : l'état gardé, rendu à la création de l'assembly ; ses vitesses et ses corps
         // secondaires sont aussi ceux que la sauvegarde suivante réécrit, tant que l'assembly dort.
+        // ADR-176 D3 : le carburant et la batterie gardés, bornés aux capacités de la definition quand elle est connue.
+        savedEnergy = AssemblyTags.energy(stored);
+        fuel = Double.NaN;
+        battery = Double.NaN;
+        energyPending = false;
         savedState = PersistedState.read(stored).orElse(null);
         if (savedState != null) {
             System.arraycopy(savedState.linear(), 0, linearVelocity, 0, 3);
@@ -3473,6 +3567,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-167 D7, D9 : les contrôleurs attachés par l'API, relus à la lecture.
         if (!inert) {
             AssemblyTags.putControllers(stored, attachedControllers);
+        }
+        // ADR-176 D3 : le carburant et la batterie, tels que le natif les a rapportés ; sans énergie déclarée, la clé
+        // gardée du NBT reste.
+        if (!inert && energySpec().declared()) {
+            initEnergy();
+            AssemblyTags.putEnergy(stored, fuel, battery);
         }
         // ADR-174 D3 : l'état des nodes, par nom, une fois relu ; sinon, celui que son NBT portait reste.
         if (!inert && nodesRestored) {

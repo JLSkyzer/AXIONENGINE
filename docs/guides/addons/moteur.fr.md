@@ -67,5 +67,11 @@ Une definition au schéma 7 peut déclarer son énergie ([ADR-176](../../decisio
 - **Un véhicule endormi ne brûle rien** : la combustion suit l'éveil, comme tout le reste de la simulation.
 - Sans `energy`, rien ne change.
 
+- **La masse suit le carburant** : `physics.mass` est la masse **à sec**, et le moteur y ajoute `unit_mass` × le carburant
+  restant — par crans de 1/255 de la capacité, pour ne pas réveiller le véhicule à chaque goutte. La cause s'appelle
+  `axion:energy`, elle se voit dans `/axion params`, et elle ne se sauvegarde pas : elle se recalcule.
+- **Sauvegarde** : le carburant et la batterie se gardent (`axion:energy`) ; un véhicule relu repart du carburant qu'il avait,
+  non d'un plein.
+
 Le natif tient l'énergie (carburant et batterie), déterministe, que le client rejoue ; la lecture par Java, la sauvegarde, les
 sources `energy.*` et l'API viennent avec les tranches suivantes d'ADR-176.

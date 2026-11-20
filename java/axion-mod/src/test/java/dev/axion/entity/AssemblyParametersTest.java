@@ -363,4 +363,49 @@ class AssemblyParametersTest {
         assertEquals(410, parametres.value(couple), "le retrait la fait entrer dans ses bornes : 260 + 150");
         assertEquals(260, parametres.uncontrolled(couple));
     }
+
+    @Test
+    @DisplayName("ADR-176 D2 : une cause du moteur s'ajoute après les réglages, bornée par la limite seule, sans bumper la version posée")
+    void causeDuMoteur() {
+        AssemblyParameters table = new AssemblyParameters(tuning());
+        table.modify(couple("mod:regle", Operation.ADD, 10), AssemblyParameters.API);
+        long version = table.version();
+        long controle = table.controlVersion();
+
+        assertTrue(table.engineCause("axion:energy", Parameters.MASS, 30.0), "la masse change");
+        assertEquals(1230.0, table.value(0), 1e-9);
+        assertEquals(1230.0, table.uncontrolled(0), 1e-9, "les contrôleurs la voient");
+        assertEquals(version, table.version(), "la liste posée n'est pas renvoyée aux snapshots");
+        assertTrue(table.controlVersion() > controle, "mais le natif doit recevoir la masse");
+        assertTrue(table.modifiers().stream().noneMatch(m -> m.cause().startsWith("axion:")),
+                "une cause du moteur ne se sauvegarde pas");
+        Parameters.Applied vue = table.applied().stream().filter(a -> a.modifier().cause().equals("axion:energy"))
+                .findFirst().orElseThrow();
+        assertEquals(AssemblyParameters.ENGINE, vue.origin(), "elle se voit, d'origine « moteur »");
+        assertTrue(vue.active());
+
+        // Le même montant : rien ne change. Un autre : la cause est remplacée, non empilée.
+        assertFalse(table.engineCause("axion:energy", Parameters.MASS, 30.0));
+        assertTrue(table.engineCause("axion:energy", Parameters.MASS, 12.0));
+        assertEquals(1212.0, table.value(0), 1e-9);
+        assertEquals(1, table.applied().stream().filter(a -> a.modifier().cause().equals("axion:energy")).count());
+
+        // La plage de la definition ne la borne pas : le couple de 200 à 420 accepte +500 du moteur, la limite du
+        // schéma (positif) seule le refuse.
+        assertTrue(table.engineCause("axion:wear", Parameters.ENGINE_TORQUE, 500.0));
+        assertEquals(770.0, table.value(1), 1e-9);
+        assertTrue(table.engineCause("axion:wear", Parameters.ENGINE_TORQUE, -2000.0));
+        assertEquals(270.0, table.value(1), 1e-9, "sous la limite du schéma, la cause est écartée");
+        assertFalse(table.applied().stream().filter(a -> a.modifier().cause().equals("axion:wear")).findFirst()
+                .orElseThrow().active());
+
+        assertTrue(table.engineCause("axion:energy", Parameters.MASS, 0.0), "zéro la retire");
+        assertEquals(1200.0, table.value(0), 1e-9);
+        assertFalse(table.engineCause("axion:energy", "paramètre.inconnu", 5.0));
+        assertThrows(IllegalArgumentException.class, () -> table.engineCause("mod:x", Parameters.MASS, 1.0),
+                "l'espace de noms axion est celui du moteur");
+        assertThrows(IllegalArgumentException.class,
+                () -> table.modify(new Modifier("axion:energy", Parameters.MASS, Operation.ADD, 1), AssemblyParameters.API),
+                "et reste refusé à l'API");
+    }
 }
