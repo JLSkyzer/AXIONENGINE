@@ -105,7 +105,8 @@ class ProceduralTracksTest {
     }
 
     private static final Interpolation.VehiclePose VEHICULE =
-            new Interpolation.VehiclePose(3000f, 0.4f, -1, AssemblyState.Vehicle.RUNNING, 0.6f, 0.2f, -0.5f, 1f, 12f, -11f);
+            new Interpolation.VehiclePose(3000f, 0.4f, -1, AssemblyState.Vehicle.RUNNING, 0.6f, 0.2f, -0.5f, 1f, 12f, -11f,
+                    0.5f, 0.25f);
 
     private static ProceduralTracks.Frame cadre(double secondes, float heure, float ciel, float pluie) {
         return new ProceduralTracks.Frame(ROUES, new double[2], VEHICULE, AssemblyState.VariableValues.NONE,
@@ -136,6 +137,7 @@ class ProceduralTracksTest {
             {"vehicle.speed", "12"}, {"vehicle.forward_speed", "-11"}, {"vehicle.throttle", "0.6"},
             {"vehicle.brake", "0.2"}, {"vehicle.steer", "-0.5"}, {"vehicle.handbrake", "1"},
             {"engine.rpm", "3000"}, {"engine.load", "0.4"}, {"engine.running", "1"},
+            {"energy.fuel_ratio", "0.5"}, {"energy.battery", "0.25"},
             {"transmission.gear", "-1"}, {"transmission.shifting", "0"},
             {"seat.conducteur.occupied", "1"}, {"seat.passager.occupied", "0"},
             {"wheel.roue_g.on_ground", "1"}, {"wheel.roue_d.on_ground", "0"},

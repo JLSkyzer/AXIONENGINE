@@ -123,12 +123,33 @@ public final class Interpolation {
      * @param handbrake frein à main, dans [0, 1]
      * @param speed vitesse du corps racine, en m/s
      * @param forwardSpeed sa composante le long de l'avant du véhicule, son {@code -Z}, en m/s : négative en reculant
+     * @param fuelRatio le carburant restant sur la capacité du réservoir, dans [0, 1] (ADR-176 D3)
+     * @param battery la charge de la batterie sur sa capacité, dans [0, 1] (ADR-176 D3)
      */
     public record VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
-            float handbrake, float speed, float forwardSpeed) {
+            float handbrake, float speed, float forwardSpeed, float fuelRatio, float battery) {
 
         /** Rien : ni véhicule, ni vitesse. */
-        public static final VehiclePose NONE = new VehiclePose(0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f);
+        public static final VehiclePose NONE = new VehiclePose(0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
+
+        /**
+         * Un état sans énergie : ce que lit un véhicule dont la definition ne déclare ni réservoir ni batterie.
+         *
+         * @param rpm régime, en tr/min
+         * @param load charge du moteur
+         * @param gear rapport engagé
+         * @param flags drapeaux du véhicule
+         * @param throttle accélérateur
+         * @param brake frein
+         * @param steer direction
+         * @param handbrake frein à main
+         * @param speed vitesse du corps racine
+         * @param forwardSpeed sa composante le long de l'avant
+         */
+        public VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake, float speed, float forwardSpeed) {
+            this(rpm, load, gear, flags, throttle, brake, steer, handbrake, speed, forwardSpeed, 0f, 0f);
+        }
     }
 
     private record Sample(double millis, double[] position, float[] velocity, float[] rotation, float[] angular,
@@ -441,7 +462,8 @@ public final class Interpolation {
                 b.flags(), a.throttle() + (b.throttle() - a.throttle()) * t, a.brake() + (b.brake() - a.brake()) * t,
                 a.steer() + (b.steer() - a.steer()) * t, a.handbrake() + (b.handbrake() - a.handbrake()) * t,
                 (float) Math.sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]),
-                forwardSpeed(velocity, rotation));
+                forwardSpeed(velocity, rotation), a.fuelRatio() + (b.fuelRatio() - a.fuelRatio()) * t,
+                a.battery() + (b.battery() - a.battery()) * t);
     }
 
     /**

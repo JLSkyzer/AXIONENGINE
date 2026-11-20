@@ -385,6 +385,10 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Rotation gap, in radians, below which the predicted state counts as the server's."),
     fp("net.prediction_tolerance_velocity_ms", 0.2, "Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur.")
         .en("Velocity gap, in metres per second, below which the predicted state counts as the server's."),
+    // ADR-176 D3 : un plein fait par le serveur ne passe pas par le flux d'entrées ; sans cet écart, le client garderait un
+    // réservoir périmé tant qu'aucune autre dérive ne l'oblige à se corriger.
+    fp("net.prediction_tolerance_energy", 0.01, "Écart de carburant ou de batterie, en fraction de la plus grande des deux valeurs, en deçà duquel l'état prédit vaut celui du serveur.")
+        .en("Fuel or battery gap, as a fraction of the larger of the two values, below which the predicted state counts as the server's."),
     // ADR-168, précision 6c-C2 : autour du véhicule prédit, la distance jusqu'à laquelle les autres assemblies et les
     // entités vanilla y sont posées en proxies. L'horizon la fixe : deux véhicules à 40 m/s qui se rapprochent pendant
     // net.prediction_max_ping (400 ms) se rejoignent de 32 blocs. Le coût ne la borne pas : un proxy coûte de 0,4 à

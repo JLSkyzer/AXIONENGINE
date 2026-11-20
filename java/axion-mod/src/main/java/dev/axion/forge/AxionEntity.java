@@ -173,6 +173,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             new java.util.concurrent.ConcurrentHashMap<>();
 
     private AssemblyState.Modifiers mirroredParameters;
+    /** La masse du carburant sur laquelle le miroir a été composé (ADR-176 D3). */
+    private double mirroredFuelMass = Double.NaN;
+    private double predictedFuelMass = Double.NaN;
 
     /** Les variables du plus récent snapshot reçu (client), et celles dont le miroir est fait (ADR-167 D4). */
     private AssemblyState.VariableValues receivedVariables = AssemblyState.VariableValues.NONE;
@@ -1300,15 +1303,19 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return null;
         }
         if (level().isClientSide()) {
+            double fuelMass = receivedFuelMass();
             if (parameters == null || parameters.tuning() != tuning || mirroredParameters != receivedParameters
-                    || mirroredVariables != receivedVariables) {
+                    || mirroredVariables != receivedVariables || mirroredFuelMass != fuelMass) {
                 double[] variables = new double[receivedVariables.count()];
                 for (int i = 0; i < variables.length; i++) {
                     variables[i] = receivedVariables.value(i);
                 }
                 parameters = dev.axion.entity.AssemblyParameters.mirror(tuning, receivedParameters, variables);
+                parameters.engineCause(dev.axion.definition.EnergySpec.MASS_CAUSE,
+                        dev.axion.api.assembly.Parameters.MASS, fuelMass);
                 mirroredParameters = receivedParameters;
                 mirroredVariables = receivedVariables;
+                mirroredFuelMass = fuelMass;
             }
             return parameters;
         }
@@ -1364,13 +1371,32 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (tuning == null) {
             return null;
         }
+        double fuelMass = receivedFuelMass();
         if (predictedParameters == null || predictedParameters.tuning() != tuning
-                || predictedModifiers != receivedParameters || !Arrays.equals(predictedVariables, variables)) {
+                || predictedModifiers != receivedParameters || !Arrays.equals(predictedVariables, variables)
+                || predictedFuelMass != fuelMass) {
             predictedParameters = dev.axion.entity.AssemblyParameters.mirror(tuning, receivedParameters, variables);
+            predictedParameters.engineCause(dev.axion.definition.EnergySpec.MASS_CAUSE,
+                    dev.axion.api.assembly.Parameters.MASS, fuelMass);
             predictedModifiers = receivedParameters;
             predictedVariables = variables.clone();
+            predictedFuelMass = fuelMass;
         }
         return predictedParameters;
+    }
+
+    /**
+     * {@return la masse du carburant que le serveur a envoyée, en kg, au cran du serveur (client, ADR-176 D3)} Le natif
+     * prédit la reçoit comme celui du serveur : la masse à sec plus ce que le réservoir porte ; sans réservoir ou sans
+     * masse par litre, zéro.
+     */
+    private double receivedFuelMass() {
+        dev.axion.definition.EnergySpec spec = energySpec();
+        AssemblyState received = netState;
+        if (!(spec.unitMass() > 0f) || received == null || received.vehicle() == null) {
+            return 0.0;
+        }
+        return spec.fuelMassOfRatio(received.vehicle().fuelRatio());
     }
 
     private dev.axion.definition.Tuning tuning() {
@@ -2905,8 +2931,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
     }
 
-    /** Ce que la definition déclare de réservoir et de batterie (ADR-176 D3). */
-    private dev.axion.definition.EnergySpec energySpec() {
+    /** {@return ce que la definition déclare de réservoir et de batterie (ADR-176 D3)} */
+    public dev.axion.definition.EnergySpec energySpec() {
         dev.axion.definition.HeldDefinition tenue = held();
         return tenue == null ? dev.axion.definition.EnergySpec.NONE : tenue.energy();
     }
@@ -2983,9 +3009,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         DriverInput driver = driverInput();
         DriverInput held = driver == null ? DriverInput.ABSENT : driver;
         VehicleInput input = held.input();
+        dev.axion.definition.EnergySpec energy = energySpec();
         return AssemblyState.Vehicle.of(vehicleReport.rpm(), vehicleReport.load(), vehicleReport.gear(),
                 vehicleReport.flags(), input.throttle(), input.brake(), vehicleReport.steer(),
-                held.present() ? input.handbrake() : 1f);
+                held.present() ? input.handbrake() : 1f,
+                dev.axion.net.PredictedStates.ratio(vehicleReport.fuel(), energy.fuelCapacity()),
+                dev.axion.net.PredictedStates.ratio(vehicleReport.battery(), energy.batteryCapacity()));
     }
 
     private AssemblyState.Wheels wheelStates() {

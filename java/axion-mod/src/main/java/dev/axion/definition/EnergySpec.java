@@ -55,11 +55,20 @@ public record EnergySpec(float fuelCapacity, float unitMass, float batteryCapaci
      * @param fuel le carburant, en litres
      */
     public double fuelMass(double fuel) {
+        return fuelCapacity > 0f ? fuelMassOfRatio(fuel / fuelCapacity) : 0.0;
+    }
+
+    /**
+     * {@return la masse du carburant d'un réservoir rempli à ce rapport de sa capacité, en kg, au cran le plus proche} Le
+     * client la tire du rapport en octet que le snapshot porte : il retombe sur le cran du serveur.
+     *
+     * @param ratio le carburant sur la capacité
+     */
+    public double fuelMassOfRatio(double ratio) {
         if (!(fuelCapacity > 0f) || !(unitMass > 0f)) {
             return 0.0;
         }
-        double ratio = Math.max(0.0, Math.min(1.0, fuel / fuelCapacity));
-        long step = Math.round(ratio * MASS_STEPS);
+        long step = Math.round(Math.max(0.0, Math.min(1.0, ratio)) * MASS_STEPS);
         return step / (double) MASS_STEPS * fuelCapacity * unitMass;
     }
 }

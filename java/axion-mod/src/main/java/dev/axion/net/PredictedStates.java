@@ -1,5 +1,6 @@
 package dev.axion.net;
 
+import dev.axion.definition.EnergySpec;
 import dev.axion.physics.BodyBounds;
 import dev.axion.physics.BodyState;
 import dev.axion.physics.BodyStateFlags;
@@ -35,6 +36,22 @@ public final class PredictedStates {
      */
     public static AssemblyState of(CollectResult result, int handle, int generation, int rootNode, VehicleInput input,
             AssemblyState.VariableValues variables) {
+        return of(result, handle, generation, rootNode, input, variables, EnergySpec.NONE);
+    }
+
+    /**
+     * {@return l'état de l'assembly à ce pas, l'énergie du véhicule rapportée à ses capacités (ADR-176 D3)}
+     *
+     * @param result la collecte du pas
+     * @param handle le rang du handle de l'assembly
+     * @param generation sa génération
+     * @param rootNode le node de son corps racine
+     * @param input l'entrée tenue au pas, bornée
+     * @param variables les variables de contenu à porter, celles reçues du serveur
+     * @param energy ce que la definition déclare de réservoir et de batterie
+     */
+    public static AssemblyState of(CollectResult result, int handle, int generation, int rootNode, VehicleInput input,
+            AssemblyState.VariableValues variables, EnergySpec energy) {
         List<BodyState> states = result.bodies();
         List<Integer> own = new ArrayList<>();
         int root = -1;
@@ -70,7 +87,7 @@ public final class PredictedStates {
                             (body.flags() & BodyStateFlags.SLEEPING) != 0)
                     .with(others, AssemblyState.JointBits.NONE)
                     .withWheels(wheels(result.wheels(), handle, generation))
-                    .withVehicle(vehicle(result.vehicles(), handle, generation, input))
+                    .withVehicle(vehicle(result.vehicles(), handle, generation, input, energy))
                     .withVariables(variables);
         } catch (IllegalArgumentException notFinite) {
             return null;
@@ -105,13 +122,19 @@ public final class PredictedStates {
     }
 
     private static AssemblyState.Vehicle vehicle(List<VehicleReport> reports, int handle, int generation,
-            VehicleInput input) {
+            VehicleInput input, EnergySpec energy) {
         for (VehicleReport report : reports) {
             if (report.handleIndex() == handle && report.handleGeneration() == generation) {
                 return AssemblyState.Vehicle.of(report.rpm(), report.load(), report.gear(), report.flags(),
-                        input.throttle(), input.brake(), report.steer(), input.handbrake());
+                        input.throttle(), input.brake(), report.steer(), input.handbrake(),
+                        ratio(report.fuel(), energy.fuelCapacity()), ratio(report.battery(), energy.batteryCapacity()));
             }
         }
         return AssemblyState.Vehicle.NONE;
+    }
+
+    /** {@return une quantité sur sa capacité, dans [0, 1] ; 0 sans capacité (ADR-176 D3)} */
+    public static float ratio(float amount, float capacity) {
+        return capacity > 0f ? Math.max(0f, Math.min(1f, amount / capacity)) : 0f;
     }
 }

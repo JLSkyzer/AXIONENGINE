@@ -3,6 +3,7 @@ package dev.axion.render;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.axion.definition.EnergySpec;
 import dev.axion.definition.Variables;
 import dev.axion.net.AssemblyState;
 import dev.axion.net.Interpolation;
@@ -60,7 +61,7 @@ import java.util.function.Consumer;
 public final class ProceduralTracks {
 
     /** Aucune piste. */
-    public static final ProceduralTracks NONE = new ProceduralTracks(new Track[0], new int[0], new double[0]);
+    public static final ProceduralTracks NONE = new ProceduralTracks(new Track[0], new int[0], new double[0], 0f);
 
     /** Flottants d'un delta : translation x, y, z, puis rotation x, y, z, w. */
     public static final int DELTA_FLOATS = 7;
@@ -93,6 +94,7 @@ public final class ProceduralTracks {
         WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND,
         SPEED, FORWARD_SPEED, THROTTLE, BRAKE, STEER, HANDBRAKE,
         RPM, LOAD, RUNNING,
+        FUEL, FUEL_RATIO, BATTERY,
         GEAR, SHIFTING,
         SEAT_OCCUPIED,
         SENSOR_COUNT,
@@ -322,13 +324,16 @@ public final class ProceduralTracks {
     private final int[] nodes;
     /** Le défaut de chaque variable de la definition, que {@code var.<n>} lit tant qu'elle n'est pas reçue. */
     private final double[] defaults;
+    /** La capacité du réservoir de la definition, en litres : de quoi lire {@code energy.fuel} (ADR-176 D3). */
+    private final float fuelCapacity;
     /** Vrai si une piste pilote l'apparence d'un nœud. */
     private final boolean looked;
 
-    private ProceduralTracks(Track[] tracks, int[] nodes, double[] defaults) {
+    private ProceduralTracks(Track[] tracks, int[] nodes, double[] defaults, float fuelCapacity) {
         this.tracks = tracks;
         this.nodes = nodes;
         this.defaults = defaults;
+        this.fuelCapacity = fuelCapacity;
         boolean any = false;
         for (Track track : tracks) {
             any |= track.channel() == Channel.VISIBILITY || track.channel() == Channel.EMISSIVE
@@ -371,7 +376,8 @@ public final class ProceduralTracks {
             defaults[i] = variables.get(i).initial();
         }
         return new ProceduralTracks(
-                tracks.toArray(new Track[0]), slots.keySet().stream().mapToInt(Integer::intValue).toArray(), defaults);
+                tracks.toArray(new Track[0]), slots.keySet().stream().mapToInt(Integer::intValue).toArray(), defaults,
+                EnergySpec.of(root).fuelCapacity());
     }
 
     /**
@@ -416,7 +422,8 @@ public final class ProceduralTracks {
         for (int i = 0; i < defaults.length; i++) {
             defaults[i] = variables.get(i).initial();
         }
-        return new Probe(new ProceduralTracks(new Track[0], new int[0], defaults), reading);
+        return new Probe(new ProceduralTracks(new Track[0], new int[0], defaults, EnergySpec.of(root).fuelCapacity()),
+                reading);
     }
 
     /** Le rang de chaque élément d'une liste de la definition, par la clé qui le nomme. */
@@ -578,6 +585,12 @@ public final class ProceduralTracks {
                 case "rpm" -> Source.RPM;
                 case "load" -> Source.LOAD;
                 case "running" -> Source.RUNNING;
+                default -> null;
+            };
+            case "energy" -> named ? null : switch (field) {
+                case "fuel" -> Source.FUEL;
+                case "fuel_ratio" -> Source.FUEL_RATIO;
+                case "battery" -> Source.BATTERY;
                 default -> null;
             };
             case "transmission" -> named ? null : switch (field) {
@@ -753,6 +766,9 @@ public final class ProceduralTracks {
             case RPM -> (double) vehicle.rpm();
             case LOAD -> (double) vehicle.load();
             case RUNNING -> flag((vehicle.flags() & AssemblyState.Vehicle.RUNNING) != 0);
+            case FUEL -> (double) vehicle.fuelRatio() * fuelCapacity;
+            case FUEL_RATIO -> (double) vehicle.fuelRatio();
+            case BATTERY -> (double) vehicle.battery();
             case GEAR -> (double) vehicle.gear();
             case SHIFTING -> flag((vehicle.flags() & AssemblyState.Vehicle.SHIFTING) != 0);
             case SECONDS -> frame.seconds();

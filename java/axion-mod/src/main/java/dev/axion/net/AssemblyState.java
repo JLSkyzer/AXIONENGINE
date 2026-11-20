@@ -462,7 +462,8 @@ public record AssemblyState(
      * L'état d'un véhicule (ADR-163 D1), quantifié sur {@link #BYTES} octets : régime i16 par pas de
      * {@value #RPM_STEP} tr/min, charge u8 au 1/255, rapport i8, drapeaux u8, puis les entrées répliquées —
      * accélérateur u8 au 1/255, frein u8 au 1/255, direction i8 au 1/127 dans {@code [-1, 1]}, frein à main u8 au
-     * 1/255. Le régime est d'abord l'octet fort. {@code -32768} n'est pas un régime ni {@code -128} une direction :
+     * 1/255, puis le carburant et la batterie en rapport de leur capacité, u8 au 1/255 (ADR-176 D3). Le régime est d'abord
+     * l'octet fort. {@code -32768} n'est pas un régime ni {@code -128} une direction :
      * des bornes symétriques, relues à l'identique.
      *
      * <p>Tout à zéro, c'est {@link #NONE} : une assembly qui n'est pas un véhicule, et qu'un snapshot ne porte pas.
@@ -474,7 +475,7 @@ public record AssemblyState(
     public record Vehicle(byte[] packed) {
 
         /** Taille de l'état, en octets. */
-        public static final int BYTES = 9;
+        public static final int BYTES = 11;
 
         /** Pas du régime, en tr/min. */
         public static final int RPM_STEP = 2;
@@ -530,6 +531,26 @@ public record AssemblyState(
          */
         public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
                 float handbrake) {
+            return of(rpm, load, gear, flags, throttle, brake, steer, handbrake, 0f, 0f);
+        }
+
+        /**
+         * Quantifie l'état d'un véhicule, énergie comprise.
+         *
+         * @param rpm régime, en tr/min
+         * @param load charge du moteur, dans [0, 1]
+         * @param gear rapport engagé, négatif en marche arrière
+         * @param flags {@link #SHIFTING}, {@link #RUNNING}, {@link #DRIVER} ; un autre bit est ignoré
+         * @param throttle accélérateur, dans [0, 1]
+         * @param brake frein, dans [0, 1]
+         * @param steer direction, dans [-1, 1]
+         * @param handbrake frein à main, dans [0, 1]
+         * @param fuelRatio carburant restant sur la capacité du réservoir, dans [0, 1] ; 0 sans réservoir
+         * @param battery charge de la batterie sur sa capacité, dans [0, 1] ; 0 sans batterie
+         * @return son état
+         */
+        public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake, float fuelRatio, float battery) {
             short steps = (short) bounded(rpm / RPM_STEP, -Short.MAX_VALUE, Short.MAX_VALUE);
             return new Vehicle(new byte[] {
                 (byte) (steps >> 8),
@@ -541,6 +562,8 @@ public record AssemblyState(
                 (byte) bounded(brake * UNIT_STEPS, 0, 255),
                 (byte) bounded(steer * STEER_STEPS, -Byte.MAX_VALUE, Byte.MAX_VALUE),
                 (byte) bounded(handbrake * UNIT_STEPS, 0, 255),
+                (byte) bounded(fuelRatio * UNIT_STEPS, 0, 255),
+                (byte) bounded(battery * UNIT_STEPS, 0, 255),
             });
         }
 
@@ -589,6 +612,16 @@ public record AssemblyState(
         /** {@return le frein à main, dans [0, 1]} */
         public float handbrake() {
             return (packed[8] & 0xFF) / UNIT_STEPS;
+        }
+
+        /** {@return le carburant restant sur la capacité du réservoir, dans [0, 1] ; 0 sans réservoir} */
+        public float fuelRatio() {
+            return (packed[9] & 0xFF) / UNIT_STEPS;
+        }
+
+        /** {@return la charge de la batterie sur sa capacité, dans [0, 1] ; 0 sans batterie} */
+        public float battery() {
+            return (packed[10] & 0xFF) / UNIT_STEPS;
         }
 
         /** {@return les valeurs, copie} */

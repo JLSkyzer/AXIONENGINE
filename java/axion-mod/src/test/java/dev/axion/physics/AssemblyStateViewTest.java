@@ -73,4 +73,33 @@ class AssemblyStateViewTest {
         assertNull(AssemblyStateView.errors(new byte[3], new byte[3]));
         assertEquals(0.0, AssemblyStateView.errors(deux, deux.clone()).position());
     }
+
+    /** Un bloc d'un corps et d'un véhicule sans roue, au format v2 d'{@code world::state} : le carburant, la batterie. */
+    private static byte[] blocDeVehicule(double fuel, double battery) {
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 72).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 2).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 0);
+        b.position(16 + 64);
+        b.position(16 + 64 + 56);
+        b.putDouble(fuel).putDouble(battery);
+        return b.array();
+    }
+
+    @Test
+    @DisplayName("ADR-176 D3 : le bloc de véhicule porte le carburant et la batterie ; l'écart est relatif, avec un plancher")
+    void energie() {
+        AssemblyStateView.Vehicle v = AssemblyStateView.vehicle(blocDeVehicule(12.5, 0.75));
+        assertEquals(12.5, v.fuel());
+        assertEquals(0.75, v.battery());
+        assertEquals(0.0, AssemblyStateView.errors(blocDeVehicule(12.5, 0.75), blocDeVehicule(12.5, 0.75)).energy());
+        // Un plein fait par le serveur : 0 contre 40 litres, l'écart est entier ; le seuil de la prédiction le voit.
+        AssemblyStateView.Errors plein = AssemblyStateView.errors(blocDeVehicule(0, 1), blocDeVehicule(40, 1));
+        assertEquals(1.0, plein.energy(), 1e-12);
+        assertFalse(plein.within(1, 1, 1, 0.01));
+        assertTrue(plein.within(1, 1, 1, 1.0));
+        // Une dérive d'un ulp ne se corrige pas, et deux réservoirs vides se valent.
+        assertTrue(AssemblyStateView.errors(blocDeVehicule(12.5, 1), blocDeVehicule(12.5 + 1e-9, 1))
+                .within(1, 1, 1, 0.01));
+        assertEquals(0.0, AssemblyStateView.errors(blocDeVehicule(0, 0), blocDeVehicule(1e-12, 0)).energy(), 1e-8,
+                "sous le plancher, le bruit ne compte pas");
+    }
 }

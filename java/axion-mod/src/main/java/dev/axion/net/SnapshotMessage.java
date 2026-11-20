@@ -65,7 +65,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
      * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 12;
+    public static final int DESCRIPTOR_VERSION = 13;
 
     /**
      * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}

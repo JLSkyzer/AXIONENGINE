@@ -62,6 +62,8 @@ final class SchemaOne {
     static final List<SourceFamily> SOURCES = List.of(
             fixed("vehicle", "speed", "forward_speed", "throttle", "brake", "steer", "handbrake"),
             fixed("engine", "rpm", "load", "running"),
+            // ADR-176 D3 : au schéma 7, le réservoir et la batterie d'un véhicule.
+            fixed("energy", "fuel", "fuel_ratio", "battery").since(7),
             fixed("transmission", "gear", "shifting"),
             named("wheel", NameCategory.WHEEL, "spin_angle", "steer_angle", "compression",
                     "slip_long", "slip_lat", "on_ground", "damage"),

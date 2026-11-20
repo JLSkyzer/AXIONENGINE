@@ -124,7 +124,12 @@ public final class AssemblyStateView {
      * @param rotation le plus grand angle entre deux rotations, en radians
      * @param velocity la plus grande différence de vitesse, en m/s
      */
-    public record Errors(double position, double rotation, double velocity) {
+    public record Errors(double position, double rotation, double velocity, double energy) {
+
+        /** Un écart sans énergie : deux blocs dont le véhicule n'en déclare pas. */
+        public Errors(double position, double rotation, double velocity) {
+            this(position, rotation, velocity, 0.0);
+        }
 
         /**
          * {@return vrai si chaque écart reste en deçà de son seuil}
@@ -136,7 +141,26 @@ public final class AssemblyStateView {
         public boolean within(double position, double rotation, double velocity) {
             return this.position <= position && this.rotation <= rotation && this.velocity <= velocity;
         }
+
+        /**
+         * {@return vrai si chaque écart reste en deçà de son seuil, l'énergie comprise (ADR-176 D3)}
+         *
+         * @param position le seuil de position, en mètres
+         * @param rotation le seuil de rotation, en radians
+         * @param velocity le seuil de vitesse, en m/s
+         * @param energy le seuil d'énergie : l'écart de carburant ou de batterie, en fraction de la plus grande des deux
+         *     valeurs (au moins {@link #ENERGY_FLOOR})
+         */
+        public boolean within(double position, double rotation, double velocity, double energy) {
+            return within(position, rotation, velocity) && this.energy <= energy;
+        }
     }
+
+    /**
+     * Le plancher de la valeur sur laquelle s'écarte l'énergie (ADR-176 D3) : sous un millième de litre ou d'unité de
+     * charge, deux mondes qui divergent d'un ulp ne se corrigent pas.
+     */
+    public static final double ENERGY_FLOOR = 1e-3;
 
     private AssemblyStateView() {
         throw new AssertionError("non instanciable");
@@ -172,7 +196,21 @@ public final class AssemblyStateView {
             }
             velocity = Math.max(velocity, Math.sqrt(dv));
         }
-        return new Errors(position, rotation, velocity);
+        return new Errors(position, rotation, velocity, energy(a, b));
+    }
+
+    /** L'écart d'énergie de deux blocs (ADR-176 D3) : le plus grand écart relatif du carburant et de la batterie. */
+    private static double energy(byte[] a, byte[] b) {
+        Vehicle x = vehicle(a);
+        Vehicle y = vehicle(b);
+        if (x == null || y == null) {
+            return 0.0;
+        }
+        return Math.max(relative(x.fuel(), y.fuel()), relative(x.battery(), y.battery()));
+    }
+
+    private static double relative(double a, double b) {
+        return Math.abs(a - b) / Math.max(Math.max(a, b), ENERGY_FLOOR);
     }
 
     /**

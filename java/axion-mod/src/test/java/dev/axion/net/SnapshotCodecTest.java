@@ -228,7 +228,9 @@ class SnapshotCodecTest {
                 "descripteur 10, antérieur aux variables par siège (ADR-174 D2)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(11).varUInt(0).toByteArray(),
                 "descripteur 11, antérieur au compte des capteurs (ADR-174 D5)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(13).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(12).varUInt(0).toByteArray(),
+                "descripteur 12, antérieur à l'énergie du véhicule (ADR-176 D3)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(14).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
