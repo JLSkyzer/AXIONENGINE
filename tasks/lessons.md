@@ -2579,3 +2579,15 @@ avait recopié la valeur du schéma au lieu de lire `NBT_SCHEMA`.
 d'un schéma le lit de la constante du code (`AssemblyBinding.NBT_SCHEMA`). Un GameTest qui échoue sans que la tranche
 touche à ce qu'il mesure se relance une fois, seul ; deux échecs identiques, c'est un vrai défaut.
 
+
+## 2026-11-20 | Reliure à chaud : un joueur simulé n'est pas dans `level().getEntity`, et une lambda casse la garde du thread
+
+**Ce qui a mal tourné.** Le GameTest de 10e a échoué (« siège conducteur devenu le rang 1 : 0 ») et
+`AuthoritativeThreadTest` (INV-03) aussi, à la même CI locale.
+
+**Cause.** `remapSeats` cherchait l'occupant par `level().getEntity(id)` : un `FakePlayer` n'y figure pas, l'occupant
+était donc perdu puis remis au premier siège libre par l'auto-guérison de l'occupation. Et un `eject` appelé depuis une
+lambda n'est plus vu comme gardé par l'appelant (`AuthoritativeThread.require()`).
+
+**Règle.** Retrouver un occupant parmi `getPassengers()`, pas dans le niveau. Un appel qui modifie Minecraft depuis une
+méthode gardée se fait dans le corps de la méthode, pas dans une lambda.
