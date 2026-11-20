@@ -522,6 +522,15 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         public static NodeAction emit(String event, double value) {
             return new NodeAction(NodeActionKind.EMIT, -1, event, Float.NaN, null, -1, null, value);
         }
+
+        /**
+         * {@return le plein d'un réservoir (ADR-176 D3)}
+         *
+         * @param litres ce que l'action verse
+         */
+        public static NodeAction refuel(double litres) {
+            return new NodeAction(NodeActionKind.REFUEL, -1, "refuel", Float.NaN, null, -1, null, litres);
+        }
     }
 
     /** Ce qu'une action fait à un node (ADR-174 D3). */
@@ -536,6 +545,8 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         SWAP,
         /** Émettre un événement de contenu (ADR-174 D2) : le nom de l'action est celui de l'événement. */
         EMIT,
+        /** Verser du carburant dans le réservoir (ADR-176 D3) : la valeur est le nombre de litres. */
+        REFUEL,
         /** Une action qu'un mod enregistre (ADR-174 D6) : son nom est son identifiant. */
         ADDON
     }
@@ -667,6 +678,8 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                 actions.add(new NodeAction(NodeActionKind.SWAP, node(byPath, at + ".swap_mesh.node"),
                         swap.get("node").getAsString(), Float.NaN, null,
                         with == null ? -1 : node(byPath, at + ".swap_mesh.with"), with));
+            } else if (step.get("refuel") instanceof JsonObject refuel) {
+                actions.add(NodeAction.refuel(refuel.get("litres").getAsDouble()));
             } else if (step.get("emit_event") instanceof JsonObject emit) {
                 actions.add(NodeAction.emit(emit.get("event").getAsString(),
                         emit.has("value") ? emit.get("value").getAsDouble() : 1.0));

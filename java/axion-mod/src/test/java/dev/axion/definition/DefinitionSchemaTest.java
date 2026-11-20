@@ -964,4 +964,23 @@ class DefinitionSchemaTest {
         six.addProperty("schema", 6);
         assertThrows(DefinitionException.class, () -> read(six), "l'énergie n'existe qu'au schéma 7");
     }
+
+    @Test
+    @DisplayName("ADR-176 D3 : l'action refuel verse dans le réservoir de la definition, et n'existe pas sans lui")
+    void l_actionRefuel() {
+        JsonObject bon = avecReservoir();
+        bon.add("interaction", JsonParser.parseString("[{\"node\": \"siege_conducteur\", \"action\": \"actions\","
+                + " \"actions\": [{\"refuel\": {\"litres\": 5}}]}]"));
+        assertDoesNotThrow(() -> read(bon));
+
+        JsonObject sansReservoir = avecDemarreur();
+        sansReservoir.add("interaction", bon.get("interaction"));
+        assertEquals("$.interaction[0].actions[0].refuel",
+                assertThrows(DefinitionException.class, () -> read(sansReservoir)).path(), "sans réservoir, rien à verser");
+
+        JsonObject nul = avecReservoir();
+        nul.add("interaction", JsonParser.parseString("[{\"node\": \"siege_conducteur\", \"action\": \"actions\","
+                + " \"actions\": [{\"refuel\": {\"litres\": 0}}]}]"));
+        assertThrows(DefinitionException.class, () -> read(nul), "des litres strictement positifs");
+    }
 }

@@ -872,6 +872,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     emitEvent(action.name(), action.value(), writer);
                     continue;
                 }
+                if (action.kind() == Seating.NodeActionKind.REFUEL) {
+                    refuel(action.value());
+                    continue;
+                }
                 int swapped = current == null ? -1 : current.swapped();
                 switch (action.kind()) {
                     case HIDE -> hidden = true;
@@ -884,8 +888,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                             color = action.color();
                         }
                     }
-                    case EMIT -> {
-                        // Traité plus haut : un événement ne change aucun node.
+                    case EMIT, REFUEL -> {
+                        // Traités plus haut : un événement ou un plein ne change aucun node.
                     }
                     case SWAP -> {
                         // Le remplaçant d'avant retourne à l'ombre ; le nouveau se montre, l'original se cache.
@@ -2962,6 +2966,51 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     public double fuel() {
         initEnergy();
         return energySpec().fuelCapacity() > 0f ? fuel : 0.0;
+    }
+
+    /**
+     * Verse du carburant dans le réservoir (ADR-176 D3), jusqu'à sa capacité ; le natif le reçoit par {@code SET_ENERGY},
+     * sans que le véhicule soit réveillé.
+     *
+     * @param litres ce qu'on verse, de 0 ou plus
+     * @return ce qui est entré dans le réservoir, en litres
+     * @throws IllegalArgumentException si {@code litres} est négatif ou n'est pas fini
+     */
+    public double refuel(double litres) {
+        AuthoritativeThread.require();
+        if (!Double.isFinite(litres) || litres < 0.0) {
+            throw new IllegalArgumentException("litres : un nombre fini, 0 ou plus, et non " + litres);
+        }
+        dev.axion.definition.EnergySpec spec = energySpec();
+        if (!(spec.fuelCapacity() > 0f)) {
+            return 0.0;
+        }
+        initEnergy();
+        double before = fuel;
+        fuel = Math.min(spec.fuelCapacity(), fuel + litres);
+        energyPending = true;
+        syncFuelMass();
+        return fuel - before;
+    }
+
+    /**
+     * Pose la charge de la batterie (ADR-176 D3), ramenée à sa capacité ; sans batterie, rien.
+     *
+     * @param charge la charge, de 0 ou plus
+     * @throws IllegalArgumentException si {@code charge} est négative ou n'est pas finie
+     */
+    public void setBattery(double charge) {
+        AuthoritativeThread.require();
+        if (!Double.isFinite(charge) || charge < 0.0) {
+            throw new IllegalArgumentException("charge : un nombre fini, 0 ou plus, et non " + charge);
+        }
+        dev.axion.definition.EnergySpec spec = energySpec();
+        if (!(spec.batteryCapacity() > 0f)) {
+            return;
+        }
+        initEnergy();
+        battery = Math.min(spec.batteryCapacity(), charge);
+        energyPending = true;
     }
 
     /** {@return la charge de la batterie ; 0 sans batterie (ADR-176 D3)} */

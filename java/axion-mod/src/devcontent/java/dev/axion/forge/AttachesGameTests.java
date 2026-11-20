@@ -48,8 +48,8 @@ public final class AttachesGameTests {
     @GameTest(template = "test/plancher_16", timeoutTicks = 300)
     public static void t890_LeMaillonSuitLeBuggyALaCorde(GameTestHelper helper) {
         ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
-        // Le buggy part vers -Z avec dix blocs de plancher devant lui, au tiers des gaz : allégé à sa masse de 340 kg
-        // (ADR-151, correctif de D2), plein gaz, il sortait du plancher — dans un chunk que le serveur de GameTests ne
+        // Le buggy part vers -Z avec dix blocs de plancher devant lui, au tiers des gaz : allégé à sa masse à sec de
+        // 340 kg, plus 15 kg de carburant (ADR-151, correctif de D2 ; ADR-176 D3), plein gaz, il sortait du plancher — dans un chunk que le serveur de GameTests ne
         // fait pas tourner — avant que la corde, qui s'étire, ait tiré le maillon de deux blocs.
         AxionEntity buggy = AssembliesDeTest.poser(helper, "axion:example/buggy", new Vec3(8.0, DESSUS_DALLE + 0.3,
                 10.0), DROIT);
@@ -60,6 +60,8 @@ public final class AttachesGameTests {
                     AttachResult.Status.ATTACHED);
             depart[0] = maillon.position().z;
             depart[1] = buggy.position().z;
+            // ADR-176 D1 : le buggy a un démarreur, dont le contact est la variable « contact ».
+            vue(buggy).variables().set("contact", 1);
             vue(buggy).vehicle().orElseThrow().drive(new DriverInput(0.3, 0, 0, 0, 0, 1));
         });
         helper.runAfterDelay(25, () -> helper.succeedWhen(() -> {

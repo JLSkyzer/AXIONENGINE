@@ -42,7 +42,8 @@ class DefinitionBuilderTest {
                 .powertrain(t -> t
                         .engine(e -> e.torqueCurve(new double[] {0, 0}, new double[] {1500, 90},
                                         new double[] {3500, 120}, new double[] {5500, 105}, new double[] {6500, 80})
-                                .idleRpm(900).maxRpm(6500).inertia(0.15).brakingTorque(15.0))
+                                .idleRpm(900).maxRpm(6500).inertia(0.15).brakingTorque(15.0)
+                                .starter(s -> s.time(0.8).variable("contact")))
                         .transmission(x -> x.type("manual").gears(-3.0, 0.0, 3.2, 2.0, 1.4, 1.0).finalDrive(4.1)
                                 .shiftTime(0.3).autoShiftUpRpm(5800).autoShiftDownRpm(2200).efficiency(0.9))
                         .differential(d -> d.type("open"))
@@ -68,10 +69,16 @@ class DefinitionBuilderTest {
                         .exitOffsets(new double[] {1.0, 0.0, 0.0}, new double[] {-1.0, 0.0, 0.0})
                         .controls("throttle", "brake", "steer", "gear", "handbrake")
                         .binding(1, "attelage_sorti", "toggle", b -> b.label("axion.example.buggy.attelage"))
-                        .binding(2, "sport", "toggle", b -> b.label("axion.example.buggy.sport")))
+                        .binding(2, "sport", "toggle", b -> b.label("axion.example.buggy.sport"))
+                        .binding(3, "contact", "toggle", b -> b.label("axion.example.buggy.contact")))
                 .variable("attelage_sorti", "bool",
                         v -> v.default_(false).persist(true).replicate("all").write("driver"))
                 .variable("sport", "bool", v -> v.default_(false).persist(true).replicate("all").write("driver"))
+                .variable("contact", "bool", v -> v.default_(false).persist(false).replicate("all").write("driver"))
+                .energy(e -> e
+                        .fuel(f -> f.capacity(20.0).unitMass(0.75).consumption(new double[] {0.0, 0.6},
+                                new double[] {1.0, 14.0}))
+                        .battery(b -> b.capacity(1.0).starterDraw(0.02).chargeRate(0.002)))
                 .tuning(t -> t
                         .modifier("sport_couple", "engine.torque", "multiply_base", "sport", m -> m.values(0, 0.3))
                         .modifier("sport_regime", "engine.max_rpm", "add", "sport", m -> m.values(0, 500))

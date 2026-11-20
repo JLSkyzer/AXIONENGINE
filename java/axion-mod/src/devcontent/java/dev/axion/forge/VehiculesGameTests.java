@@ -315,4 +315,46 @@ public final class VehiculesGameTests {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D3 : le plein par l'API ({@code Assembly.energy().refuel}) et par l'action de contenu {@code refuel} : plein,
+     * un réservoir n'accepte rien ; après avoir brûlé, il se remplit jusqu'à sa capacité, et le natif reçoit le plein
+     * sans qu'on touche au véhicule.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 500)
+    public static void adr176_LeCarburantSeVerseParLAPiEtParUneAction(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_reservoir",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), new float[] {0f, 0f, 0f, 1f});
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.ignitionVariable() >= 0,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.refuel(10.0) == 0.0, "plein, il n'accepte rien");
+                    helper.assertTrue(vehicule.fuel() == 40.0, "toujours 40 l");
+                    vehicule.variables().set(vehicule.ignitionVariable(), 1.0, "test");
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.fuel() < 39.9995, "il a brûlé : " + vehicule.fuel()))
+                .thenExecute(() -> {
+                    double manque = 40.0 - vehicule.fuel();
+                    double entre = vehicule.refuel(100.0);
+                    helper.assertTrue(Math.abs(entre - manque) < 1e-9, "il n'entre que ce qui manque : " + entre);
+                    helper.assertTrue(vehicule.fuel() == 40.0, "plein : " + vehicule.fuel());
+                    helper.assertTrue(vehicule.refuel(0.0) == 0.0, "zéro litre, zéro entré");
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.vehicleReport() != null
+                        && vehicule.vehicleReport().fuel() > 39.99f,
+                        "le natif a reçu le plein : " + vehicule.vehicleReport()))
+                .thenExecute(() -> {
+                    // L'action de contenu verse comme l'API.
+                    java.util.List<dev.axion.definition.Seating.NodeAction> plein = java.util.List.of(
+                            dev.axion.definition.Seating.NodeAction.refuel(7.0));
+                    double avant = vehicule.fuel();
+                    helper.assertTrue(avant > 39.0, "il a un peu brûlé depuis : " + avant);
+                    vehicule.runActions(plein, "test");
+                    helper.assertTrue(vehicule.fuel() == 40.0, "le plein de l'action : " + vehicule.fuel());
+                })
+                .thenSucceed();
+    }
 }

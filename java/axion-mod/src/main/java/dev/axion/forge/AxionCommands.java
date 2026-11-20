@@ -259,6 +259,21 @@ final class AxionCommands {
                                                         context.getSource(),
                                                         EntityArgument.getEntity(context, "cible"),
                                                         StringArgumentType.getString(context, "parametre"))))))
+                        // ADR-176 D3 : voir, remplir et décharger l'énergie d'un véhicule.
+                        .then(Commands.literal("energy")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .executes(context -> energy(context.getSource(),
+                                                EntityArgument.getEntity(context, "cible")))
+                                        .then(Commands.literal("refuel")
+                                                .then(Commands.argument("litres", DoubleArgumentType.doubleArg(0.0))
+                                                        .executes(context -> energyRefuel(context.getSource(),
+                                                                EntityArgument.getEntity(context, "cible"),
+                                                                DoubleArgumentType.getDouble(context, "litres")))))
+                                        .then(Commands.literal("battery")
+                                                .then(Commands.argument("charge", DoubleArgumentType.doubleArg(0.0))
+                                                        .executes(context -> energyBattery(context.getSource(),
+                                                                EntityArgument.getEntity(context, "cible"),
+                                                                DoubleArgumentType.getDouble(context, "charge")))))))
                         .then(Commands.literal("debug")
                                 .then(Commands.literal("trace")
                                         .then(Commands.literal("on")
@@ -532,6 +547,87 @@ final class AxionCommands {
         last.forEach(entry -> lines.add(entry.line()));
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
         return last.size();
+    }
+
+    /** L'énergie d'une assembly, en lignes lisibles (ADR-176 D3). */
+    private static List<String> energyLines(AxionEntity assembly) {
+        dev.axion.definition.EnergySpec spec = assembly.energySpec();
+        List<String> lines = new java.util.ArrayList<>();
+        lines.add("AXION : énergie de " + assembly.definitionId());
+        if (!spec.declared()) {
+            lines.add("  aucune : la definition ne déclare ni réservoir ni batterie");
+            return lines;
+        }
+        if (spec.fuelCapacity() > 0f) {
+            lines.add(String.format(java.util.Locale.ROOT, "  carburant : %.3f / %.3f l (%.1f %%)", assembly.fuel(),
+                    spec.fuelCapacity(), 100.0 * assembly.fuel() / spec.fuelCapacity()));
+            lines.add(String.format(java.util.Locale.ROOT, "  masse du carburant : %.2f kg (%.3f kg par litre)",
+                    spec.fuelMass(assembly.fuel()), spec.unitMass()));
+        }
+        if (spec.batteryCapacity() > 0f) {
+            lines.add(String.format(java.util.Locale.ROOT, "  batterie : %.3f / %.3f", assembly.battery(),
+                    spec.batteryCapacity()));
+        }
+        return lines;
+    }
+
+    private static AxionEntity energyTarget(CommandSourceStack source, Entity target) {
+        if (!(target instanceof AxionEntity assembly)) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return null;
+        }
+        if (assembly.held() == null) {
+            source.sendFailure(Component.literal("AXION : definition " + assembly.definitionId()
+                    + " pas encore compilée"));
+            return null;
+        }
+        return assembly;
+    }
+
+    private static int energy(CommandSourceStack source, Entity target) {
+        AxionEntity assembly = energyTarget(source, target);
+        if (assembly == null) {
+            return 0;
+        }
+        List<String> lines = energyLines(assembly);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
+        return 1;
+    }
+
+    /** Remplit le réservoir : commande d'administration, mutante, journalisée avec son auteur (R-810). */
+    private static int energyRefuel(CommandSourceStack source, Entity target, double litres) {
+        AxionEntity assembly = energyTarget(source, target);
+        if (assembly == null) {
+            return 0;
+        }
+        if (!(assembly.energySpec().fuelCapacity() > 0f)) {
+            source.sendFailure(Component.literal("AXION : " + assembly.definitionId() + " n'a pas de réservoir"));
+            return 0;
+        }
+        double entered = assembly.refuel(litres);
+        LOGGER.info("AXION : /axion energy refuel {} sur {} ({}) demandé par {} : {} l entrés", litres,
+                target.getUUID(), assembly.definitionId(), source.getTextName(), entered);
+        List<String> lines = energyLines(assembly);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), true);
+        return 1;
+    }
+
+    /** Pose la charge de la batterie : commande d'administration, journalisée avec son auteur (R-810). */
+    private static int energyBattery(CommandSourceStack source, Entity target, double charge) {
+        AxionEntity assembly = energyTarget(source, target);
+        if (assembly == null) {
+            return 0;
+        }
+        if (!(assembly.energySpec().batteryCapacity() > 0f)) {
+            source.sendFailure(Component.literal("AXION : " + assembly.definitionId() + " n'a pas de batterie"));
+            return 0;
+        }
+        assembly.setBattery(charge);
+        LOGGER.info("AXION : /axion energy battery {} sur {} ({}) demandé par {}", charge, target.getUUID(),
+                assembly.definitionId(), source.getTextName());
+        List<String> lines = energyLines(assembly);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), true);
+        return 1;
     }
 
     private static int variables(CommandSourceStack source, Entity target) {

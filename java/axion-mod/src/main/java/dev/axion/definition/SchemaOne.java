@@ -783,6 +783,8 @@ final class SchemaOne {
                         .req("event", refers(NameCategory.EVENT))
                         .opt("value", number())
                         .build())
+                // ADR-176 D3 : verser du carburant dans le réservoir du véhicule (la definition en déclare un).
+                .opt("refuel", obj().req("litres", positive()).build())
                 .opt("set_material_param", obj()
                         .req("node", refers(NameCategory.NODE))
                         .req("param", oneOf("emissive", "color"))

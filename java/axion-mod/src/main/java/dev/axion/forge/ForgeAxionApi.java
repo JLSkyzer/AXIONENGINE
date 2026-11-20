@@ -501,6 +501,47 @@ public final class ForgeAxionApi implements AxionApi {
         }
 
         @Override
+        public dev.axion.api.assembly.Energy energy() {
+            return new dev.axion.api.assembly.Energy() {
+                @Override
+                public double fuel() {
+                    AuthoritativeThread.require();
+                    return entity.fuel();
+                }
+
+                @Override
+                public double fuelCapacity() {
+                    AuthoritativeThread.require();
+                    return entity.energySpec().fuelCapacity();
+                }
+
+                @Override
+                public double battery() {
+                    AuthoritativeThread.require();
+                    return entity.battery();
+                }
+
+                @Override
+                public double batteryCapacity() {
+                    AuthoritativeThread.require();
+                    return entity.energySpec().batteryCapacity();
+                }
+
+                @Override
+                public double refuel(double litres) {
+                    AuthoritativeThread.require();
+                    return entity.refuel(litres);
+                }
+
+                @Override
+                public void setBattery(double charge) {
+                    AuthoritativeThread.require();
+                    entity.setBattery(charge);
+                }
+            };
+        }
+
+        @Override
         public Optional<dev.axion.api.vehicle.VehicleControl> vehicle() {
             return entity.wheelNodes().isEmpty() ? Optional.empty() : Optional.of(new VehicleView(entity));
         }

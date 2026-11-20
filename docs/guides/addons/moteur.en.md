@@ -71,5 +71,17 @@ A schema 7 definition can declare its energy ([ADR-176](../../decisions/ADR-176.
   `/axion params`, and it is not saved: it is recomputed.
 - **Saving**: fuel and battery are kept (`axion:energy`); a reloaded vehicle resumes with the fuel it had, not a full tank.
 
+## Filling and reading the energy
+
+- **API**: `assembly.energy()` gives `fuel()`, `fuelCapacity()`, `fuelRatio()`, `battery()`; `refuel(litres)` pours, and returns what
+  went in (never more than what is missing); the fill reaches the native side without waking the vehicle.
+- **Command**: `/axion energy <target>` shows the energy; `/axion energy <target> refuel <litres>` fills, `battery <charge>` sets the
+  battery (operators, logged).
+- **Interaction**: a `refuel { "litres": 5 }` action in an interaction's `actions` list pours into the definition's tank. AXION ships
+  no pump: your content makes it.
+- **Sources**: `energy.fuel` (litres), `energy.fuel_ratio` and `energy.battery` (0 to 1) for a procedural track or a gauge.
+
+The example buggy has a starter (`contact` variable, command 3), a 20-litre tank and a battery: it is the model for all of the above.
+
 The native side holds the energy (fuel and battery), deterministic, which the client replays; reading it from Java, saving,
 the `energy.*` sources and the API come with the next slices of ADR-176.

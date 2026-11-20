@@ -14,6 +14,7 @@
   "key.axion.command_8": "AXION : commande 8",
   "axion.example.buggy.attelage": "Attelage (sortir/rentrer)",
   "axion.example.buggy.sport": "Mode sport (activer/couper)",
+  "axion.example.buggy.contact": "Contact (mettre/couper)",
   "axion.parameter.mass": "Masse",
   "axion.parameter.engine.torque": "Couple du moteur",
   "axion.parameter.engine.max_rpm": "Régime maximal",

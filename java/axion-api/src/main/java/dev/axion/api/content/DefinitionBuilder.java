@@ -2128,6 +2128,28 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code interaction[].actions[].refuel}. */
+    @Experimental
+    public static final class InteractionActionRefuel {
+
+        private final Map<String, Object> values;
+
+        private InteractionActionRefuel(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code interaction[].actions[].refuel.litres} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionRefuel litres(double value) {
+            values.put("litres", value);
+            return this;
+        }
+    }
+
     /** {@code interaction[].actions[].set_material_param}. */
     @Experimental
     public static final class InteractionActionSetMaterialParam {
@@ -2269,6 +2291,18 @@ public final class DefinitionBuilder {
          */
         public InteractionAction hideNode(String value) {
             values.put("hide_node", Objects.requireNonNull(value, "hide_node"));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].refuel}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionAction refuel(Consumer<InteractionActionRefuel> config) {
+            Map<String, Object> nested = object(values, "refuel");
+            Objects.requireNonNull(config, "config").accept(new InteractionActionRefuel(nested));
             return this;
         }
 

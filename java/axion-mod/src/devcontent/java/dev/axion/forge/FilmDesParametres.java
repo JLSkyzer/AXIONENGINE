@@ -385,6 +385,12 @@ public final class FilmDesParametres {
         if (!assis) {
             throw new IllegalStateException("les conducteurs ne s'assoient pas au siège conducteur de " + DEFINITION);
         }
+        // ADR-176 D1 : le buggy a un démarreur, et son contact est une variable : les deux conducteurs le mettent.
+        for (AxionEntity buggy : new AxionEntity[] {regleServeur, temoinServeur}) {
+            if (buggy.ignitionVariable() >= 0) {
+                buggy.variables().set(buggy.ignitionVariable(), 1.0, "film");
+            }
+        }
     }
 
     private static ServerPlayer pilote(MinecraftServer serveur, String nom) {

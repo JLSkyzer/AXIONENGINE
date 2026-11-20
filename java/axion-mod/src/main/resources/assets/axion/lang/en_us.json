@@ -14,6 +14,7 @@
   "key.axion.command_8": "AXION command 8",
   "axion.example.buggy.attelage": "Tow hitch (extend/retract)",
   "axion.example.buggy.sport": "Sport mode (on/off)",
+  "axion.example.buggy.contact": "Ignition (on/off)",
   "axion.parameter.mass": "Mass",
   "axion.parameter.engine.torque": "Engine torque",
   "axion.parameter.engine.max_rpm": "Rev limit",

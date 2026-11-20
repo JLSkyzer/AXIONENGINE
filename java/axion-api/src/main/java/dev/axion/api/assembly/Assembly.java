@@ -68,6 +68,14 @@ public interface Assembly {
     java.util.Optional<dev.axion.api.vehicle.VehicleControl> vehicle();
 
     /**
+     * {@return son énergie (ADR-176 D3) : le carburant de son réservoir et la charge de sa batterie ; zéro partout si sa
+     * definition n'en déclare pas} Thread : autoritatif uniquement (R-1755).
+     */
+    default Energy energy() {
+        throw new UnsupportedOperationException("energy : cette assembly n'expose pas son énergie");
+    }
+
+    /**
      * {@return ses attaches (ADR-171 D4) : poser, ancrer et défaire celles de ses sockets, les lire, piloter un treuil}
      * Thread : voir {@link dev.axion.api.attach.Attachments}.
      */

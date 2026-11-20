@@ -1733,6 +1733,19 @@
                   ],
                   "additionalProperties": false
                 },
+                "refuel": {
+                  "type": "object",
+                  "properties": {
+                    "litres": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "litres"
+                  ],
+                  "additionalProperties": false
+                },
                 "set_material_param": {
                   "type": "object",
                   "properties": {

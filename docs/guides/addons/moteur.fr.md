@@ -73,5 +73,18 @@ Une definition au schéma 7 peut déclarer son énergie ([ADR-176](../../decisio
 - **Sauvegarde** : le carburant et la batterie se gardent (`axion:energy`) ; un véhicule relu repart du carburant qu'il avait,
   non d'un plein.
 
+## Remplir et lire l'énergie
+
+- **API** : `assembly.energy()` donne `fuel()`, `fuelCapacity()`, `fuelRatio()`, `battery()` ; `refuel(litres)` verse, et rend ce qui est
+  entré (jamais plus que ce qui manque) ; le plein part au natif sans réveiller le véhicule.
+- **Commande** : `/axion energy <cible>` voit l'énergie ; `/axion energy <cible> refuel <litres>` remplit, `battery <charge>` pose la
+  batterie (opérateurs, journalisées).
+- **Interaction** : une action `refuel { "litres": 5 }` dans la liste `actions` d'une interaction verse dans le réservoir de la
+  definition. AXION ne fournit pas de pompe : c'est ton contenu qui la fait.
+- **Sources** : `energy.fuel` (litres), `energy.fuel_ratio` et `energy.battery` (de 0 à 1) pour une piste procédurale ou une jauge.
+
+Le buggy d'exemple a un démarreur (variable `contact`, commande 3), un réservoir de 20 litres et une batterie : son exemple est le
+modèle de tout ce qui précède.
+
 Le natif tient l'énergie (carburant et batterie), déterministe, que le client rejoue ; la lecture par Java, la sauvegarde, les
 sources `energy.*` et l'API viennent avec les tranches suivantes d'ADR-176.

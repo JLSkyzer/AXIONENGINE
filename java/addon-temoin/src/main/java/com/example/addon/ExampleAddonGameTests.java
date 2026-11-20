@@ -123,18 +123,20 @@ public final class ExampleAddonGameTests {
                     // slab is enough.
                     buggy.parameters().modify(new Modifier(ExampleAddon.MOD_ID + ":slow_zone",
                             ExampleSpeedLimiter.MAX_SPEED, Modifier.Operation.ADD, -14));
+                    // The ignition is a variable of the buggy (it has a starter): switched on, the engine starts.
+                    buggy.variables().set("contact", 1);
                     // A third throttle in first gear (the buggy's gearbox is manual), below the point where its rear
                     // wheels spin, the parking brake released.
                     vehicle.drive(new DriverInput(0.3, 0, 0, 0, 0, 1));
                 })
-                .thenExecuteFor(60, () -> fastest[0] = Math.max(fastest[0],
+                .thenExecuteFor(100, () -> fastest[0] = Math.max(fastest[0],
                         buggy.vehicle().orElseThrow().state().speed()))
                 .thenExecute(() -> {
                     var state = buggy.vehicle().orElseThrow().state();
                     helper.assertTrue(fastest[0] > 0.8, "it drives: " + fastest[0] + " m/s, " + state.rpm() + " rpm,"
                             + " gear " + state.gear() + ", " + state.input() + ", grounded "
                             + state.wheels().stream().filter(wheel -> wheel.grounded()).count());
-                    // Without the limiter, it passes 3 m/s in these three seconds.
+                    // Without the limiter, it passes 3 m/s in these five seconds (the starter takes the first 0.8).
                     helper.assertTrue(fastest[0] < 1.0 + 0.75, "capped near 1 m/s: " + fastest[0] + " m/s");
                     buggy.vehicle().orElseThrow().drive(new DriverInput(0, 0, 0, 0, 1, 0)); // Handbrake on.
                 })

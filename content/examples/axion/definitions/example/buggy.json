@@ -40,7 +40,8 @@
 
   "powertrain": {
     "engine": { "torque_curve": [[0, 0], [1500, 90], [3500, 120], [5500, 105], [6500, 80]],
-                "idle_rpm": 900, "max_rpm": 6500, "inertia": 0.15, "braking_torque": 15.0 },
+                "idle_rpm": 900, "max_rpm": 6500, "inertia": 0.15, "braking_torque": 15.0,
+                "starter": { "time": 0.8, "variable": "contact" } },
     "transmission": { "type": "manual", "gears": [-3.0, 0.0, 3.2, 2.0, 1.4, 1.0],
                       "final_drive": 4.1, "shift_time": 0.3,
                       "auto_shift_up_rpm": 5800, "auto_shift_down_rpm": 2200,
@@ -87,12 +88,19 @@
       "controls": ["throttle", "brake", "steer", "gear", "handbrake"],
       "bindings": [
         { "command": 1, "label": "axion.example.buggy.attelage", "variable": "attelage_sorti", "mode": "toggle" },
-        { "command": 2, "label": "axion.example.buggy.sport", "variable": "sport", "mode": "toggle" } ] }
+        { "command": 2, "label": "axion.example.buggy.sport", "variable": "sport", "mode": "toggle" },
+        { "command": 3, "label": "axion.example.buggy.contact", "variable": "contact", "mode": "toggle" } ] }
   ],
 
   "variables": {
     "attelage_sorti": { "type": "bool", "default": false, "persist": true, "replicate": "all", "write": "driver" },
-    "sport": { "type": "bool", "default": false, "persist": true, "replicate": "all", "write": "driver" }
+    "sport": { "type": "bool", "default": false, "persist": true, "replicate": "all", "write": "driver" },
+    "contact": { "type": "bool", "default": false, "persist": false, "replicate": "all", "write": "driver" }
+  },
+
+  "energy": {
+    "fuel": { "capacity": 20.0, "unit_mass": 0.75, "consumption": [[0.0, 0.6], [1.0, 14.0]] },
+    "battery": { "capacity": 1.0, "starter_draw": 0.02, "charge_rate": 0.002 }
   },
 
   "tuning": {

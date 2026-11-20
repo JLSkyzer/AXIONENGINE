@@ -701,10 +701,14 @@ final class DefinitionChecker {
         return found;
     }
 
+    /** Vrai si la definition déclare un réservoir : une action {@code refuel} a de quoi verser (ADR-176 D3). */
+    private boolean refuelable;
+
     private void checkInteractions(JsonObject root) {
         if (!(root.get("interaction") instanceof JsonArray interactions)) {
             return;
         }
+        refuelable = EnergySpec.of(root).fuelCapacity() > 0f;
         for (int i = 0; i < interactions.size(); i++) {
             if (!(interactions.get(i) instanceof JsonObject interaction)) {
                 continue;
@@ -757,6 +761,10 @@ final class DefinitionChecker {
                     + " set_material_param ou emit_event —, pour que la liste garde son ordre ; " + step.size()
                     + " clés ici");
             return;
+        }
+        if (step.get("refuel") != null && !refuelable) {
+            invalid(path + ".refuel", "l'action « refuel » verse dans le réservoir que la definition déclare"
+                    + " (energy.fuel, ADR-176 D3)");
         }
         if (step.get("swap_mesh") instanceof JsonObject swap && swap.get("with") != null
                 && swap.get("with").equals(swap.get("node"))) {
