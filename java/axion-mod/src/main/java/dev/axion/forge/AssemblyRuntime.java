@@ -161,6 +161,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     /** {@code server.allow_client_prediction} : sans elle, aucun état ne s'exporte, aucune correction ne part. */
     private final boolean predictionAllowed;
+    /** Assemblies reliées par tick à leur definition rechargée (ADR-175 D5). */
+    private final int rebindPerTick;
 
     /** Ce qui envoie la correction d'un conducteur (ADR-168 D4) : le canal, en fin de tick. */
     private final BiConsumer<ServerPlayer, byte[]> corrections;
@@ -198,6 +200,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      * @param lastSubmitNs la durée de la dernière soumission native
      * @param controllerLimits le budget des contrôleurs de véhicule ({@code [vehicle]}, ADR-167 D9)
      * @param predictionAllowed {@code server.allow_client_prediction} (ADR-168 D8)
+     * @param rebindPerTick {@code content.rebind_per_tick} : assemblies reliées par tick à leur definition rechargée
+     *     (ADR-175 D5)
      * @param corrections ce qui envoie la correction d'un conducteur (ADR-168 D4)
      */
     public AssemblyRuntime(
@@ -208,6 +212,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             LongSupplier lastSubmitNs,
             dev.axion.entity.ControllerRunner.Limits controllerLimits,
             boolean predictionAllowed,
+            int rebindPerTick,
             BiConsumer<ServerPlayer, byte[]> corrections) {
         this.definitions = definitions;
         this.compiled = compiled;
@@ -216,6 +221,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         this.lastSubmitNs = lastSubmitNs;
         this.controllers = new dev.axion.entity.ControllerRunner(controllerLimits, System::nanoTime);
         this.predictionAllowed = predictionAllowed;
+        this.rebindPerTick = rebindPerTick;
         this.corrections = corrections;
         MinecraftForge.EVENT_BUS.register(this);
     }
@@ -372,23 +378,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             return;
         }
         EntityMetrics.GLOBAL.left();
-        int index = handleIndexOf(assembly);
-        boolean detached = ledger.detach(index, assembly, assembly.getRemovalReason() != null);
-        EntityMetrics.GLOBAL.bodies(ledger.bodies());
-        if (!detached) {
-            return;
-        }
-        implausibleBounds.remove(index);
-        speeds.remove(index);
-        rootNodes.remove(index);
-        pending.add(new Pending(false, index, 0L, null, null, 0L, null, false, List.of()));
-        // Son corps natif part, et ses attaches avec lui (REMOVE_ASSEMBLY) : sans être détruite, elle les retrouve
-        // quand on la suit de nouveau et que le natif l'a recréée (ADR-171, 8e).
-        assembly.forgetSimulation();
-        AttachmentRuntime attachments = AttachmentRuntime.current();
-        if (attachments != null) {
-            attachments.bodyRemoved(assembly);
-        }
+        releaseBody(assembly, assembly.getRemovalReason() != null);
     }
 
     /**
@@ -448,6 +438,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
 
     @Override
     public SimCommandStream commandsForTick(long tick) {
+        rebind();
         reconcile();
         // R-1730, ADR-153 D4 : la soumission du tick précédent portait les créations de la file ; son coût
         // fait celui d'une création, et la file avance sous le budget, d'un corps au moins.
@@ -648,6 +639,54 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
             animationSent.put(index, state);
         });
+    }
+
+    /**
+     * Relie à leur definition rechargée les assemblies vivantes dont elle a changé (ADR-175 D5) : au plus
+     * {@code content.rebind_per_tick} par tick, par index de handle croissant, les autres au tick suivant. Chacune garde son
+     * état, rapproché de la nouvelle definition par nom ; son corps natif est retiré, et recréé au tick suivant par la
+     * réconciliation — la frontière applique les créations d'un flux avant ses retraits, la sienne attend donc ce retrait.
+     */
+    private void rebind() {
+        List<AxionEntity> due = new ArrayList<>();
+        ledger.forEachBody((index, entity) -> {
+            if (due.size() < rebindPerTick && entity.needsRebind()) {
+                due.add(entity);
+            }
+        });
+        for (AxionEntity assembly : due) {
+            assembly.rebind();
+            releaseBody(assembly, false);
+            LOGGER.info("AXION : assembly {} reliée à la definition rechargée {}", assembly.getUUID(),
+                    assembly.definitionId());
+        }
+    }
+
+    /**
+     * Retire le corps natif d'une assembly : sortie du monde ({@code removed}) ou simple fin de suivi, ou reliure
+     * (ADR-175 D5) ; ses attaches le suivent.
+     *
+     * @return vrai si elle avait un corps
+     */
+    private boolean releaseBody(AxionEntity assembly, boolean removed) {
+        int index = handleIndexOf(assembly);
+        boolean detached = ledger.detach(index, assembly, removed);
+        EntityMetrics.GLOBAL.bodies(ledger.bodies());
+        if (!detached) {
+            return false;
+        }
+        implausibleBounds.remove(index);
+        speeds.remove(index);
+        rootNodes.remove(index);
+        pending.add(new Pending(false, index, 0L, null, null, 0L, null, false, List.of()));
+        // Son corps natif part, et ses attaches avec lui (REMOVE_ASSEMBLY) : sans être détruite, elle les retrouve
+        // quand on la suit de nouveau et que le natif l'a recréée (ADR-171, 8e).
+        assembly.forgetSimulation();
+        AttachmentRuntime attachments = AttachmentRuntime.current();
+        if (attachments != null) {
+            attachments.bodyRemoved(assembly);
+        }
+        return true;
     }
 
     /**

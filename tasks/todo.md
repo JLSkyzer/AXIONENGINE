@@ -3887,6 +3887,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
+     - [x] ADR-175, tranche 10e (2026-11-20) : reliure à chaud des assemblies vivantes après un rechargement
+           (`content.rebind_per_tick`), occupants repris par nom de siège ; écart avec D6 : pas de clé native
+           `(id, sha256)`, inutile (le natif clone à la création). Reste : le film (un modèle qui change entre deux
+           révisions, Blender), puis la clôture d'ADR-175 (grille ADR-160 D7).
      - [x] ADR-175, tranche 10d (2026-11-20) : une instance tient sa definition (`HeldDefinition`), prise à la
            création de son corps natif. Suite : 10e (reliure à chaud, clé native `(id, sha256)`, film).
      - [x] ADR-175, tranche 10c (2026-11-19) : `revision`, `migrations`, `replaces` au schéma 7, `axion:rev`,

@@ -239,6 +239,7 @@ alors ignorée (R-1830).
 | `examples` | booléen | `false` | `true \| false` | non | oui | Charge les cinq definitions de démonstration embarquées (R-1790), rangées sous `axion/definitions/example/` à la racine du JAR et enregistrées par AXION comme un addon (ADR-162). |
 | `dev_reload` | booléen | `false` | `true \| false` | oui | non | Autorise `/axion dev reload` (opérateur) : rappelle l'enregistrement de chaque mod, relit son dossier depuis le disque quand il tourne depuis ses sources, et renvoie le registre aux clients (ADR-162 D9). Réservé au développement. |
 | `listener_strikes` | entier | `20` | `1..1200` | non | non | Exceptions de suite d'un écouteur des sièges ou des interactions d'un mod qui le désactivent pour la session. |
+| `rebind_per_tick` | entier | `4` | `1..256` | non | non | Assemblies vivantes reliées par tick à leur definition rechargée (ADR-175 D5) : le reste attend le tick suivant, et vit d'ici là sur la definition d'avant. |
 
 ### `[integration.rustforgex]`
 

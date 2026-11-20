@@ -169,6 +169,7 @@ blocks = true
 examples = false
 dev_reload = false
 listener_strikes = 20             # 1..1200
+rebind_per_tick = 4               # 1..256
 
 [integration.rustforgex]
 mode = "auto"                     # auto | off

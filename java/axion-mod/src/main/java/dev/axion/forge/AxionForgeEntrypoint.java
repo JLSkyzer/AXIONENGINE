@@ -390,6 +390,7 @@ public final class AxionForgeEntrypoint {
                             runtime.outcome().config().getInt("vehicle.controller_budget_ns"),
                             (int) runtime.outcome().config().getInt("vehicle.controller_strikes")),
                     runtime.serverConfig().getBoolean("server.allow_client_prediction"),
+                    (int) runtime.outcome().config().getInt("content.rebind_per_tick"),
                     dev.axion.forge.net.AxionNetwork::queueCorrection);
             worldTileBridge =
                     new WorldTileBridge(

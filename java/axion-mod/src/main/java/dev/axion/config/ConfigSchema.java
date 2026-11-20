@@ -1186,6 +1186,14 @@ public final class ConfigSchema {
                     false,
                     "Exceptions de suite d'un écouteur des sièges ou des interactions d'un mod qui le désactivent pour la session."),
             new Option(
+                    "content.rebind_per_tick",
+                    Kind.INTEGER,
+                    4L,
+                    new Domain(DomainKind.INT_RANGE, 1.0, 256.0, List.of()),
+                    false,
+                    false,
+                    "Assemblies vivantes reliées par tick à leur definition rechargée (ADR-175 D5) : le reste attend le tick suivant, et vit d'ici là sur la definition d'avant."),
+            new Option(
                     "integration.rustforgex.mode",
                     Kind.STRING,
                     "auto",

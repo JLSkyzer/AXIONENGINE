@@ -470,10 +470,98 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * definition suivante le remplace (D5).
      */
     dev.axion.definition.HeldDefinition held() {
+        if (level().isClientSide()) {
+            // Le client ne tient pas de corps natif de la definition : il suit celle que son registre porte, et se
+            // rafraîchit quand ce registre change.
+            dev.axion.definition.DefinitionRegistry registry = AxionEntities.definitions();
+            if (heldRegistry != registry) {
+                heldRegistry = registry;
+                held = null;
+            }
+        }
         if (held == null && !inert) {
             held = AxionEntities.held(definitionId).orElse(null);
         }
         return held;
+    }
+
+    /** Le registre dont {@link #held} a été pris, au client. */
+    private dev.axion.definition.DefinitionRegistry heldRegistry;
+
+    /**
+     * {@return vrai si une definition rechargée remplace celle que l'instance tient, et qu'elle est compilée} Son contenu
+     * a changé (empreinte), ou elle porte un autre identifiant — elle en remplace une autre (ADR-175 D3, D5). Une
+     * definition qui n'est plus chargée ne relie rien : l'instance garde ce qu'elle tient.
+     */
+    boolean needsRebind() {
+        dev.axion.definition.HeldDefinition tenue = held;
+        if (level().isClientSide() || inert || tenue == null) {
+            return false;
+        }
+        Definition now = AxionEntities.definitions().byHash(dev.axion.definition.DefinitionIds.hash(definitionId))
+                .orElse(null);
+        if (now == null
+                || (now.sha256().equals(tenue.definition().sha256()) && now.id().equals(definitionId))) {
+            return false;
+        }
+        return AxionEntities.held(now.id()).filter(compiled -> compiled.definition().sha256().equals(now.sha256()))
+                .isPresent();
+    }
+
+    /**
+     * Relie l'assembly à la definition rechargée (serveur, ADR-175 D5) : son état vivant est repris dans son NBT, mené de
+     * sa révision à celle de la definition par les migrations (D3), relu contre la nouvelle definition — corps et joints
+     * rapprochés par nom (D2) —, puis ses occupants reprennent leur siège par nom. Son corps natif est retiré et recréé
+     * par l'appelant ({@code AssemblyRuntime}), qui en restaure l'état comme à un chargement.
+     */
+    void rebind() {
+        AuthoritativeThread.require();
+        Seating old = seating();
+        int[] seated = old == null ? new int[0] : entityData.get(SEATS).getIntArray(SEATS_KEY).clone();
+        CompoundTag snapshot = new CompoundTag();
+        addAdditionalSaveData(snapshot);
+        held = null;
+        nodesRestored = false;
+        readAdditionalSaveData(snapshot);
+        Seating fresh = seating();
+        if (old != null && fresh != null) {
+            remapSeats(old, fresh, seated);
+        }
+    }
+
+    /**
+     * Les occupants gardent leur siège par nom à la reliure (ADR-175 D5) : un siège que la definition ne déclare plus, ou
+     * déjà pris, leur donne le premier libre ; sans place, ils sont éjectés ({@link SeatEjection.Cause#NO_SEAT}).
+     */
+    private void remapSeats(Seating old, Seating fresh, int[] seated) {
+        SeatOccupancy next = new SeatOccupancy(fresh.seats().size());
+        List<Entity> lost = new ArrayList<>();
+        for (int rank = 0; rank < seated.length && rank < old.seats().size(); rank++) {
+            int occupant = seated[rank];
+            if (occupant == SeatOccupancy.FREE || occupant == SeatOccupancy.LOST) {
+                continue;
+            }
+            String name = old.seats().get(rank).name();
+            int seat = SeatPlacement.seatFor(fresh, next, name);
+            Entity passenger = getPassengers().stream()
+                    .filter(p -> p.getId() == occupant).findFirst().orElse(null);
+            if (seat == SeatOccupancy.FREE || passenger == null) {
+                if (passenger != null) {
+                    lost.add(passenger);
+                }
+                continue;
+            }
+            next.sit(occupant, seat);
+            if (!fresh.seats().get(seat).name().equals(name)) {
+                LOGGER.info("AXION : assembly {}, reliure : le siège « {} » de {} n'existe plus ou est pris ; il est assis"
+                        + " au siège « {} »", getUUID(), name, passenger.getName().getString(),
+                        fresh.seats().get(seat).name());
+            }
+        }
+        storeOccupancy(next);
+        for (Entity passenger : lost) {
+            eject(passenger, SeatEjection.Cause.NO_SEAT);
+        }
     }
 
     /**

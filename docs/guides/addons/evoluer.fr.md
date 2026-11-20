@@ -57,6 +57,23 @@ Au schéma 7, une definition déclare sa **révision** et ce qui mène une sauve
 
 Un contenu qui change **sans** nouvelle révision se restaure par nom, et le journal le dit une fois.
 
+## Recharger sans perdre ses assemblies
+
+Quand tu recharges tes definitions (`/reload`, ou en développement, à la sauvegarde d'un fichier), les assemblies déjà
+posées sont **reliées** à la definition nouvelle ([ADR-175](../../decisions/ADR-175.md) D5) : elles gardent leur place,
+leur vitesse, leurs corps, leurs attaches et leurs occupants. Le journal dit chaque reliure.
+
+- **Ce qui est relié** : une assembly dont la definition a changé de contenu, ou a été remplacée (`replaces`). Une
+  definition qui n'a pas changé ne relie rien.
+- **Comment** : l'état est repris tel qu'une sauvegarde le garde, mené de la révision de l'assembly à celle de la
+  definition par tes `migrations`, puis lu contre la definition nouvelle, **par nom**. Ce qui n'existe plus est dit au
+  journal et perdu ; ce qui est nouveau part de sa pose de repos.
+- **Les occupants** : chacun garde le siège qui porte le même nom, même s'il a changé de rang. Un siège supprimé ou
+  déjà pris leur donne le premier libre ; sans place, ils sont éjectés (`NO_SEAT`).
+- **Le rythme** : `content.rebind_per_tick` (4 par défaut) assemblies par tick. Les autres vivent, jusqu'à leur tour,
+  entièrement sur la definition d'avant — jamais sur un mélange des deux.
+- **Un tick sans corps** : le corps natif est retiré puis recréé au tick suivant ; l'assembly n'a pas bougé.
+
 ## Les sauvegardes d'avant les noms
 
 Une assembly sauvegardée avant le schéma 6 n'a pas de noms. AXION nomme ses corps d'après l'asset chargé — le node que

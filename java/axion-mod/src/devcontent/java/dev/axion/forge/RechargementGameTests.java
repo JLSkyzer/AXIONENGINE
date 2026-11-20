@@ -112,4 +112,80 @@ public final class RechargementGameTests {
                 })
                 .thenSucceed();
     }
+
+    /** Le siège de test, révision 2 : ses sièges ont changé de rang, le passager passe devant. */
+    private static final String SIEGE_REVISE = """
+            {
+              "schema": 7,
+              "asset": "axion:models/test/siege.gltf",
+              "kind": "rigid_object",
+              "revision": 2,
+              "seats": [
+                { "name": "passager", "node": "siege_d",
+                  "exit_offsets": [ [0.0, 0.0, 1.5], [0.0, 0.0, -1.5] ] },
+                { "name": "conducteur", "node": "siege_g", "role": "driver",
+                  "exit_offsets": [ [2.0, 0.0, 0.0], [-1.0, 0.0, 0.0] ],
+                  "controls": [ "throttle", "steer" ] }
+              ],
+              "interaction": [ { "node": "porte_d", "action": "sit", "seat": "passager" } ]
+            }
+            """;
+
+    private static final String CHEMIN_SIEGE = "axion:axion/definitions/test/siege.json";
+
+    /**
+     * ADR-175 D5 : une definition rechargée avec un autre contenu relie les assemblies vivantes. Celle-ci prend la
+     * definition nouvelle sans changer de place, et son occupant garde son siège par nom : « conducteur » était au
+     * rang 0, il est au rang 1.
+     */
+    @GameTest(template = "test/plancher", batch = "rechargement_definitions", timeoutTicks = 400)
+    public static void adr175_UnRechargementRelieLesAssembliesVivantesEtGardeLeursOccupants(GameTestHelper helper) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
+        AssetSource revisee = new AssetSource() {
+            @Override
+            public List<String> list() {
+                return courantes.list();
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                return CHEMIN_SIEGE.equals(path)
+                        ? SIEGE_REVISE.getBytes(StandardCharsets.UTF_8)
+                        : courantes.read(path);
+            }
+        };
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        net.minecraft.server.level.ServerPlayer joueur = SiegesGameTests.joueur(helper, "relie");
+        dev.axion.definition.HeldDefinition[] avant = {null};
+        Vec3[] place = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds() && assembly.held() != null,
+                        "l'assembly est simulée, sa definition tenue"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.sit(joueur, 0), "le joueur s'assoit au siège conducteur");
+                    avant[0] = assembly.held();
+                    place[0] = assembly.position();
+                    runtime.onDefinitionReload(revisee);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(assembly.held() != avant[0] && assembly.hasPhysicalBounds(),
+                        "l'assembly est reliée à la definition rechargée"))
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.held().seating().seats().get(0).name().equals("passager"),
+                            "elle lit les sièges de la révision 2");
+                    helper.assertTrue(joueur.getVehicle() == assembly, "le joueur est toujours à bord");
+                    helper.assertTrue(assembly.seatOf(joueur) == 1,
+                            "il garde son siège « conducteur », devenu le rang 1 : " + assembly.seatOf(joueur));
+                    helper.assertTrue(assembly.position().distanceTo(place[0]) < 0.1,
+                            "elle n'a pas bougé : " + assembly.position().distanceTo(place[0]));
+                    joueur.stopRiding();
+                    // Les autres tests retrouvent les definitions enregistrées.
+                    runtime.onDefinitionReload(courantes);
+                })
+                .thenSucceed();
+    }
 }

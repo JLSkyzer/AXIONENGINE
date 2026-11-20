@@ -56,6 +56,23 @@ From schema 7, a definition declares its **revision** and what leads a save from
 
 Content that changes **without** a new revision is restored by name, and the log says so once.
 
+## Reloading without losing assemblies
+
+When you reload your definitions (`/reload`, or on file save in development), assemblies already placed are **rebound**
+to the new definition ([ADR-175](../../decisions/ADR-175.md) D5): they keep their position, velocity, bodies,
+attachments and occupants. The log reports each rebind.
+
+- **What is rebound**: an assembly whose definition changed content, or was replaced (`replaces`). An unchanged
+  definition rebinds nothing.
+- **How**: the state is taken as a save keeps it, carried from the assembly's revision to the definition's by your
+  `migrations`, then read against the new definition, **by name**. What no longer exists is reported in the log and
+  lost; what is new starts from its rest pose.
+- **Occupants**: each keeps the seat carrying the same name, even if its rank changed. A removed or already taken seat
+  gives them the first free one; with no room, they are ejected (`NO_SEAT`).
+- **Pace**: `content.rebind_per_tick` (4 by default) assemblies per tick. The others live, until their turn, entirely on
+  the previous definition — never on a mix of both.
+- **One tick without a body**: the native body is removed then recreated on the next tick; the assembly has not moved.
+
 ## Saves from before names
 
 An assembly saved before schema 6 has no names. AXION names its bodies from the loaded asset — the node each one

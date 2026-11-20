@@ -469,6 +469,9 @@ pub const COMMON: &[ConfigOption] = &[
     // ADR-174 D1 : un écouteur d'un mod qui lève de suite est désactivé (R-1770).
     i("content.listener_strikes", 20, 1, 1200, "Exceptions de suite d'un écouteur des sièges ou des interactions d'un mod qui le désactivent pour la session.")
         .en("Consecutive exceptions of a mod's seat or interaction listener that disable it for the session."),
+    // ADR-175 D5 : une definition rechargée relie les assemblies vivantes, quelques-unes par tick.
+    i("content.rebind_per_tick", 4, 1, 256, "Assemblies vivantes reliées par tick à leur definition rechargée (ADR-175 D5) : le reste attend le tick suivant, et vit d'ici là sur la definition d'avant.")
+        .en("Live assemblies rebound per tick to their reloaded definition (ADR-175 D5): the rest waits for the next tick, and lives on the previous definition until then."),
 
     // [integration.rustforgex]
     e("integration.rustforgex.mode", "auto", &["auto", "off"], "Détection d'un mod d'optimisation tiers. AXION n'en dépend jamais et fonctionne identiquement en son absence.")
