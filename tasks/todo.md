@@ -3887,6 +3887,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
+     - [ ] ADR-176, tranche 11b (énergie) : plan et contrats C1 à C7 dans l'ADR (précision « découpage et contrats de
+           11b »). 11b1 natif (R1-R5) → 11b2 Java definition/instance → 11b3 réseau/prédiction → 11b4 API/commande/contenu.
      - [x] ADR-176, tranche 11a (2026-11-20) : moteur à démarreur (`powertrain.engine.starter`, contact = variable
            booléenne non sauvegardée), `EngineState` natif, `VehicleInput::native_flags` (`IGNITION`), ABI 30, point mort
            automatique moteur arrêté. Écarts : bit hors de `flags` (pris par les commandes), buggy d'exemple reporté à 11b
