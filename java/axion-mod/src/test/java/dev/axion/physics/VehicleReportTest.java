@@ -10,7 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Épingle le décodage de {@link VehicleReport} sur la disposition figée d'ADR-163 D1 (24 octets, little-endian) et
+ * Épingle le décodage de {@link VehicleReport} sur la disposition figée d'ADR-163 D1 (32 octets, little-endian) et
  * celui de sa section dans {@code SIM_OUT}. Les octets sont posés aux offsets du natif ; si le décodeur lisait
  * ailleurs, ce test échouerait.
  */
@@ -31,12 +31,14 @@ class VehicleReportTest {
         buffer.put(base + 18, (byte) 0x5A); // réservé @18, ignoré
         buffer.put(base + 19, (byte) 0x5A); // réservé @19, ignoré
         buffer.putFloat(base + 20, -0.5f); // steer @20
+        buffer.putFloat(base + 24, 12.5f); // fuel @24
+        buffer.putFloat(base + 28, 0.75f); // battery @28
     }
 
     @Test
-    @DisplayName("ADR-163 D1 : 24 octets, drapeaux du natif")
+    @DisplayName("ADR-163 D1, ADR-176 D3 : 32 octets, drapeaux du natif")
     void tailleFigee() {
-        assertEquals(24, VehicleReport.BYTES);
+        assertEquals(32, VehicleReport.BYTES);
         assertEquals(8, VehicleReport.SECTION_HEADER_BYTES, "nombre u32 et 4 octets réservés");
         assertEquals(1, VehicleReport.SHIFTING, "vehicle_report_flags::SHIFTING");
         assertEquals(2, VehicleReport.RUNNING, "vehicle_report_flags::RUNNING");
@@ -48,7 +50,8 @@ class VehicleReportTest {
     void decodeLitLesChampsAuxOffsetsFiges() {
         ByteBuffer buffer = tampon(VehicleReport.BYTES);
         poser(buffer, 0);
-        assertEquals(new VehicleReport(7, 3, 3125.5f, 0.75f, -1, VehicleReport.SHIFTING | VehicleReport.DRIVER, -0.5f),
+        assertEquals(new VehicleReport(7, 3, 3125.5f, 0.75f, -1, VehicleReport.SHIFTING | VehicleReport.DRIVER, -0.5f,
+                12.5f, 0.75f),
                 VehicleReport.decode(buffer, 0));
     }
 

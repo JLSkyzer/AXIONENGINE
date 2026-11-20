@@ -1,5 +1,6 @@
 //! Le moteur (12.5, ADR-159 D6).
 
+use crate::energy::Supply;
 use ax_model::dm::vehicle::EngineDesc;
 
 /// Tours par minute d'une rotation de 1 rad/s.
@@ -47,7 +48,10 @@ pub enum EnginePhase {
 /// Sans démarreur (`starter_time == 0`), le moteur tourne toujours, comme avant ADR-176 : rien ne l'arrête, le contact
 /// n'est pas lu. Avec un démarreur, le contact **mis** (front montant) lance le démarreur pendant `starter_time`
 /// secondes, puis le moteur tourne ; le contact **coupé** l'arrête aussitôt. Un moteur arrêté par autre chose que le
-/// contact (réservoir vide, ADR-176 D3) ne redémarre pas tant que le contact n'a pas été coupé puis remis.
+/// contact (réservoir vide, ADR-176 D3) ne redémarre pas tant que le contact n'a pas été coupé puis remis. Un réservoir vide
+/// arrête le moteur ; une batterie vide, ou un réservoir vide, fait échouer le démarreur.
+///
+/// Sans démarreur, le moteur tourne tant qu'il y a du carburant.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EngineState {
     /// La phase.
@@ -85,12 +89,17 @@ impl EngineState {
         self.phase == EnginePhase::Cranking
     }
 
-    /// Avance l'état d'un pas de `dt` secondes, avec le contact tel qu'il est tenu pendant ce pas.
-    pub fn step(&mut self, starter_time: f32, ignition: bool, dt: f32) {
+    /// Avance l'état d'un pas de `dt` secondes, avec le contact tel qu'il est tenu pendant ce pas et ce que l'énergie
+    /// permet.
+    pub fn step(&mut self, starter_time: f32, ignition: bool, supply: Supply, dt: f32) {
         let rising = ignition && !self.ignition;
         self.ignition = ignition;
         if starter_time <= 0.0 {
-            self.phase = EnginePhase::Running;
+            self.phase = if supply.fuel {
+                EnginePhase::Running
+            } else {
+                EnginePhase::Stopped
+            };
             self.remaining = 0.0;
             return;
         }
@@ -100,9 +109,18 @@ impl EngineState {
             return;
         }
         match self.phase {
-            EnginePhase::Stopped if rising => {
+            // Le front est consommé même si le démarreur ne part pas : un contact tenu ne rattrape rien.
+            EnginePhase::Stopped if rising && supply.fuel && supply.battery => {
                 self.phase = EnginePhase::Cranking;
                 self.remaining = starter_time;
+            }
+            EnginePhase::Cranking | EnginePhase::Running if !supply.fuel => {
+                self.phase = EnginePhase::Stopped;
+                self.remaining = 0.0;
+            }
+            EnginePhase::Cranking if !supply.battery => {
+                self.phase = EnginePhase::Stopped;
+                self.remaining = 0.0;
             }
             EnginePhase::Cranking => {
                 self.remaining -= dt;
@@ -204,7 +222,7 @@ mod tests {
         let mut etat = EngineState::new(0.0);
         assert!(etat.running());
         for contact in [false, true, false] {
-            etat.step(0.0, contact, 0.05);
+            etat.step(0.0, contact, Supply::FULL, 0.05);
             assert!(etat.running(), "le contact est sans effet sans démarreur");
         }
     }
@@ -214,35 +232,35 @@ mod tests {
         // 0,125 s : exact en binaire, le temps restant tombe juste à zéro.
         let mut etat = EngineState::new(0.5);
         assert_eq!(etat.phase, EnginePhase::Stopped);
-        etat.step(0.5, false, 0.125);
+        etat.step(0.5, false, Supply::FULL, 0.125);
         assert_eq!(etat.phase, EnginePhase::Stopped, "contact coupé : rien");
-        etat.step(0.5, true, 0.125);
+        etat.step(0.5, true, Supply::FULL, 0.125);
         assert!(etat.cranking(), "front montant : le démarreur tourne");
         for _ in 0..3 {
-            etat.step(0.5, true, 0.125);
+            etat.step(0.5, true, Supply::FULL, 0.125);
             assert!(etat.cranking());
         }
-        etat.step(0.5, true, 0.125);
+        etat.step(0.5, true, Supply::FULL, 0.125);
         assert!(etat.running(), "après `starter_time` secondes");
-        etat.step(0.5, true, 0.125);
+        etat.step(0.5, true, Supply::FULL, 0.125);
         assert!(etat.running(), "il tourne tant que le contact est mis");
     }
 
     #[test]
     fn adr176_d1_couper_le_contact_arrete_le_moteur_et_le_demarreur() {
         let mut etat = EngineState::new(0.5);
-        etat.step(0.5, true, 0.1);
-        etat.step(0.5, false, 0.1);
+        etat.step(0.5, true, Supply::FULL, 0.1);
+        etat.step(0.5, false, Supply::FULL, 0.1);
         assert_eq!(etat.phase, EnginePhase::Stopped);
         assert_eq!(etat.remaining, 0.0);
         let mut etat = EngineState::new(0.2);
-        etat.step(0.2, true, 0.1);
-        etat.step(0.2, true, 0.1);
-        etat.step(0.2, true, 0.1);
+        etat.step(0.2, true, Supply::FULL, 0.1);
+        etat.step(0.2, true, Supply::FULL, 0.1);
+        etat.step(0.2, true, Supply::FULL, 0.1);
         assert!(etat.running());
-        etat.step(0.2, false, 0.1);
+        etat.step(0.2, false, Supply::FULL, 0.1);
         assert_eq!(etat.phase, EnginePhase::Stopped);
-        etat.step(0.2, true, 0.1);
+        etat.step(0.2, true, Supply::FULL, 0.1);
         assert!(etat.cranking(), "remis, il redémarre");
     }
 
@@ -254,7 +272,71 @@ mod tests {
             remaining: 0.0,
             ignition: true,
         };
-        etat.step(0.5, true, 0.1);
+        etat.step(0.5, true, Supply::FULL, 0.1);
         assert_eq!(etat.phase, EnginePhase::Stopped);
+    }
+
+    const SANS_CARBURANT: Supply = Supply {
+        fuel: false,
+        battery: true,
+    };
+    const SANS_BATTERIE: Supply = Supply {
+        fuel: true,
+        battery: false,
+    };
+
+    #[test]
+    fn adr176_d3_un_reservoir_vide_arrete_le_moteur_qui_tourne_et_le_demarreur() {
+        let mut etat = EngineState::new(0.5);
+        for _ in 0..5 {
+            etat.step(0.5, true, Supply::FULL, 0.125);
+        }
+        assert!(etat.running());
+        etat.step(0.5, true, SANS_CARBURANT, 0.125);
+        assert_eq!(etat.phase, EnginePhase::Stopped);
+        // Plein refait, contact tenu : pas de front, pas de démarreur.
+        etat.step(0.5, true, Supply::FULL, 0.125);
+        assert_eq!(etat.phase, EnginePhase::Stopped);
+        // Un démarreur en cours s'arrête aussi.
+        let mut etat = EngineState::new(0.5);
+        etat.step(0.5, true, Supply::FULL, 0.125);
+        assert!(etat.cranking());
+        etat.step(0.5, true, SANS_CARBURANT, 0.125);
+        assert_eq!(etat.phase, EnginePhase::Stopped);
+        assert_eq!(etat.remaining, 0.0);
+    }
+
+    #[test]
+    fn adr176_d3_une_batterie_vide_fait_echouer_le_demarreur_et_consomme_le_front() {
+        let mut etat = EngineState::new(0.5);
+        etat.step(0.5, true, SANS_BATTERIE, 0.125);
+        assert_eq!(etat.phase, EnginePhase::Stopped, "il ne part pas");
+        // La batterie revient, le contact est tenu : le front est consommé.
+        etat.step(0.5, true, Supply::FULL, 0.125);
+        assert_eq!(etat.phase, EnginePhase::Stopped);
+        // Un démarreur lancé que la batterie abandonne échoue.
+        let mut etat = EngineState::new(0.5);
+        etat.step(0.5, true, Supply::FULL, 0.125);
+        etat.step(0.5, true, SANS_BATTERIE, 0.125);
+        assert_eq!(etat.phase, EnginePhase::Stopped);
+        // Un moteur qui tourne ne dépend plus de la batterie.
+        let mut etat = EngineState::new(0.5);
+        for _ in 0..5 {
+            etat.step(0.5, true, Supply::FULL, 0.125);
+        }
+        etat.step(0.5, true, SANS_BATTERIE, 0.125);
+        assert!(etat.running());
+    }
+
+    #[test]
+    fn adr176_d3_sans_demarreur_le_moteur_tourne_tant_qu_il_y_a_du_carburant() {
+        let mut etat = EngineState::new(0.0);
+        etat.step(0.0, false, SANS_CARBURANT, 0.1);
+        assert_eq!(etat.phase, EnginePhase::Stopped, "réservoir vide");
+        etat.step(0.0, false, Supply::FULL, 0.1);
+        assert!(
+            etat.running(),
+            "plein fait : il repart, sans contact à lire"
+        );
     }
 }

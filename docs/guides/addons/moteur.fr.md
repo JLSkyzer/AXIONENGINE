@@ -46,4 +46,26 @@ Au schéma 7, dans `powertrain.engine` :
 La source `engine.running` vaut 1 quand le moteur tourne, 0 sinon : une piste procédurale peut allumer un voyant ou
 couper un son. Ton mod la lit dans l'API par `assembly.source("engine.running")`, et un mod pose le contact en écrivant la variable.
 
-L'énergie (carburant, batterie, panne sèche) vient avec la tranche suivante d'ADR-176.
+## Le réservoir et la batterie
+
+Une definition au schéma 7 peut déclarer son énergie ([ADR-176](../../decisions/ADR-176.md) D3) :
+
+```json
+"energy": {
+  "fuel": { "capacity": 40.0, "unit_mass": 0.75, "consumption": [[0.0, 0.4], [1.0, 9.0]] },
+  "battery": { "capacity": 1.0, "starter_draw": 0.02, "charge_rate": 0.002 }
+}
+```
+
+- **`fuel.consumption`** : des litres par heure selon la charge du moteur (de 0 à 1), multipliés par le régime sur le régime
+  maximal. Les charges croissent strictement.
+- **`unit_mass`** : la masse d'un litre. Elle exige `physics.mass`, qui est alors la **masse à sec**.
+- **`battery`** : le démarreur en tire `starter_draw` par seconde, le moteur qui tourne lui rend `charge_rate`. Elle exige un
+  `starter`.
+- **Réservoir vide** : le moteur s'arrête, et ne repart pas sans nouveau front du contact. **Batterie ou réservoir vide** : le
+  démarreur ne part pas.
+- **Un véhicule endormi ne brûle rien** : la combustion suit l'éveil, comme tout le reste de la simulation.
+- Sans `energy`, rien ne change.
+
+Le natif tient l'énergie (carburant et batterie), déterministe, que le client rejoue ; la lecture par Java, la sauvegarde, les
+sources `energy.*` et l'API viennent avec les tranches suivantes d'ADR-176.

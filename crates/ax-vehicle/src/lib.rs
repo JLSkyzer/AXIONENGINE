@@ -6,6 +6,7 @@
 
 pub mod brakes;
 pub mod differential;
+pub mod energy;
 pub mod engine;
 pub mod powertrain;
 pub mod steering;
@@ -31,8 +32,8 @@ mod tests_support {
     use ax_model::dm::scene::NONE_U16;
     use ax_model::dm::vehicle::{
         differential_kind, transmission_kind, vehicle_flags, AeroDesc, AssistDesc, BrakesDesc,
-        DifferentialDesc, EngineDesc, SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc,
-        VehicleDesc, WheelDesc,
+        DifferentialDesc, EnergyDesc, EngineDesc, SteeringDesc, SuspensionDesc, TireCurve,
+        TransmissionDesc, VehicleDesc, WheelDesc,
     };
 
     /// Une berline : les valeurs des exemples de 12.3 à 12.6, quatre roues, propulsion.
@@ -70,6 +71,7 @@ mod tests_support {
         };
         VehicleDesc {
             flags: vehicle_flags::POWERTRAIN,
+            energy: EnergyDesc::NONE,
             engine: EngineDesc {
                 idle_rpm: 800.0,
                 max_rpm: 7000.0,

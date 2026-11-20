@@ -6,7 +6,7 @@ use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
     differential_kind, native_input_flags, transmission_kind, vehicle_flags, vehicle_report_flags,
     wheel_flags, wheel_report_flags, AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc,
-    EngineDesc, SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc,
+    EnergyDesc, EngineDesc, SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc,
     VehicleInput, WheelDesc,
 };
 use ax_physics::{
@@ -106,6 +106,7 @@ fn roue() -> WheelDesc {
 fn description(roues: usize) -> VehicleDesc {
     VehicleDesc {
         flags: 0,
+        energy: EnergyDesc::NONE,
         engine: EngineDesc {
             idle_rpm: 800.0,
             max_rpm: 7000.0,
@@ -1781,4 +1782,205 @@ fn adr176_d1_l_etat_du_moteur_et_le_contact_passent_dans_le_bloc_d_etat() {
     avancer(&mut world, 1.0);
     assert!(world.restore_vehicle(ASSEMBLY, &etat));
     assert_eq!(world.vehicle_snapshot(ASSEMBLY), Some(etat));
+}
+
+/// La berline à démarreur avec un petit réservoir (0,5 l) et une batterie (ADR-176 D3) : 36 l/h à vide, 360 l/h à pleine
+/// charge, à régime maximal.
+fn berline_a_reservoir() -> VehicleDesc {
+    let mut d = berline_a_demarreur(0.2);
+    d.energy = EnergyDesc {
+        fuel_capacity: 0.5,
+        unit_mass: 0.75,
+        battery_capacity: 1.0,
+        starter_draw: 0.02,
+        charge_rate: 0.002,
+        consumption: vec![[0.0, 36.0], [1.0, 360.0]],
+    };
+    d
+}
+
+/// Pose l'énergie d'un véhicule : le test fait ce que `SET_ENERGY` fera.
+fn poser_l_energie(world: &mut PhysicsWorld, fuel: f64, battery: f64) {
+    let mut etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    etat.energy.fuel = fuel;
+    etat.energy.battery = battery;
+    assert!(world.restore_vehicle(ASSEMBLY, &etat));
+}
+
+#[test]
+fn adr176_d3_un_vehicule_neuf_a_son_reservoir_plein_et_le_brule_en_roulant() {
+    let (mut world, v) = sur_le_plat(berline_a_reservoir(), [200.0, 200.0], 1.0);
+    let neuf = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert_eq!(neuf.energy.fuel, 0.5f32 as f64);
+    assert_eq!(neuf.energy.battery, 1.0);
+    conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), true));
+    avancer(&mut world, 3.0);
+    let apres = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(apres.engine.running(), "il roule : {apres:?}");
+    assert!(
+        apres.energy.fuel < neuf.energy.fuel && apres.energy.fuel > 0.0,
+        "il a brûlé un peu : {} litre",
+        apres.energy.fuel
+    );
+    assert!(
+        apres.energy.battery > 0.99 && apres.energy.battery <= 1.0,
+        "le démarreur a tiré 0,004, le moteur l'a rendu : {}",
+        apres.energy.battery
+    );
+    assert!(vers_l_avant(&world, v) > 3.0);
+}
+
+#[test]
+fn adr176_d3_le_reservoir_vide_arrete_le_moteur_et_il_ne_repart_pas_sans_nouveau_front() {
+    let (mut world, _) = sur_le_plat(berline_a_reservoir(), [2000.0, 2000.0], 1.0);
+    conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), true));
+    for _ in 0..60 {
+        avancer(&mut world, 1.0);
+        if !world
+            .vehicle_snapshot(ASSEMBLY)
+            .expect("véhicule")
+            .engine
+            .running()
+        {
+            break;
+        }
+    }
+    let panne = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(!panne.engine.running(), "panne sèche : {panne:?}");
+    assert_eq!(panne.energy.fuel, 0.0);
+    assert_eq!(panne.load, 0.0, "plus de charge moteur");
+    // On remplit, contact toujours mis : pas de front, pas de démarrage.
+    poser_l_energie(&mut world, 0.5, 1.0);
+    avancer(&mut world, 1.0);
+    assert!(
+        !world
+            .vehicle_snapshot(ASSEMBLY)
+            .expect("véhicule")
+            .engine
+            .running(),
+        "plein fait, contact tenu : il reste arrêté"
+    );
+    // Le contact coupé puis remis relance le démarreur.
+    conduire(&mut world, avec_contact(entree(0.0, 0.0, 0.0), false));
+    avancer(&mut world, 0.2);
+    conduire(&mut world, avec_contact(entree(0.0, 0.0, 0.0), true));
+    avancer(&mut world, 1.0);
+    assert!(
+        world
+            .vehicle_snapshot(ASSEMBLY)
+            .expect("véhicule")
+            .engine
+            .running(),
+        "un nouveau front le relance"
+    );
+}
+
+#[test]
+fn adr176_d3_sans_carburant_ou_sans_batterie_le_demarreur_ne_part_pas() {
+    for (fuel, battery) in [(0.0, 1.0), (0.5, 0.0)] {
+        let (mut world, _) = sur_le_plat(berline_a_reservoir(), [100.0, 100.0], 1.0);
+        poser_l_energie(&mut world, fuel, battery);
+        conduire(&mut world, avec_contact(entree(0.0, 0.0, 0.0), true));
+        avancer(&mut world, 1.0);
+        let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+        assert!(
+            !etat.engine.running() && !etat.engine.cranking(),
+            "carburant {fuel}, batterie {battery} : {etat:?}"
+        );
+        assert_eq!(
+            etat.energy.battery, battery,
+            "un démarreur qui ne part pas ne tire rien"
+        );
+    }
+}
+
+#[test]
+fn adr176_d3_un_vehicule_endormi_ne_brule_rien() {
+    let (mut world, _) = sur_le_plat(berline_a_reservoir(), [100.0, 100.0], 1.0);
+    conduire(&mut world, avec_contact(VehicleInput::NONE, true));
+    avancer(&mut world, 1.0);
+    // Le moteur tourne au ralenti ; sans autre commande, le véhicule finit par s'endormir.
+    avancer(&mut world, 10.0);
+    assert!(world.vehicle_reports().is_empty(), "il dort");
+    let avant = world.vehicle_snapshot(ASSEMBLY).expect("véhicule").energy;
+    avancer(&mut world, 10.0);
+    assert_eq!(
+        world.vehicle_snapshot(ASSEMBLY).expect("véhicule").energy,
+        avant,
+        "endormi, il ne brûle rien (la combustion suit l'éveil)"
+    );
+}
+
+#[test]
+fn adr176_d3_la_consommation_est_deterministe_au_bit_pres() {
+    let course = || {
+        let (mut world, _) = sur_le_plat(berline_a_reservoir(), [200.0, 200.0], 1.0);
+        conduire(&mut world, avec_contact(entree(0.8, 0.0, 0.1), true));
+        avancer(&mut world, 4.0);
+        world.vehicle_snapshot(ASSEMBLY).expect("véhicule").energy
+    };
+    let (a, b) = (course(), course());
+    assert_eq!(a.fuel.to_bits(), b.fuel.to_bits());
+    assert_eq!(a.battery.to_bits(), b.battery.to_bits());
+}
+
+#[test]
+fn adr176_d3_l_energie_se_relit_dans_le_bloc_d_etat_et_reste_dans_les_capacites() {
+    let (mut world, _) = sur_le_plat(berline_a_reservoir(), [100.0, 100.0], 1.0);
+    conduire(&mut world, avec_contact(entree(0.3, 0.0, 0.0), true));
+    avancer(&mut world, 2.0);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    let bloc = ax_physics::state::AssemblyState {
+        bodies: Vec::new(),
+        joints: Vec::new(),
+        vehicle: Some(etat.clone()),
+    };
+    let octets = bloc.encode();
+    let relu = ax_physics::state::AssemblyState::decode(&octets).expect("lisible");
+    assert_eq!(
+        relu.vehicle.as_ref(),
+        Some(&etat),
+        "carburant et batterie se relisent"
+    );
+    // Un état relu qui dépasse les capacités y est ramené.
+    poser_l_energie(&mut world, 1e6, 1e6);
+    let borne = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert_eq!(borne.energy.fuel, 0.5f32 as f64);
+    assert_eq!(borne.energy.battery, 1.0);
+}
+
+#[test]
+fn adr176_d3_set_energy_pose_le_plein_sans_reveiller_et_garde_ce_qui_est_nan() {
+    let (mut world, _) = sur_le_plat(berline_a_reservoir(), [100.0, 100.0], 1.0);
+    avancer(&mut world, 3.0);
+    assert!(world.vehicle_reports().is_empty(), "il dort");
+    assert!(world.set_vehicle_energy(ASSEMBLY, 0.25, f32::NAN));
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert_eq!(etat.energy.fuel, 0.25);
+    assert_eq!(etat.energy.battery, 1.0, "NaN garde la batterie");
+    assert!(
+        world.vehicle_reports().is_empty(),
+        "un plein ne réveille pas"
+    );
+    assert!(world.set_vehicle_energy(ASSEMBLY, 99.0, -3.0));
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert_eq!(etat.energy.fuel, 0.5f32 as f64, "ramené à la capacité");
+    assert_eq!(etat.energy.battery, 0.0, "ramené à zéro");
+    assert!(
+        !monde().set_vehicle_energy(ASSEMBLY, 1.0, 1.0),
+        "pas de véhicule"
+    );
+}
+
+#[test]
+fn adr176_d3_le_rapport_porte_le_carburant_et_la_batterie() {
+    let (mut world, _) = sur_le_plat(berline_a_reservoir(), [100.0, 100.0], 1.0);
+    conduire(&mut world, avec_contact(entree(0.5, 0.0, 0.0), true));
+    avancer(&mut world, 1.0);
+    let rapports = world.vehicle_reports();
+    assert_eq!(rapports.len(), 1);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert_eq!(rapports[0].fuel, etat.energy.fuel as f32);
+    assert_eq!(rapports[0].battery, etat.energy.battery as f32);
+    assert!(rapports[0].fuel > 0.0 && rapports[0].fuel < 0.5);
 }

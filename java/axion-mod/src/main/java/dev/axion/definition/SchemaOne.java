@@ -179,6 +179,21 @@ final class SchemaOne {
                     new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(version), Variables.MAX));
         }
         if (version >= 7) {
+            // ADR-176 D3 : l'énergie d'un véhicule, un réservoir et une batterie ; la cohérence (un réservoir déclare sa
+            // consommation, une batterie exige un démarreur, la masse par litre exige physics.mass) se juge ensemble
+            // (VehicleSpec.checkEnergy).
+            root.opt("energy", obj()
+                    .opt("fuel", obj()
+                            .req("capacity", number())
+                            .opt("unit_mass", number())
+                            .opt("consumption", curve())
+                            .build())
+                    .opt("battery", obj()
+                            .req("capacity", number())
+                            .opt("starter_draw", number())
+                            .opt("charge_rate", number())
+                            .build())
+                    .build());
             // ADR-175 D3 : la révision, ce qui mène une sauvegarde d'une révision à la suivante, et les identifiants que
             // la definition remplace ; la cohérence des révisions se juge ensemble (DefinitionChecker.checkRevisions).
             root.opt("revision", new Num(1, 1_000_000, false, true));

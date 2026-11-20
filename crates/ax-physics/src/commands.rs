@@ -14,9 +14,9 @@ use ax_model::dm::attachments::{Attach, Detach, SetAttachmentLength};
 use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, opcode, sim_mode, vehicle_input_flags, ApplyForce,
     AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly,
-    RemoveWorldTile, SetAssemblyPose, SetAssemblyState, SetDimensionEnv, SetEntityProxies,
-    SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSensor, SetSimMode,
-    SetStateExport, SetVehicleInput, SetWheelTorques, SetWorldCollision, SetWorldFluid,
+    RemoveWorldTile, SetAssemblyPose, SetAssemblyState, SetDimensionEnv, SetEnergy,
+    SetEntityProxies, SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSensor,
+    SetSimMode, SetStateExport, SetVehicleInput, SetWheelTorques, SetWorldCollision, SetWorldFluid,
     SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
@@ -374,6 +374,16 @@ fn apply_one(
         opcode::SET_ATTACHMENT_LENGTH => {
             expect_len(payload, SetAttachmentLength::BYTES)?;
             driver.apply_set_attachment_length(read_u32(payload, 0), read_f32(payload, 4));
+            outcome.applied += 1;
+        }
+        // ADR-176 D3 : le carburant et la batterie d'un véhicule ; NaN garde la valeur, rien ne réveille.
+        opcode::SET_ENERGY => {
+            expect_len(payload, SetEnergy::BYTES)?;
+            driver.apply_set_energy(
+                read_handle(payload, 0),
+                read_f32(payload, 8),
+                read_f32(payload, 12),
+            );
             outcome.applied += 1;
         }
         // ADR-174 D5 : un capteur déclaré, posé sur un corps de l'assembly.

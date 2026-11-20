@@ -794,8 +794,8 @@ mod tests {
     /// Un véhicule d'une roue à la référence `node`.
     fn vehicule(node: u32) -> VehicleDesc {
         use ax_model::dm::vehicle::{
-            AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc, EngineDesc, SteeringDesc,
-            SuspensionDesc, TireCurve, TransmissionDesc, WheelDesc,
+            AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc, EnergyDesc, EngineDesc,
+            SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, WheelDesc,
         };
         let courbe = TireCurve {
             peak_slip: 0.12,
@@ -805,6 +805,7 @@ mod tests {
         };
         VehicleDesc {
             flags: 0,
+            energy: EnergyDesc::NONE,
             engine: EngineDesc {
                 idle_rpm: 800.0,
                 max_rpm: 7000.0,

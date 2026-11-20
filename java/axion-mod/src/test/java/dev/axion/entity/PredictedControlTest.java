@@ -25,7 +25,7 @@ class PredictedControlTest {
     /** Un bloc de véhicule à un corps, sans joint, deux roues ; le moteur à 300 rad/s, en deuxième. */
     static byte[] bloc(boolean vehicule) {
         int roues = vehicule ? 2 : 0;
-        ByteBuffer b = ByteBuffer.allocate(16 + 64 + (vehicule ? 56 + roues * 32 : 0)).order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + (vehicule ? 72 + roues * 32 : 0)).order(ByteOrder.LITTLE_ENDIAN);
         b.putShort((short) 1).putShort((short) (vehicule ? 1 : 0)).putShort((short) 1).putShort((short) 0)
                 .putShort((short) roues);
         b.position(16);
@@ -44,6 +44,8 @@ class PredictedControlTest {
                 b.putFloat(0f);
             }
             b.putInt(0);
+            // ADR-176 D3 : le carburant et la batterie, deux f64.
+            b.putDouble(0).putDouble(0);
             for (int i = 0; i < roues; i++) {
                 b.putFloat(40f + i).putFloat(0.25f).putFloat(0.1f * i).putFloat(3000f).putFloat(0.05f).putFloat(0.02f)
                         .putFloat(-7f * i).put((byte) (i == 0 ? 1 : 0)).put(new byte[3]);

@@ -913,4 +913,55 @@ class DefinitionSchemaTest {
         assertEquals("$.powertrain.engine.starter", assertThrows(DefinitionException.class, () -> read(six)).path(),
                 "le démarreur n'existe qu'au schéma 7");
     }
+
+    /** La definition de test à réservoir : le véhicule à démarreur, avec une batterie et 40 litres. */
+    private static JsonObject avecReservoir() {
+        try {
+            Path racine = Path.of(System.getProperty("axion.crates.dir")).getParent();
+            JsonObject root = JsonParser.parseString(Files.readString(
+                    racine.resolve("content/test/axion/definitions/test/vehicule_reservoir.json"),
+                    StandardCharsets.UTF_8)).getAsJsonObject();
+            root.addProperty("asset", "mymod:models/pickup.glb");
+            return root;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Test
+    @DisplayName("ADR-176 D3 : au schéma 7, l'énergie déclare un réservoir et une batterie, et se juge ensemble")
+    void l_energieDUnVehicule() {
+        assertDoesNotThrow(() -> read(avecReservoir()));
+
+        JsonObject sansMoteur = avecReservoir();
+        sansMoteur.remove("powertrain");
+        assertThrows(DefinitionException.class, () -> read(sansMoteur), "l'énergie nourrit un motopropulseur");
+
+        JsonObject sansDemarreur = avecReservoir();
+        at(sansDemarreur, "powertrain", "engine").remove("starter");
+        assertEquals("$.energy.battery", assertThrows(DefinitionException.class, () -> read(sansDemarreur)).path(),
+                "une batterie nourrit le démarreur");
+
+        JsonObject sansMasse = avecReservoir();
+        at(sansMasse, "physics").remove("mass");
+        assertEquals("$.energy.fuel.unit_mass", assertThrows(DefinitionException.class, () -> read(sansMasse)).path(),
+                "la masse par litre exige la masse à sec");
+
+        JsonObject sansCourbe = avecReservoir();
+        at(sansCourbe, "energy", "fuel").remove("consumption");
+        assertEquals("$.energy.fuel.consumption", assertThrows(DefinitionException.class, () -> read(sansCourbe)).path());
+
+        JsonObject desordre = avecReservoir();
+        at(desordre, "energy", "fuel").add("consumption", JsonParser.parseString("[[0.5, 1], [0.5, 2]]"));
+        assertEquals("$.energy.fuel.consumption[1]",
+                assertThrows(DefinitionException.class, () -> read(desordre)).path(), "charges strictement croissantes");
+
+        JsonObject vide = avecReservoir();
+        at(vide, "energy", "fuel").addProperty("capacity", 0);
+        assertEquals("$.energy.fuel.capacity", assertThrows(DefinitionException.class, () -> read(vide)).path());
+
+        JsonObject six = avecReservoir();
+        six.addProperty("schema", 6);
+        assertThrows(DefinitionException.class, () -> read(six), "l'énergie n'existe qu'au schéma 7");
+    }
 }

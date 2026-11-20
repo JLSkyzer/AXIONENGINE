@@ -12,9 +12,10 @@ import java.nio.ByteOrder;
  * en-tête   16 o : version u16 | drapeaux u16 (1 : véhicule) | corps u16 | joints u16 | roues u16 | 6 o à zéro
  * corps     64 o : position monde f64×3 | rotation f32×4 | vitesse f32×3 | vitesse angulaire f32×3
  * joint      8 o : rompu u8 | 7 o à zéro
- * véhicule  56 o : entrée f32×5 | rapport demandé i8 | drapeaux u8 | conducteur u8 | contact natif u8 | moteur rad/s f32
+ * véhicule  72 o : entrée f32×5 | rapport demandé i8 | drapeaux u8 | conducteur u8 | contact natif u8 | moteur rad/s f32
  *                  | rapport engagé i8 | visé i8 | phase du moteur u8 | contact du pas précédent u8 | changement f32
  *                  | maintien f32 | direction f32 | patinage f32 | charge f32 | temps restant au démarreur f32
+ *                  | carburant f64 | batterie f64 (ADR-176 D3)
  *                  (ADR-176 D1 : ces trois octets et ces quatre octets étaient du remplissage à zéro ; Java ne les lit pas)
  * roue      32 o : rotation f32 | compression f32 | braquage f32 | charge f32 | glissement long f32 | latéral f32
  *                  | couple posé f32 | au sol u8 | 3 o
@@ -25,7 +26,7 @@ public final class AssemblyStateView {
     private static final int HEADER_BYTES = 16;
     private static final int BODY_BYTES = 64;
     private static final int JOINT_BYTES = 8;
-    private static final int VEHICLE_BYTES = 56;
+    private static final int VEHICLE_BYTES = 72;
     private static final int WHEEL_BYTES = 32;
     private static final int FLAGS_OFFSET = 2;
     private static final int BODIES_OFFSET = 4;
@@ -63,9 +64,11 @@ public final class AssemblyStateView {
      *
      * @param rpm régime du moteur, en tr/min, calculé comme le natif le rapporte
      * @param gear rapport engagé
+     * @param fuel carburant restant, en litres (ADR-176 D3)
+     * @param battery charge restante de la batterie (ADR-176 D3)
      * @param wheels ses roues, dans l'ordre de la definition
      */
-    public record Vehicle(float rpm, int gear, java.util.List<Wheel> wheels) {}
+    public record Vehicle(float rpm, int gear, double fuel, double battery, java.util.List<Wheel> wheels) {}
 
     /**
      * {@return le corps racine d'un bloc, {@code null} s'il est tronqué ou sans corps}
@@ -111,7 +114,7 @@ public final class AssemblyStateView {
             list.add(new Wheel(b.getFloat(w), b.getFloat(w + 4), b.getFloat(w + 8), b.getFloat(w + 16),
                     b.getFloat(w + 20), b.getFloat(w + 24), b.get(w + 28) != 0));
         }
-        return new Vehicle(rpm, gear, java.util.List.copyOf(list));
+        return new Vehicle(rpm, gear, b.getDouble(at + 56), b.getDouble(at + 64), java.util.List.copyOf(list));
     }
 
     /**

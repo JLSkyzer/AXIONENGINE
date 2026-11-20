@@ -1,6 +1,6 @@
 # Index du cahier des charges AXION ENGINE
 
-Genere par `tools/spec/spec_index.py`. Source : `docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8622 lignes).
+Genere par `tools/spec/spec_index.py`. Source : `docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8623 lignes).
 
 Le CDC est **gele (FROZEN)** et constitue la source de verite unique.
 Il ne doit jamais etre lu en entier : lire la plage de lignes de la
@@ -187,292 +187,292 @@ grep -P '^C-42	' docs/spec/ID-MAP.tsv
 | `3126,3181p` | 56 | &nbsp;&nbsp;&nbsp;&nbsp;11.3 Sémantique normative des paramètres de déformation |
 | `3182,3200p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;11.4 Mappage bloc → matériau |
 | `3201,3253p` | 53 | &nbsp;&nbsp;&nbsp;&nbsp;11.5 Cohérence dimensionnelle (référence normative) |
-| `3254,3438p` | 185 | PARTIE 12 : VÉHICULES |
+| `3254,3439p` | 186 | PARTIE 12 : VÉHICULES |
 | `3256,3259p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;12.1 Positionnement |
 | `3260,3285p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;12.2 Modèle de roue |
 | `3286,3298p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;12.3 Suspension |
 | `3299,3315p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;12.4 Modèle de pneu |
-| `3316,3340p` | 25 | &nbsp;&nbsp;&nbsp;&nbsp;12.5 Groupe motopropulseur |
-| `3341,3354p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;12.6 Direction et freinage |
-| `3355,3364p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;12.7 Aérodynamique |
-| `3365,3376p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;12.8 Entrées |
-| `3377,3395p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;12.9 Tests véhicules |
-| `3396,3438p` | 43 | &nbsp;&nbsp;&nbsp;&nbsp;12.10 Vues et tableau de bord |
-| `3439,3649p` | 211 | PARTIE 13 : IMPACTS, ÉNERGIE ET MODÈLE DE DOMMAGE |
-| `3441,3450p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;13.1 Principe |
-| `3451,3479p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;13.2 Sources d'impact |
-| `3480,3517p` | 38 | &nbsp;&nbsp;&nbsp;&nbsp;13.3 Distribution de l'énergie (C-35) |
-| `3518,3576p` | 59 | &nbsp;&nbsp;&nbsp;&nbsp;13.3bis Modèle d'indentation plastique (référence normative) |
-| `3577,3595p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;13.4 Effets fonctionnels |
-| `3596,3600p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;13.5 Dommage continu |
-| `3601,3611p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;13.6 Budgets et dégradation |
-| `3612,3649p` | 38 | &nbsp;&nbsp;&nbsp;&nbsp;13.7 Tests |
-| `3650,4029p` | 380 | PARTIE 14 : DÉFORMATION CONTINUE DE GÉOMÉTRIE |
-| `3654,3671p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;14.1 Évaluation des approches |
-| `3672,3698p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;14.2 Modèle mathématique |
-| `3699,3714p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;14.3 Composantes du champ |
-| `3715,3766p` | 52 | &nbsp;&nbsp;&nbsp;&nbsp;14.4 Application d'un impact (noyau déterministe) |
-| `3767,3781p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;14.5 Niveaux de qualité de déformation |
-| `3782,3829p` | 48 | &nbsp;&nbsp;&nbsp;&nbsp;14.6 Pipeline de rendu de la déformation (C-68) |
-| `3830,3843p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;14.7 LOD de déformation |
-| `3844,3860p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;14.8 Compléments déclaratifs |
-| `3861,3903p` | 43 | &nbsp;&nbsp;&nbsp;&nbsp;14.9 Déformation et collision (C-45) |
-| `3904,3910p` | 7 | &nbsp;&nbsp;&nbsp;&nbsp;14.10 Déchirure |
-| `3911,3930p` | 20 | &nbsp;&nbsp;&nbsp;&nbsp;14.11 Budgets, mémoire et performance |
-| `3931,3958p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;14.11bis Modèle de coût : portée exacte des garanties |
-| `3959,3964p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22) |
-| `3965,4007p` | 43 | &nbsp;&nbsp;&nbsp;&nbsp;14.13 Tests |
-| `4008,4029p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;14.14 Acceptance de la PARTIE 14 |
-| `4030,4235p` | 206 | PARTIE 15 : INTÉGRITÉ STRUCTURELLE, RUPTURE, DÉTACHEMENT, DÉBRIS |
-| `4032,4050p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;15.1 Modèle |
-| `4051,4105p` | 55 | &nbsp;&nbsp;&nbsp;&nbsp;15.1bis Estimation de l'aire de liaison (référence normative) |
-| `4106,4134p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;15.2 Propagation de l'énergie structurelle (C-43) |
-| `4135,4174p` | 40 | &nbsp;&nbsp;&nbsp;&nbsp;15.3 Rupture et détachement (C-44) |
-| `4175,4191p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;15.4 Débris |
-| `4192,4197p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;15.5 Effets sur les mécanismes |
-| `4198,4207p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;15.6 Budgets |
-| `4208,4235p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;15.7 Tests |
-| `4236,4317p` | 82 | PARTIE 16 : RÉPARATION, RESTAURATION ET REMPLACEMENT |
-| `4238,4248p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;16.1 Niveaux de réparation |
-| `4249,4263p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;16.2 Restauration du champ de déformation |
-| `4264,4286p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;16.3 Règles data-driven |
-| `4287,4317p` | 31 | &nbsp;&nbsp;&nbsp;&nbsp;16.4 Remplacement de part |
-| `4318,4517p` | 200 | PARTIE 17 : SOLVEUR DE PARTICULES — TISSU, CORDES, CÂBLES, FILETS, CORPS SOUPLES |
-| `4320,4323p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;17.1 Positionnement |
-| `4324,4339p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;17.2 Modes d'autorité |
-| `4340,4411p` | 72 | &nbsp;&nbsp;&nbsp;&nbsp;17.2bis Autorité et reconstruction visuelle (référence normative) |
-| `4412,4434p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;17.3 Solveur |
-| `4435,4446p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;17.4 Limites et budgets |
-| `4447,4471p` | 25 | &nbsp;&nbsp;&nbsp;&nbsp;17.5 Définition |
-| `4472,4477p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;17.6 Cordes et câbles physiques |
-| `4478,4482p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;17.7 Interaction avec la déformation |
-| `4483,4517p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;17.8 Tests |
-| `4518,4649p` | 132 | PARTIE 18 : ANIMATION ET COUPLAGE ANIMATION / PHYSIQUE / DÉGÂTS |
-| `4520,4532p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;18.1 Types d'animation |
-| `4533,4545p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;18.2 Échantillonnage et blending |
-| `4546,4564p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;18.3 Animation procédurale déclarative |
-| `4565,4570p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;18.4 Palettes de skinning et ordre d'application |
-| `4571,4620p` | 50 | &nbsp;&nbsp;&nbsp;&nbsp;18.5 Couplage animation / physique / dégâts (scénario normatif de la porte) |
-| `4621,4624p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;18.6 Root motion |
-| `4625,4649p` | 25 | &nbsp;&nbsp;&nbsp;&nbsp;18.7 Tests |
-| `4650,4982p` | 333 | PARTIE 19 : RENDU |
-| `4652,4672p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;19.1 Ce qui est réellement contrôlable depuis un mod Forge 1.20.1 |
-| `4673,4694p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;19.2 Les deux backends |
-| `4695,4738p` | 44 | &nbsp;&nbsp;&nbsp;&nbsp;19.2bis Portée de l'équivalence entre backends (référence normative) |
-| `4739,4747p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;19.3 Gestion d'état OpenGL (règle critique) |
-| `4748,4771p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;19.4 Format de vertex GPU et attributs d'instance |
-| `4772,4820p` | 49 | &nbsp;&nbsp;&nbsp;&nbsp;19.5 Modèle d'éclairage : PBR avec environnement synthétisé |
-| `4821,4829p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;19.6 Déformation dans le pipeline de rendu |
-| `4830,4852p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;19.7 Occlusion culling logiciel (C-82) |
-| `4853,4877p` | 25 | &nbsp;&nbsp;&nbsp;&nbsp;19.8 Ombres AXION (C-80) |
-| `4878,4890p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;19.9 Effets intégrés (C-83) |
-| `4891,4904p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;19.10 Passes de rendu |
-| `4905,4909p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;19.11 Transparence |
-| `4910,4928p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;19.12 Budgets de rendu et dégradation |
-| `4929,4982p` | 54 | &nbsp;&nbsp;&nbsp;&nbsp;19.13 Tests de rendu |
-| `4983,5051p` | 69 | PARTIE 20 : MATÉRIAUX DE RENDU, DÉCALQUES, USURE ET ÉTATS DE SURFACE |
-| `4985,5004p` | 20 | &nbsp;&nbsp;&nbsp;&nbsp;20.1 États visuels |
-| `5005,5023p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;20.2 Décalques (C-69) |
-| `5024,5038p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;20.3 Profils d'usure |
-| `5039,5051p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;20.4 Budgets |
-| `5052,5266p` | 215 | PARTIE 21 : CLIENT / SERVEUR ET NETWORKING |
-| `5054,5068p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;21.1 Modèle d'autorité |
-| `5069,5078p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;21.2 Canal et protocole |
-| `5079,5101p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;21.3 Handshake |
-| `5102,5125p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;21.4 Paquets |
-| `5126,5164p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;21.5 Snapshots, quantification, delta |
-| `5165,5204p` | 40 | &nbsp;&nbsp;&nbsp;&nbsp;21.6 Réplication de la déformation (mécanisme central) |
-| `5205,5214p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;21.7 Interpolation client |
-| `5215,5222p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;21.8 Prédiction et réconciliation |
-| `5223,5229p` | 7 | &nbsp;&nbsp;&nbsp;&nbsp;21.9 Sécurité réseau |
-| `5230,5239p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;21.10 Budgets réseau |
-| `5240,5266p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;21.11 Tests |
-| `5267,5450p` | 184 | PARTIE 22 : PERSISTANCE |
-| `5269,5294p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;22.1 Ce qui est persisté |
-| `5295,5333p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;22.2 Format NBT |
-| `5334,5346p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;22.3 Sérialisation du champ de déformation |
-| `5347,5358p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;22.4 Chargement et déchargement de chunk |
-| `5359,5420p` | 62 | &nbsp;&nbsp;&nbsp;&nbsp;22.5 Compatibilité de sauvegarde et retrait du mod |
-| `5361,5369p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;22.5.1 Constat technique |
-| `5370,5390p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;22.5.2 Journal latéral (side-car) |
-| `5391,5420p` | 30 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;22.5.3 Matrice de comportement (normative) |
-| `5421,5450p` | 30 | &nbsp;&nbsp;&nbsp;&nbsp;22.6 Tests |
-| `5451,5739p` | 289 | PARTIE 23 : API PUBLIQUE ET CONTENU DATA-DRIVEN |
-| `5453,5463p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;23.1 Principes |
-| `5464,5594p` | 131 | &nbsp;&nbsp;&nbsp;&nbsp;23.2 Surface de l'API |
-| `5595,5623p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;23.3 Points d'extension |
-| `5624,5724p` | 101 | &nbsp;&nbsp;&nbsp;&nbsp;23.4 Schéma de Definition (normatif) |
-| `5725,5739p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;23.5 Contenu de démonstration |
-| `5740,5806p` | 67 | PARTIE 24 : MODULARITÉ, NIVEAUX DE QUALITÉ ET CONFIGURATION |
-| `5742,5768p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;24.1 Modules |
-| `5769,5787p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;24.2 Niveaux de qualité |
-| `5788,5793p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;24.3 Chargement à la demande |
-| `5794,5806p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;24.4 Fichiers de configuration |
-| `5807,5943p` | 137 | PARTIE 25 : PERFORMANCE — THREADING, BUDGETS, DÉGRADATION |
-| `5809,5814p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;25.1 Position de principe |
-| `5815,5841p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;25.2 Budgets par défaut |
-| `5842,5868p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;25.3 Techniques retenues |
-| `5869,5873p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;25.4 Double tampon et interpolation |
-| `5874,5882p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;25.5 Détection de dépassement |
-| `5883,5911p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;25.6 Machine de dégradation (SM-02) |
-| `5912,5922p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;25.7 Modes SAFE et DISABLED |
-| `5923,5927p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;25.8 Watchdog |
-| `5928,5943p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;25.9 Tests |
-| `5944,6014p` | 71 | PARTIE 26 : COMPATIBILITÉ GÉNÉRALE |
-| `5946,5951p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;26.1 Principe |
-| `5952,5964p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;26.2 Empreinte Mixin (liste fermée) |
-| `5965,5980p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;26.3 Interactions avec le vanilla |
-| `5981,5984p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;26.4 Limites documentées |
-| `5985,5999p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;26.5 Mods tiers |
-| `6000,6014p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;26.6 Tests |
-| `6015,6286p` | 272 | PARTIE 27 : COMPATIBILITÉ RUSTFORGE-X |
-| `6017,6046p` | 30 | &nbsp;&nbsp;&nbsp;&nbsp;27.0 Position fondamentale |
-| `6047,6058p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;27.1 Détection |
-| `6059,6073p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;27.2 Ce que la détection change (et ne change pas) |
-| `6074,6138p` | 65 | &nbsp;&nbsp;&nbsp;&nbsp;27.3 Coexistence : analyse des points de contact |
-| `6076,6086p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.1 Classloading |
-| `6087,6096p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.2 Instrumentation et bytecode |
-| `6097,6108p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.3 Threads et scheduler |
-| `6109,6112p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.4 Tick et événements Forge |
-| `6113,6125p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.5 Mémoire native et bibliothèques |
-| `6126,6129p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.6 Rendu |
-| `6130,6133p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.7 Réseau, monde, sauvegarde |
-| `6134,6138p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.8 Cycle de vie et arrêt |
-| `6139,6151p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;27.4 Partage du budget CPU |
-| `6152,6184p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;27.5 Bridge d'interopérabilité optionnel (C-76) |
-| `6185,6190p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;27.6 Indication de non-transformation |
-| `6191,6211p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;27.7 Comment RUSTFORGE-X pourrait optimiser AXION (sans qu'AXION en dépende) |
-| `6212,6225p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;27.8 Ce qu'AXION ne fera jamais |
-| `6226,6235p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;27.9 Fallback |
-| `6236,6286p` | 51 | &nbsp;&nbsp;&nbsp;&nbsp;27.10 Stratégie de test de coexistence |
-| `6238,6256p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.10.1 Mod de simulation (obligatoire, toujours exécuté) |
-| `6257,6260p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.10.2 Test avec l'artefact réel (obligatoire quand disponible) |
-| `6261,6286p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.10.3 Matrice |
-| `6287,6377p` | 91 | PARTIE 28 : SÉCURITÉ, STABILITÉ, CONFINEMENT |
-| `6289,6301p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;28.1 Surface d'attaque |
-| `6302,6307p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;28.2 Code `unsafe` en Rust |
-| `6308,6335p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;28.3 Limites dures |
-| `6336,6351p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;28.4 Confinement des pannes |
-| `6352,6355p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;28.5 Vie privée |
-| `6356,6359p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;28.6 Reproduction d'incident |
-| `6360,6377p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;28.7 Tests |
-| `6378,6556p` | 179 | PARTIE 29 : STRATÉGIE DE TEST |
-| `6380,6387p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;29.1 Principes |
-| `6388,6406p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;29.2 Pyramide |
-| `6407,6442p` | 36 | &nbsp;&nbsp;&nbsp;&nbsp;29.3 Tests unitaires |
-| `6443,6458p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;29.4 Tests d'intégration |
-| `6459,6484p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;29.5 Tests de gameplay et scénarios déclaratifs |
-| `6485,6518p` | 34 | &nbsp;&nbsp;&nbsp;&nbsp;29.6 Test de bout en bout obligatoire (T-970) |
-| `6519,6542p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;29.7 Tests de stress et d'endurance |
-| `6543,6556p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;29.8 Infrastructure |
-| `6557,6635p` | 79 | PARTIE 30 : BENCHMARKS |
-| `6559,6563p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;30.1 Position de principe |
-| `6564,6598p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;30.2 Ce qui est mesuré |
-| `6599,6616p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;30.3 Méthodologie normative |
-| `6617,6627p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;30.4 Format de résultat |
-| `6628,6635p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;30.5 Non-régression |
-| `6636,6686p` | 51 | PARTIE 31 : PROFILING ET DEBUGGING |
-| `6638,6650p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;31.1 Domaines profilés |
-| `6651,6657p` | 7 | &nbsp;&nbsp;&nbsp;&nbsp;31.2 Outils |
-| `6658,6663p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;31.3 Mode développeur |
-| `6664,6678p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;31.4 Overlays de debug |
-| `6679,6686p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;31.5 Reproduction |
-| `6687,6759p` | 73 | PARTIE 32 : DÉPENDANCES ET LICENCES |
-| `6689,6696p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;32.1 Licence du projet |
-| `6697,6734p` | 38 | &nbsp;&nbsp;&nbsp;&nbsp;32.2 Dépendances Rust |
-| `6735,6746p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;32.3 Dépendances Java |
-| `6747,6759p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;32.4 Outillage et SBOM |
-| `6760,6892p` | 133 | PARTIE 33 : ARBORESCENCE DU DÉPÔT |
-| `6872,6892p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;33.2 Contenu de l'artefact final |
-| `6893,7035p` | 143 | PARTIE 34 : BUILD, CI/CD, RELEASE, INSTALLATION |
-| `6895,6930p` | 36 | &nbsp;&nbsp;&nbsp;&nbsp;34.1 Chaîne de build |
-| `6931,6941p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;34.2 Plateformes |
-| `6942,6985p` | 44 | &nbsp;&nbsp;&nbsp;&nbsp;34.3 CI/CD |
-| `6986,7008p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;34.4 Versionnement et release |
-| `7009,7018p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;34.5 Installation |
-| `7019,7035p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;34.6 Test d'installation propre (obligatoire avant release) |
-| `7036,7149p` | 114 | PARTIE 35 : DÉCISIONS D'ARCHITECTURE (ADR) |
-| `7040,7042p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-001 — glTF 2.0 / GLB comme format d'échange principal |
-| `7043,7045p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-002 — Rapier3D comme moteur physique |
-| `7046,7048p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-003 — Modèle de véhicule par raycast |
-| `7049,7051p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-004 — JNI + DirectByteBuffer pour la frontière Java/Rust |
-| `7052,7054p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-005 — Autorité serveur, sans déterminisme physique inter-plateformes |
-| `7055,7057p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-006 — Rendu piloté depuis Java sur le contexte GL de Minecraft |
-| `7058,7069p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-007 — Deux backends de rendu maintenus, équivalence fonctionnelle et non pixellaire |
-| `7070,7074p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-008 — PBR avec environnement synthétisé *(révisé en révision 2)* |
-| `7075,7079p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-011 — Déformation continue par champ de lattice *(révisé en révision 2)* |
-| `7080,7083p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-012 — Solveur de particules unifié à trois modes d'autorité *(révisé)* |
-| `7084,7086p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-013 — Pas d'ECS tiers, structures SoA propres |
-| `7087,7089p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-014 — Job system dédié au-dessus de rayon, jamais le pool global |
-| `7090,7092p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-015 — Indépendance vis-à-vis de RUSTFORGE-X, compatibilité par conception |
-| `7093,7095p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-016 — Empreinte Mixin fermée et minimale |
-| `7096,7098p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-017 — Persistance du seul état non dérivable |
-| `7099,7110p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-018 — Réplication de la déformation par événements et reconstruction déterministe |
-| `7111,7115p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-019 — Refit de collider par déformation des points d'enveloppe |
-| `7116,7120p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-020 — Graphe structurel pour la rupture et le détachement |
-| `7121,7125p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-021 — Carte d'ombre dédiée aux objets AXION |
-| `7126,7130p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-022 — Occlusion culling logiciel plutôt que requêtes GPU |
-| `7131,7135p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-023 — Niveaux de qualité et gouverneur |
-| `7136,7139p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-024 — Décalques en espace objet, suivant la déformation |
-| `7140,7143p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-025 — Système d'attache entre assemblies |
-| `7144,7149p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-026 — Chemins accélérés GL 4.x optionnels sur une base GL 3.3 |
-| `7150,7313p` | 164 | PARTIE 36 : PÉRIMÈTRE V1.0 / V1.x / HORS PÉRIMÈTRE |
-| `7152,7239p` | 88 | &nbsp;&nbsp;&nbsp;&nbsp;36.1 V1.0 — obligatoire |
-| `7240,7257p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;36.2 V1.x — extensions futures |
-| `7258,7276p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;36.3 Hors périmètre — exclu de la V1 |
-| `7277,7313p` | 37 | &nbsp;&nbsp;&nbsp;&nbsp;36.4 Audit des limitations de la révision 1 |
-| `7314,7557p` | 244 | PARTIE 37 : JALONS ET DEFINITION OF DONE |
-| `7316,7323p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;37.1 Règles |
-| `7324,7500p` | 177 | &nbsp;&nbsp;&nbsp;&nbsp;37.2 Jalons |
-| `7326,7335p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M0 — Squelette et frontière native |
-| `7336,7346p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M1 — Assets, noyau déterministe, jobs |
-| `7347,7356p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M2 — Scene graph, cache, optimizer, entité, API |
-| `7357,7366p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M3 — Physique et premier rendu |
-| `7367,7376p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M4 — Réseau, animation, culling/LOD, joints, persistance |
-| `7377,7388p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M5 — Véhicules, sièges, attaches, gouverneur, overlay |
-| `7389,7400p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M5b — Véhicules hors roues (amendement A5) |
-| `7401,7420p` | 20 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M6 — Impacts et déformation continue *(jalon central)* |
-| `7421,7430p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M7 — Structure, rupture, détachement, réparation |
-| `7431,7439p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M8 — Particules unifiées |
-| `7440,7451p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M9 — Rendu avancé |
-| `7452,7459p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M10 — Blocs, items, bout en bout |
-| `7460,7468p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M11 — Compatibilité, coexistence, durcissement |
-| `7469,7480p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M12 — Optimisation client et serveur (amendement A22) |
-| `7481,7492p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M13 — Espace (amendement A22) |
-| `7493,7500p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M14 — Release 1.0.0 |
-| `7501,7547p` | 47 | &nbsp;&nbsp;&nbsp;&nbsp;37.3 Definition of Done |
-| `7548,7557p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;37.4 Sévérités |
-| `7558,7982p` | 425 | PARTIE 38 : CRITÈRES D'ACCEPTATION ET AUDIT FINAL |
-| `7560,7650p` | 91 | &nbsp;&nbsp;&nbsp;&nbsp;38.1 Checklist principale de la V1.0 |
-| `7651,7674p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;38.2 Critères de correction (bloquants) — identifiants `AC-xx` |
-| `7675,7691p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;38.3 Critères de performance — identifiants `PF-xx` |
-| `7692,7708p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;38.4 Critères d'extensibilité — identifiants `EX-xx` |
-| `7709,7753p` | 45 | &nbsp;&nbsp;&nbsp;&nbsp;38.5 Audit final obligatoire — résultats |
-| `7754,7799p` | 46 | &nbsp;&nbsp;&nbsp;&nbsp;38.6 Contradictions détectées et résolutions |
-| `7800,7834p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;38.7 Registre des changements de la révision 2 |
-| `7835,7941p` | 107 | &nbsp;&nbsp;&nbsp;&nbsp;38.8 Registre des corrections de la révision 2.1 |
-| `7840,7853p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Problèmes corrigés |
-| `7854,7867p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Sections ajoutées |
-| `7868,7876p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Équations modifiées |
-| `7877,7888p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Exigences ajoutées ou modifiées |
-| `7889,7896p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Invariants modifiés |
-| `7897,7915p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Tests ajoutés |
-| `7916,7923p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ADR modifiés |
-| `7924,7941p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Vérification de non-régression |
-| `7942,7982p` | 41 | &nbsp;&nbsp;&nbsp;&nbsp;38.9 Registre des amendements postérieurs au gel |
-| `7983,8470p` | 488 | ANNEXES |
-| `7985,8033p` | 49 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.1 — Codes d'erreur |
-| `8034,8061p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.2 — Index des invariants |
-| `8062,8298p` | 237 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.3 — Configuration complète (référence normative) |
-| `8299,8333p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9) |
-| `8334,8356p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
-| `8357,8378p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
-| `8379,8470p` | 92 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160) |
-| `8471,8622p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
-| `8473,8495p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
-| `8496,8511p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
-| `8512,8550p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
-| `8551,8569p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
-| `8570,8575p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
-| `8576,8589p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
-| `8590,8622p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |
+| `3316,3341p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;12.5 Groupe motopropulseur |
+| `3342,3355p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;12.6 Direction et freinage |
+| `3356,3365p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;12.7 Aérodynamique |
+| `3366,3377p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;12.8 Entrées |
+| `3378,3396p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;12.9 Tests véhicules |
+| `3397,3439p` | 43 | &nbsp;&nbsp;&nbsp;&nbsp;12.10 Vues et tableau de bord |
+| `3440,3650p` | 211 | PARTIE 13 : IMPACTS, ÉNERGIE ET MODÈLE DE DOMMAGE |
+| `3442,3451p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;13.1 Principe |
+| `3452,3480p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;13.2 Sources d'impact |
+| `3481,3518p` | 38 | &nbsp;&nbsp;&nbsp;&nbsp;13.3 Distribution de l'énergie (C-35) |
+| `3519,3577p` | 59 | &nbsp;&nbsp;&nbsp;&nbsp;13.3bis Modèle d'indentation plastique (référence normative) |
+| `3578,3596p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;13.4 Effets fonctionnels |
+| `3597,3601p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;13.5 Dommage continu |
+| `3602,3612p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;13.6 Budgets et dégradation |
+| `3613,3650p` | 38 | &nbsp;&nbsp;&nbsp;&nbsp;13.7 Tests |
+| `3651,4030p` | 380 | PARTIE 14 : DÉFORMATION CONTINUE DE GÉOMÉTRIE |
+| `3655,3672p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;14.1 Évaluation des approches |
+| `3673,3699p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;14.2 Modèle mathématique |
+| `3700,3715p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;14.3 Composantes du champ |
+| `3716,3767p` | 52 | &nbsp;&nbsp;&nbsp;&nbsp;14.4 Application d'un impact (noyau déterministe) |
+| `3768,3782p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;14.5 Niveaux de qualité de déformation |
+| `3783,3830p` | 48 | &nbsp;&nbsp;&nbsp;&nbsp;14.6 Pipeline de rendu de la déformation (C-68) |
+| `3831,3844p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;14.7 LOD de déformation |
+| `3845,3861p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;14.8 Compléments déclaratifs |
+| `3862,3904p` | 43 | &nbsp;&nbsp;&nbsp;&nbsp;14.9 Déformation et collision (C-45) |
+| `3905,3911p` | 7 | &nbsp;&nbsp;&nbsp;&nbsp;14.10 Déchirure |
+| `3912,3931p` | 20 | &nbsp;&nbsp;&nbsp;&nbsp;14.11 Budgets, mémoire et performance |
+| `3932,3959p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;14.11bis Modèle de coût : portée exacte des garanties |
+| `3960,3965p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;14.12 Réplication et persistance (résumé, détail en PARTIE 21 et 22) |
+| `3966,4008p` | 43 | &nbsp;&nbsp;&nbsp;&nbsp;14.13 Tests |
+| `4009,4030p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;14.14 Acceptance de la PARTIE 14 |
+| `4031,4236p` | 206 | PARTIE 15 : INTÉGRITÉ STRUCTURELLE, RUPTURE, DÉTACHEMENT, DÉBRIS |
+| `4033,4051p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;15.1 Modèle |
+| `4052,4106p` | 55 | &nbsp;&nbsp;&nbsp;&nbsp;15.1bis Estimation de l'aire de liaison (référence normative) |
+| `4107,4135p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;15.2 Propagation de l'énergie structurelle (C-43) |
+| `4136,4175p` | 40 | &nbsp;&nbsp;&nbsp;&nbsp;15.3 Rupture et détachement (C-44) |
+| `4176,4192p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;15.4 Débris |
+| `4193,4198p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;15.5 Effets sur les mécanismes |
+| `4199,4208p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;15.6 Budgets |
+| `4209,4236p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;15.7 Tests |
+| `4237,4318p` | 82 | PARTIE 16 : RÉPARATION, RESTAURATION ET REMPLACEMENT |
+| `4239,4249p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;16.1 Niveaux de réparation |
+| `4250,4264p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;16.2 Restauration du champ de déformation |
+| `4265,4287p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;16.3 Règles data-driven |
+| `4288,4318p` | 31 | &nbsp;&nbsp;&nbsp;&nbsp;16.4 Remplacement de part |
+| `4319,4518p` | 200 | PARTIE 17 : SOLVEUR DE PARTICULES — TISSU, CORDES, CÂBLES, FILETS, CORPS SOUPLES |
+| `4321,4324p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;17.1 Positionnement |
+| `4325,4340p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;17.2 Modes d'autorité |
+| `4341,4412p` | 72 | &nbsp;&nbsp;&nbsp;&nbsp;17.2bis Autorité et reconstruction visuelle (référence normative) |
+| `4413,4435p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;17.3 Solveur |
+| `4436,4447p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;17.4 Limites et budgets |
+| `4448,4472p` | 25 | &nbsp;&nbsp;&nbsp;&nbsp;17.5 Définition |
+| `4473,4478p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;17.6 Cordes et câbles physiques |
+| `4479,4483p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;17.7 Interaction avec la déformation |
+| `4484,4518p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;17.8 Tests |
+| `4519,4650p` | 132 | PARTIE 18 : ANIMATION ET COUPLAGE ANIMATION / PHYSIQUE / DÉGÂTS |
+| `4521,4533p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;18.1 Types d'animation |
+| `4534,4546p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;18.2 Échantillonnage et blending |
+| `4547,4565p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;18.3 Animation procédurale déclarative |
+| `4566,4571p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;18.4 Palettes de skinning et ordre d'application |
+| `4572,4621p` | 50 | &nbsp;&nbsp;&nbsp;&nbsp;18.5 Couplage animation / physique / dégâts (scénario normatif de la porte) |
+| `4622,4625p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;18.6 Root motion |
+| `4626,4650p` | 25 | &nbsp;&nbsp;&nbsp;&nbsp;18.7 Tests |
+| `4651,4983p` | 333 | PARTIE 19 : RENDU |
+| `4653,4673p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;19.1 Ce qui est réellement contrôlable depuis un mod Forge 1.20.1 |
+| `4674,4695p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;19.2 Les deux backends |
+| `4696,4739p` | 44 | &nbsp;&nbsp;&nbsp;&nbsp;19.2bis Portée de l'équivalence entre backends (référence normative) |
+| `4740,4748p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;19.3 Gestion d'état OpenGL (règle critique) |
+| `4749,4772p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;19.4 Format de vertex GPU et attributs d'instance |
+| `4773,4821p` | 49 | &nbsp;&nbsp;&nbsp;&nbsp;19.5 Modèle d'éclairage : PBR avec environnement synthétisé |
+| `4822,4830p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;19.6 Déformation dans le pipeline de rendu |
+| `4831,4853p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;19.7 Occlusion culling logiciel (C-82) |
+| `4854,4878p` | 25 | &nbsp;&nbsp;&nbsp;&nbsp;19.8 Ombres AXION (C-80) |
+| `4879,4891p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;19.9 Effets intégrés (C-83) |
+| `4892,4905p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;19.10 Passes de rendu |
+| `4906,4910p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;19.11 Transparence |
+| `4911,4929p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;19.12 Budgets de rendu et dégradation |
+| `4930,4983p` | 54 | &nbsp;&nbsp;&nbsp;&nbsp;19.13 Tests de rendu |
+| `4984,5052p` | 69 | PARTIE 20 : MATÉRIAUX DE RENDU, DÉCALQUES, USURE ET ÉTATS DE SURFACE |
+| `4986,5005p` | 20 | &nbsp;&nbsp;&nbsp;&nbsp;20.1 États visuels |
+| `5006,5024p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;20.2 Décalques (C-69) |
+| `5025,5039p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;20.3 Profils d'usure |
+| `5040,5052p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;20.4 Budgets |
+| `5053,5267p` | 215 | PARTIE 21 : CLIENT / SERVEUR ET NETWORKING |
+| `5055,5069p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;21.1 Modèle d'autorité |
+| `5070,5079p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;21.2 Canal et protocole |
+| `5080,5102p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;21.3 Handshake |
+| `5103,5126p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;21.4 Paquets |
+| `5127,5165p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;21.5 Snapshots, quantification, delta |
+| `5166,5205p` | 40 | &nbsp;&nbsp;&nbsp;&nbsp;21.6 Réplication de la déformation (mécanisme central) |
+| `5206,5215p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;21.7 Interpolation client |
+| `5216,5223p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;21.8 Prédiction et réconciliation |
+| `5224,5230p` | 7 | &nbsp;&nbsp;&nbsp;&nbsp;21.9 Sécurité réseau |
+| `5231,5240p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;21.10 Budgets réseau |
+| `5241,5267p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;21.11 Tests |
+| `5268,5451p` | 184 | PARTIE 22 : PERSISTANCE |
+| `5270,5295p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;22.1 Ce qui est persisté |
+| `5296,5334p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;22.2 Format NBT |
+| `5335,5347p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;22.3 Sérialisation du champ de déformation |
+| `5348,5359p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;22.4 Chargement et déchargement de chunk |
+| `5360,5421p` | 62 | &nbsp;&nbsp;&nbsp;&nbsp;22.5 Compatibilité de sauvegarde et retrait du mod |
+| `5362,5370p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;22.5.1 Constat technique |
+| `5371,5391p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;22.5.2 Journal latéral (side-car) |
+| `5392,5421p` | 30 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;22.5.3 Matrice de comportement (normative) |
+| `5422,5451p` | 30 | &nbsp;&nbsp;&nbsp;&nbsp;22.6 Tests |
+| `5452,5740p` | 289 | PARTIE 23 : API PUBLIQUE ET CONTENU DATA-DRIVEN |
+| `5454,5464p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;23.1 Principes |
+| `5465,5595p` | 131 | &nbsp;&nbsp;&nbsp;&nbsp;23.2 Surface de l'API |
+| `5596,5624p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;23.3 Points d'extension |
+| `5625,5725p` | 101 | &nbsp;&nbsp;&nbsp;&nbsp;23.4 Schéma de Definition (normatif) |
+| `5726,5740p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;23.5 Contenu de démonstration |
+| `5741,5807p` | 67 | PARTIE 24 : MODULARITÉ, NIVEAUX DE QUALITÉ ET CONFIGURATION |
+| `5743,5769p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;24.1 Modules |
+| `5770,5788p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;24.2 Niveaux de qualité |
+| `5789,5794p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;24.3 Chargement à la demande |
+| `5795,5807p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;24.4 Fichiers de configuration |
+| `5808,5944p` | 137 | PARTIE 25 : PERFORMANCE — THREADING, BUDGETS, DÉGRADATION |
+| `5810,5815p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;25.1 Position de principe |
+| `5816,5842p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;25.2 Budgets par défaut |
+| `5843,5869p` | 27 | &nbsp;&nbsp;&nbsp;&nbsp;25.3 Techniques retenues |
+| `5870,5874p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;25.4 Double tampon et interpolation |
+| `5875,5883p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;25.5 Détection de dépassement |
+| `5884,5912p` | 29 | &nbsp;&nbsp;&nbsp;&nbsp;25.6 Machine de dégradation (SM-02) |
+| `5913,5923p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;25.7 Modes SAFE et DISABLED |
+| `5924,5928p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;25.8 Watchdog |
+| `5929,5944p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;25.9 Tests |
+| `5945,6015p` | 71 | PARTIE 26 : COMPATIBILITÉ GÉNÉRALE |
+| `5947,5952p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;26.1 Principe |
+| `5953,5965p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;26.2 Empreinte Mixin (liste fermée) |
+| `5966,5981p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;26.3 Interactions avec le vanilla |
+| `5982,5985p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;26.4 Limites documentées |
+| `5986,6000p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;26.5 Mods tiers |
+| `6001,6015p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;26.6 Tests |
+| `6016,6287p` | 272 | PARTIE 27 : COMPATIBILITÉ RUSTFORGE-X |
+| `6018,6047p` | 30 | &nbsp;&nbsp;&nbsp;&nbsp;27.0 Position fondamentale |
+| `6048,6059p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;27.1 Détection |
+| `6060,6074p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;27.2 Ce que la détection change (et ne change pas) |
+| `6075,6139p` | 65 | &nbsp;&nbsp;&nbsp;&nbsp;27.3 Coexistence : analyse des points de contact |
+| `6077,6087p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.1 Classloading |
+| `6088,6097p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.2 Instrumentation et bytecode |
+| `6098,6109p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.3 Threads et scheduler |
+| `6110,6113p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.4 Tick et événements Forge |
+| `6114,6126p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.5 Mémoire native et bibliothèques |
+| `6127,6130p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.6 Rendu |
+| `6131,6134p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.7 Réseau, monde, sauvegarde |
+| `6135,6139p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.3.8 Cycle de vie et arrêt |
+| `6140,6152p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;27.4 Partage du budget CPU |
+| `6153,6185p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;27.5 Bridge d'interopérabilité optionnel (C-76) |
+| `6186,6191p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;27.6 Indication de non-transformation |
+| `6192,6212p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;27.7 Comment RUSTFORGE-X pourrait optimiser AXION (sans qu'AXION en dépende) |
+| `6213,6226p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;27.8 Ce qu'AXION ne fera jamais |
+| `6227,6236p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;27.9 Fallback |
+| `6237,6287p` | 51 | &nbsp;&nbsp;&nbsp;&nbsp;27.10 Stratégie de test de coexistence |
+| `6239,6257p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.10.1 Mod de simulation (obligatoire, toujours exécuté) |
+| `6258,6261p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.10.2 Test avec l'artefact réel (obligatoire quand disponible) |
+| `6262,6287p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;27.10.3 Matrice |
+| `6288,6378p` | 91 | PARTIE 28 : SÉCURITÉ, STABILITÉ, CONFINEMENT |
+| `6290,6302p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;28.1 Surface d'attaque |
+| `6303,6308p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;28.2 Code `unsafe` en Rust |
+| `6309,6336p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;28.3 Limites dures |
+| `6337,6352p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;28.4 Confinement des pannes |
+| `6353,6356p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;28.5 Vie privée |
+| `6357,6360p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;28.6 Reproduction d'incident |
+| `6361,6378p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;28.7 Tests |
+| `6379,6557p` | 179 | PARTIE 29 : STRATÉGIE DE TEST |
+| `6381,6388p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;29.1 Principes |
+| `6389,6407p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;29.2 Pyramide |
+| `6408,6443p` | 36 | &nbsp;&nbsp;&nbsp;&nbsp;29.3 Tests unitaires |
+| `6444,6459p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;29.4 Tests d'intégration |
+| `6460,6485p` | 26 | &nbsp;&nbsp;&nbsp;&nbsp;29.5 Tests de gameplay et scénarios déclaratifs |
+| `6486,6519p` | 34 | &nbsp;&nbsp;&nbsp;&nbsp;29.6 Test de bout en bout obligatoire (T-970) |
+| `6520,6543p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;29.7 Tests de stress et d'endurance |
+| `6544,6557p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;29.8 Infrastructure |
+| `6558,6636p` | 79 | PARTIE 30 : BENCHMARKS |
+| `6560,6564p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;30.1 Position de principe |
+| `6565,6599p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;30.2 Ce qui est mesuré |
+| `6600,6617p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;30.3 Méthodologie normative |
+| `6618,6628p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;30.4 Format de résultat |
+| `6629,6636p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;30.5 Non-régression |
+| `6637,6687p` | 51 | PARTIE 31 : PROFILING ET DEBUGGING |
+| `6639,6651p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;31.1 Domaines profilés |
+| `6652,6658p` | 7 | &nbsp;&nbsp;&nbsp;&nbsp;31.2 Outils |
+| `6659,6664p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;31.3 Mode développeur |
+| `6665,6679p` | 15 | &nbsp;&nbsp;&nbsp;&nbsp;31.4 Overlays de debug |
+| `6680,6687p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;31.5 Reproduction |
+| `6688,6760p` | 73 | PARTIE 32 : DÉPENDANCES ET LICENCES |
+| `6690,6697p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;32.1 Licence du projet |
+| `6698,6735p` | 38 | &nbsp;&nbsp;&nbsp;&nbsp;32.2 Dépendances Rust |
+| `6736,6747p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;32.3 Dépendances Java |
+| `6748,6760p` | 13 | &nbsp;&nbsp;&nbsp;&nbsp;32.4 Outillage et SBOM |
+| `6761,6893p` | 133 | PARTIE 33 : ARBORESCENCE DU DÉPÔT |
+| `6873,6893p` | 21 | &nbsp;&nbsp;&nbsp;&nbsp;33.2 Contenu de l'artefact final |
+| `6894,7036p` | 143 | PARTIE 34 : BUILD, CI/CD, RELEASE, INSTALLATION |
+| `6896,6931p` | 36 | &nbsp;&nbsp;&nbsp;&nbsp;34.1 Chaîne de build |
+| `6932,6942p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;34.2 Plateformes |
+| `6943,6986p` | 44 | &nbsp;&nbsp;&nbsp;&nbsp;34.3 CI/CD |
+| `6987,7009p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;34.4 Versionnement et release |
+| `7010,7019p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;34.5 Installation |
+| `7020,7036p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;34.6 Test d'installation propre (obligatoire avant release) |
+| `7037,7150p` | 114 | PARTIE 35 : DÉCISIONS D'ARCHITECTURE (ADR) |
+| `7041,7043p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-001 — glTF 2.0 / GLB comme format d'échange principal |
+| `7044,7046p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-002 — Rapier3D comme moteur physique |
+| `7047,7049p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-003 — Modèle de véhicule par raycast |
+| `7050,7052p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-004 — JNI + DirectByteBuffer pour la frontière Java/Rust |
+| `7053,7055p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-005 — Autorité serveur, sans déterminisme physique inter-plateformes |
+| `7056,7058p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-006 — Rendu piloté depuis Java sur le contexte GL de Minecraft |
+| `7059,7070p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-007 — Deux backends de rendu maintenus, équivalence fonctionnelle et non pixellaire |
+| `7071,7075p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-008 — PBR avec environnement synthétisé *(révisé en révision 2)* |
+| `7076,7080p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-011 — Déformation continue par champ de lattice *(révisé en révision 2)* |
+| `7081,7084p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-012 — Solveur de particules unifié à trois modes d'autorité *(révisé)* |
+| `7085,7087p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-013 — Pas d'ECS tiers, structures SoA propres |
+| `7088,7090p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-014 — Job system dédié au-dessus de rayon, jamais le pool global |
+| `7091,7093p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-015 — Indépendance vis-à-vis de RUSTFORGE-X, compatibilité par conception |
+| `7094,7096p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-016 — Empreinte Mixin fermée et minimale |
+| `7097,7099p` | 3 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-017 — Persistance du seul état non dérivable |
+| `7100,7111p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-018 — Réplication de la déformation par événements et reconstruction déterministe |
+| `7112,7116p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-019 — Refit de collider par déformation des points d'enveloppe |
+| `7117,7121p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-020 — Graphe structurel pour la rupture et le détachement |
+| `7122,7126p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-021 — Carte d'ombre dédiée aux objets AXION |
+| `7127,7131p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-022 — Occlusion culling logiciel plutôt que requêtes GPU |
+| `7132,7136p` | 5 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-023 — Niveaux de qualité et gouverneur |
+| `7137,7140p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-024 — Décalques en espace objet, suivant la déformation |
+| `7141,7144p` | 4 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-025 — Système d'attache entre assemblies |
+| `7145,7150p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;ADR-026 — Chemins accélérés GL 4.x optionnels sur une base GL 3.3 |
+| `7151,7314p` | 164 | PARTIE 36 : PÉRIMÈTRE V1.0 / V1.x / HORS PÉRIMÈTRE |
+| `7153,7240p` | 88 | &nbsp;&nbsp;&nbsp;&nbsp;36.1 V1.0 — obligatoire |
+| `7241,7258p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;36.2 V1.x — extensions futures |
+| `7259,7277p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;36.3 Hors périmètre — exclu de la V1 |
+| `7278,7314p` | 37 | &nbsp;&nbsp;&nbsp;&nbsp;36.4 Audit des limitations de la révision 1 |
+| `7315,7558p` | 244 | PARTIE 37 : JALONS ET DEFINITION OF DONE |
+| `7317,7324p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;37.1 Règles |
+| `7325,7501p` | 177 | &nbsp;&nbsp;&nbsp;&nbsp;37.2 Jalons |
+| `7327,7336p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M0 — Squelette et frontière native |
+| `7337,7347p` | 11 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M1 — Assets, noyau déterministe, jobs |
+| `7348,7357p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M2 — Scene graph, cache, optimizer, entité, API |
+| `7358,7367p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M3 — Physique et premier rendu |
+| `7368,7377p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M4 — Réseau, animation, culling/LOD, joints, persistance |
+| `7378,7389p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M5 — Véhicules, sièges, attaches, gouverneur, overlay |
+| `7390,7401p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M5b — Véhicules hors roues (amendement A5) |
+| `7402,7421p` | 20 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M6 — Impacts et déformation continue *(jalon central)* |
+| `7422,7431p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M7 — Structure, rupture, détachement, réparation |
+| `7432,7440p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M8 — Particules unifiées |
+| `7441,7452p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M9 — Rendu avancé |
+| `7453,7460p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M10 — Blocs, items, bout en bout |
+| `7461,7469p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M11 — Compatibilité, coexistence, durcissement |
+| `7470,7481p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M12 — Optimisation client et serveur (amendement A22) |
+| `7482,7493p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M13 — Espace (amendement A22) |
+| `7494,7501p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M14 — Release 1.0.0 |
+| `7502,7548p` | 47 | &nbsp;&nbsp;&nbsp;&nbsp;37.3 Definition of Done |
+| `7549,7558p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;37.4 Sévérités |
+| `7559,7983p` | 425 | PARTIE 38 : CRITÈRES D'ACCEPTATION ET AUDIT FINAL |
+| `7561,7651p` | 91 | &nbsp;&nbsp;&nbsp;&nbsp;38.1 Checklist principale de la V1.0 |
+| `7652,7675p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;38.2 Critères de correction (bloquants) — identifiants `AC-xx` |
+| `7676,7692p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;38.3 Critères de performance — identifiants `PF-xx` |
+| `7693,7709p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;38.4 Critères d'extensibilité — identifiants `EX-xx` |
+| `7710,7754p` | 45 | &nbsp;&nbsp;&nbsp;&nbsp;38.5 Audit final obligatoire — résultats |
+| `7755,7800p` | 46 | &nbsp;&nbsp;&nbsp;&nbsp;38.6 Contradictions détectées et résolutions |
+| `7801,7835p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;38.7 Registre des changements de la révision 2 |
+| `7836,7942p` | 107 | &nbsp;&nbsp;&nbsp;&nbsp;38.8 Registre des corrections de la révision 2.1 |
+| `7841,7854p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Problèmes corrigés |
+| `7855,7868p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Sections ajoutées |
+| `7869,7877p` | 9 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Équations modifiées |
+| `7878,7889p` | 12 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Exigences ajoutées ou modifiées |
+| `7890,7897p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Invariants modifiés |
+| `7898,7916p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Tests ajoutés |
+| `7917,7924p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ADR modifiés |
+| `7925,7942p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Vérification de non-régression |
+| `7943,7983p` | 41 | &nbsp;&nbsp;&nbsp;&nbsp;38.9 Registre des amendements postérieurs au gel |
+| `7984,8471p` | 488 | ANNEXES |
+| `7986,8034p` | 49 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.1 — Codes d'erreur |
+| `8035,8062p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.2 — Index des invariants |
+| `8063,8299p` | 237 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.3 — Configuration complète (référence normative) |
+| `8300,8334p` | 35 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9) |
+| `8335,8357p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
+| `8358,8379p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
+| `8380,8471p` | 92 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160) |
+| `8472,8623p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
+| `8474,8496p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
+| `8497,8512p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
+| `8513,8551p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
+| `8552,8570p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
+| `8571,8576p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
+| `8577,8590p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
+| `8591,8623p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |

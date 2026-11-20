@@ -44,7 +44,7 @@ class PredictedStatesTest {
                 new WheelReport(9, GEN, 0, 0, 99f, 0f, 0f, 0f, 0f),
                 new WheelReport(HANDLE, GEN, 0, 0, 31f, 0.1f, 0f, 0f, 0f));
         List<VehicleReport> moteurs = List.of(new VehicleReport(HANDLE, GEN, 3000f, 0.8f, 2, VehicleReport.RUNNING,
-                0.1f));
+                0.1f, 0f, 0f));
         VehicleInput entree = new VehicleInput(1f, 0f, 0.3f, 0f, 0f, (byte) 0, 0);
         AssemblyState etat = PredictedStates.of(collecte(corps, List.of(unite, unite, unite), roues, moteurs), HANDLE,
                 GEN, 3, entree, AssemblyState.VariableValues.NONE);

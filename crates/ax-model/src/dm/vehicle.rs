@@ -9,14 +9,18 @@
 //! Little-endian, sans remplissage, à la suite des parts quand le drapeau `VEHICLE` est posé :
 //!
 //! ```text
-//! en-tête                 116 o : roues, points de couple, rapports, surfaces en u16 ;
+//! en-tête                 144 o : roues, points de couple, rapports, surfaces en u16 ;
 //!                                 drapeaux u16 ; transmission u8 ; différentiel u8 ;
-//!                                 puis 26 f32 : moteur (4), transmission (5), différentiel (2),
-//!                                 direction (5), freins (4), aéro (4), correcteurs (2)
+//!                                 puis 28 f32 : moteur (5), transmission (5), différentiel (2),
+//!                                 direction (5), freins (4), aéro (4), correcteurs (2) ;
+//!                                 enfin l'énergie (ADR-176 D3) : points de consommation u16, 2 o à zéro,
+//!                                 puis 5 f32 : capacité du réservoir, masse par litre, capacité de la
+//!                                 batterie, tirage du démarreur, charge
 //! WheelDesc[roues]         88 o
 //! [f32; 2][points]          8 o : régime, couple
 //! f32[rapports]             4 o
 //! AeroSurfaceDesc[surfaces] 16 o
+//! [f32; 2][consommation]    8 o : charge du moteur, litres par heure
 //! ```
 
 use super::definition::DefnError;
@@ -142,8 +146,8 @@ pub mod vehicle_report_flags {
 /// véhicules de `SIM_OUT`, après celle des roues : leur nombre (`u32`), 4 octets réservés, puis un enregistrement
 /// par véhicule éveillé.
 ///
-/// **Disposition figée** : 24 octets, alignement 4, comme [`WheelReport`] : le handle, le régime, la charge, le
-/// rapport, les drapeaux, 2 octets réservés, puis la direction.
+/// **Disposition figée** : 32 octets, alignement 4, comme [`WheelReport`] : le handle, le régime, la charge, le
+/// rapport, les drapeaux, 2 octets réservés, la direction, puis le carburant et la batterie (ADR-176 D3).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VehicleReport {
@@ -161,11 +165,15 @@ pub struct VehicleReport {
     /// Position de la direction dans [-1, 1], positive à droite : la consigne du conducteur après la vitesse de
     /// braquage (ADR-159 D7). C'est elle que le volant suit, pas la touche.
     pub steer: f32,
+    /// Carburant restant, en litres ; 0 sans réservoir.
+    pub fuel: f32,
+    /// Charge restante de la batterie ; 0 sans batterie.
+    pub battery: f32,
 }
 
 impl VehicleReport {
     /// Taille sur la frontière, en octets.
-    pub const BYTES: usize = 24;
+    pub const BYTES: usize = 32;
 
     /// Taille de l'en-tête de la section des véhicules dans `SIM_OUT` : leur nombre et 4 octets réservés.
     pub const SECTION_HEADER_BYTES: usize = 8;
@@ -180,6 +188,8 @@ impl VehicleReport {
         out.push(self.flags);
         out.extend_from_slice(&[0u8; 2]);
         out.extend_from_slice(&self.steer.to_le_bytes());
+        out.extend_from_slice(&self.fuel.to_le_bytes());
+        out.extend_from_slice(&self.battery.to_le_bytes());
     }
 
     /// Lit un véhicule au début de `bytes` ; `None` s'il en manque.
@@ -194,6 +204,8 @@ impl VehicleReport {
             gear: i8::from_le_bytes([bytes[16]]),
             flags: bytes[17],
             steer: f32::from_bits(u32_at(20)),
+            fuel: f32::from_bits(u32_at(24)),
+            battery: f32::from_bits(u32_at(28)),
         })
     }
 
@@ -483,6 +495,40 @@ pub struct EngineDesc {
     pub starter_time: f32,
 }
 
+/// L'énergie du véhicule : un réservoir et une batterie (12.5, ADR-176 D3). Une capacité nulle veut dire « pas de
+/// réservoir » ou « pas de batterie » : le moteur n'en dépend pas, comme avant ADR-176.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnergyDesc {
+    /// Capacité du réservoir, en litres ; 0 : pas de réservoir.
+    pub fuel_capacity: f32,
+    /// Masse d'un litre de carburant, en kg ; 0 : la masse ne suit pas le carburant.
+    pub unit_mass: f32,
+    /// Capacité de la batterie, en unités de charge ; 0 : pas de batterie.
+    pub battery_capacity: f32,
+    /// Charge que le démarreur tire par seconde, en unités de charge.
+    pub starter_draw: f32,
+    /// Charge que le moteur qui tourne rend par seconde, en unités de charge.
+    pub charge_rate: f32,
+    /// La consommation : charge du moteur dans [0, 1], litres par heure, à régime maximal. Strictement croissante en
+    /// charge ; vide sans réservoir.
+    pub consumption: Vec<[f32; 2]>,
+}
+
+impl EnergyDesc {
+    /// Aucune énergie : ce qu'une definition sans `energy` déclare.
+    pub const NONE: Self = Self {
+        fuel_capacity: 0.0,
+        unit_mass: 0.0,
+        battery_capacity: 0.0,
+        starter_draw: 0.0,
+        charge_rate: 0.0,
+        consumption: Vec::new(),
+    };
+
+    /// Au plus ce nombre de points de consommation.
+    pub const MAX_POINTS: usize = 64;
+}
+
 /// La transmission (12.5).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TransmissionDesc {
@@ -606,6 +652,8 @@ pub struct VehicleDesc {
     pub gears: Vec<f32>,
     /// Les surfaces portantes.
     pub surfaces: Vec<AeroSurfaceDesc>,
+    /// L'énergie (ADR-176 D3).
+    pub energy: EnergyDesc,
 }
 
 /// Lecteur séquentiel, little-endian.
@@ -736,7 +784,7 @@ fn put_curve(out: &mut Vec<u8>, curve: &TireCurve) {
 
 impl VehicleDesc {
     /// Taille de l'en-tête de la section, en octets.
-    pub const HEADER_BYTES: usize = 120;
+    pub const HEADER_BYTES: usize = 144;
 
     /// Écrit la section en little-endian à la fin de `out`.
     ///
@@ -796,6 +844,19 @@ impl VehicleDesc {
                 self.assists.stability_yaw_tolerance,
             ],
         );
+        let en = &self.energy;
+        out.extend_from_slice(&count(en.consumption.len()).to_le_bytes());
+        out.extend_from_slice(&[0u8; 2]);
+        put(
+            out,
+            &[
+                en.fuel_capacity,
+                en.unit_mass,
+                en.battery_capacity,
+                en.starter_draw,
+                en.charge_rate,
+            ],
+        );
         for wheel in &self.wheels {
             out.extend_from_slice(&wheel.node.to_le_bytes());
             out.extend_from_slice(&wheel.flags.to_le_bytes());
@@ -828,6 +889,9 @@ impl VehicleDesc {
         for surface in &self.surfaces {
             out.extend_from_slice(&surface.node.to_le_bytes());
             put(out, &[surface.area, surface.cl, surface.cd]);
+        }
+        for point in &self.energy.consumption {
+            put(out, point);
         }
     }
 
@@ -910,6 +974,28 @@ impl VehicleDesc {
         if !(assists.traction_slip_threshold > 0.0 && assists.stability_yaw_tolerance > 0.0) {
             return Err(DefnError::Field("assists"));
         }
+        let consumption_points = usize::from(c.u16()?);
+        c.take::<2>()?;
+        let mut energy = EnergyDesc {
+            fuel_capacity: c.f32("energy")?,
+            unit_mass: c.f32("energy")?,
+            battery_capacity: c.f32("energy")?,
+            starter_draw: c.f32("energy")?,
+            charge_rate: c.f32("energy")?,
+            consumption: Vec::with_capacity(consumption_points),
+        };
+        let scalars = [
+            energy.fuel_capacity,
+            energy.unit_mass,
+            energy.battery_capacity,
+            energy.starter_draw,
+            energy.charge_rate,
+        ];
+        if !scalars.iter().all(|v| v.is_finite() && *v >= 0.0)
+            || consumption_points > EnergyDesc::MAX_POINTS
+        {
+            return Err(DefnError::Field("energy"));
+        }
 
         let mut wheel_table = Vec::with_capacity(wheels);
         for _ in 0..wheels {
@@ -948,6 +1034,18 @@ impl VehicleDesc {
             }
             surface_table.push(surface);
         }
+        for _ in 0..consumption_points {
+            energy
+                .consumption
+                .push([c.f32("energy.consumption")?, c.f32("energy.consumption")?]);
+        }
+        if energy.consumption.iter().any(|p| {
+            !(p[0].is_finite() && (0.0..=1.0).contains(&p[0]) && p[1].is_finite() && p[1] >= 0.0)
+        }) || energy.consumption.windows(2).any(|p| p[1][0] <= p[0][0])
+            || (energy.fuel_capacity > 0.0) == energy.consumption.is_empty()
+        {
+            return Err(DefnError::Field("energy.consumption"));
+        }
         let at = c.at;
         Ok((
             Self {
@@ -963,6 +1061,7 @@ impl VehicleDesc {
                 torque_curve,
                 gears: gear_table,
                 surfaces: surface_table,
+                energy,
             },
             at,
         ))
@@ -972,7 +1071,7 @@ impl VehicleDesc {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn un_rapport_de_vehicule_fait_vingt_quatre_octets_et_se_relit() {
+    fn un_rapport_de_vehicule_fait_trente_deux_octets_et_se_relit() {
         let report = super::VehicleReport {
             handle: crate::dm::handle::Handle::new(7, 3),
             rpm: 3125.5,
@@ -980,6 +1079,8 @@ mod tests {
             gear: -1,
             flags: super::vehicle_report_flags::SHIFTING | super::vehicle_report_flags::DRIVER,
             steer: -0.5,
+            fuel: 12.5,
+            battery: 0.75,
         };
         let mut out = Vec::new();
         super::VehicleReport::write_section(&[report, report], &mut out);
@@ -1095,6 +1196,7 @@ mod tests {
     fn vehicule() -> VehicleDesc {
         VehicleDesc {
             flags: vehicle_flags::POWERTRAIN,
+            energy: EnergyDesc::NONE,
             engine: EngineDesc {
                 idle_rpm: 800.0,
                 max_rpm: 7000.0,
@@ -1276,5 +1378,61 @@ mod tests {
             fausser(&mut v);
             assert_eq!(lire(&octets(&v)), Err(DefnError::Field(champ)));
         }
+    }
+
+    #[test]
+    fn adr176_d3_l_energie_d_une_definition_se_relit_et_ses_refus_sont_nommes() {
+        let mut avec = vehicule();
+        avec.energy = EnergyDesc {
+            fuel_capacity: 40.0,
+            unit_mass: 0.75,
+            battery_capacity: 1.0,
+            starter_draw: 0.02,
+            charge_rate: 0.002,
+            consumption: vec![[0.0, 0.4], [1.0, 9.0]],
+        };
+        let octets_energie = octets(&avec);
+        assert_eq!(octets_energie.len(), octets(&vehicule()).len() + 16);
+        assert_eq!(
+            lire(&octets_energie),
+            Ok((avec.clone(), octets_energie.len()))
+        );
+
+        let refus = |mutation: &dyn Fn(&mut VehicleDesc)| {
+            let mut d = avec.clone();
+            mutation(&mut d);
+            lire(&octets(&d)).err()
+        };
+        assert_eq!(
+            refus(&|d| d.energy.fuel_capacity = -1.0),
+            Some(DefnError::Field("energy"))
+        );
+        assert_eq!(
+            refus(&|d| d.energy.unit_mass = f32::NAN),
+            Some(DefnError::Field("energy"))
+        );
+        assert_eq!(
+            refus(&|d| d.energy.consumption = vec![[0.5, 1.0], [0.5, 2.0]]),
+            Some(DefnError::Field("energy.consumption")),
+            "charges strictement croissantes"
+        );
+        assert_eq!(
+            refus(&|d| d.energy.consumption = vec![[0.0, 1.0], [2.0, 2.0]]),
+            Some(DefnError::Field("energy.consumption")),
+            "charge dans [0, 1]"
+        );
+        assert_eq!(
+            refus(&|d| d.energy.consumption.clear()),
+            Some(DefnError::Field("energy.consumption")),
+            "un réservoir a une consommation"
+        );
+        assert_eq!(
+            refus(&|d| d.energy = EnergyDesc {
+                consumption: vec![[0.0, 1.0]],
+                ..EnergyDesc::NONE
+            }),
+            Some(DefnError::Field("energy.consumption")),
+            "pas de réservoir, pas de consommation"
+        );
     }
 }

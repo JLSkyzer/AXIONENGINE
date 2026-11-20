@@ -10,9 +10,10 @@
 //! corps      64 o chacun, dans l'ordre de l'assembly : position monde f64×3 | rotation f32×4 | vitesse f32×3 |
 //!            vitesse angulaire f32×3
 //! joints      8 o chacun, dans l'ordre de la definition : rompu u8 | 7 o à 0
-//! véhicule   56 o : entrée (accélérateur, frein, direction, embrayage, frein à main f32 | rapport i8 | drapeaux u8) |
-//!            conducteur u8 | 1 o à 0 | régime f32 | boîte (rang i8, cible i8, 2 o à 0, minuteur f32, maintien f32) |
-//!            direction f32 | patinage f32 | charge f32 | 4 o à 0
+//! véhicule   72 o : entrée (accélérateur, frein, direction, embrayage, frein à main f32 | rapport i8 | drapeaux u8) |
+//!            conducteur u8 | contact tenu u8 (ADR-176 D1) | régime f32 | boîte (rang i8, cible i8) |
+//!            moteur (phase u8, contact du pas précédent u8) | minuteur f32 | maintien f32 | direction f32 | patinage f32 |
+//!            charge f32 | temps restant au démarreur f32 | carburant f64 | batterie f64 (ADR-176 D3)
 //! roues      32 o chacune : rotation, compression, braquage, charge, glissement long, glissement latéral, couple
 //!            posé f32 | contact u8 | 3 o à 0
 //! ```
@@ -23,6 +24,7 @@
 
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::vehicle::{native_input_flags, VehicleInput};
+use ax_vehicle::energy::EnergyState;
 use ax_vehicle::engine::{EnginePhase, EngineState};
 
 use super::PhysicsWorld;
@@ -30,7 +32,7 @@ use crate::body::BodyId;
 use ax_model::dm::handle::Handle;
 
 /// Version du format.
-pub const STATE_VERSION: u16 = 1;
+pub const STATE_VERSION: u16 = 2;
 /// Octets de l'en-tête.
 pub const HEADER_BYTES: usize = 16;
 /// Octets d'un corps.
@@ -38,7 +40,7 @@ pub const BODY_BYTES: usize = 64;
 /// Octets d'un joint.
 pub const JOINT_BYTES: usize = 8;
 /// Octets de l'état du véhicule, roues à part.
-pub const VEHICLE_BYTES: usize = 56;
+pub const VEHICLE_BYTES: usize = 72;
 /// Octets d'une roue.
 pub const WHEEL_BYTES: usize = 32;
 /// Drapeau d'en-tête : l'assembly est un véhicule.
@@ -131,6 +133,8 @@ pub struct VehicleSnapshot {
     pub load: f32,
     /// L'état du moteur : arrêté, démarreur, tournant (ADR-176 D1).
     pub engine: EngineState,
+    /// Le carburant et la batterie (ADR-176 D3) ; zéro sans énergie déclarée.
+    pub energy: EnergyState,
     /// Chaque roue, dans l'ordre de la definition.
     pub wheels: Vec<WheelSnapshot>,
 }
@@ -232,8 +236,10 @@ impl AssemblyState {
             ] {
                 out.extend_from_slice(&value.to_le_bytes());
             }
-            // Le temps restant au démarreur (ADR-176 D1) ; ces quatre octets étaient du remplissage.
+            // Le temps restant au démarreur (ADR-176 D1), puis l'énergie (ADR-176 D3).
             out.extend_from_slice(&vehicle.engine.remaining.to_le_bytes());
+            out.extend_from_slice(&vehicle.energy.fuel.to_le_bytes());
+            out.extend_from_slice(&vehicle.energy.battery.to_le_bytes());
             for wheel in &vehicle.wheels {
                 for value in [
                     wheel.spin_speed,
@@ -348,6 +354,11 @@ impl AssemblyState {
             let traction_slip = reader.f32()?;
             let load = reader.f32()?;
             let remaining = reader.f32()?;
+            let fuel = reader.f64()?;
+            let battery = reader.f64()?;
+            if !(fuel.is_finite() && fuel >= 0.0 && battery.is_finite() && battery >= 0.0) {
+                return Err(StateError::NotFinite);
+            }
             let scalars = [
                 remaining,
                 input.throttle,
@@ -378,6 +389,7 @@ impl AssemblyState {
                     remaining,
                     ignition,
                 },
+                energy: EnergyState { fuel, battery },
                 wheels: Vec::with_capacity(wheels),
             };
             for _ in 0..wheels {

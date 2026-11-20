@@ -1614,6 +1614,13 @@ impl SimDriver {
         })
     }
 
+    /// Applique `SET_ENERGY` (ADR-176 D3) : le carburant et la batterie d'un véhicule ; NaN garde la valeur. Faux si
+    /// l'assembly est inconnue ou n'est pas un véhicule.
+    pub fn apply_set_energy(&mut self, handle: Handle, fuel: f32, battery: f32) -> bool {
+        self.assembly_world(handle)
+            .is_some_and(|world| world.set_vehicle_energy(handle, fuel, battery))
+    }
+
     /// Applique `SET_SENSOR` (ADR-174 D5) : le capteur déclaré de rang `index`, sur le corps de node racine
     /// `body_node` de l'assembly. Faux pour une assembly, un corps ou une forme inconnus, ou une taille invalide.
     pub fn apply_set_sensor(&mut self, sensor: &ax_model::dm::commands::SetSensor) -> bool {

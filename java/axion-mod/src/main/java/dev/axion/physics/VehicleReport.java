@@ -6,10 +6,10 @@ import java.util.List;
 
 /**
  * L'état du motopropulseur d'un véhicule à la fin d'un tick (ADR-163 D1), décodé de {@code SIM_OUT} (miroir de
- * {@code VehicleReport::write_le}) : <strong>24 octets</strong> little-endian (R-271) — le handle de l'assembly
+ * {@code VehicleReport::write_le}) : <strong>32 octets</strong> little-endian (R-271) — le handle de l'assembly
  * (index puis génération, {@code u32}), le régime et la charge ({@code f32}), le rapport ({@code i8}), les drapeaux
- * ({@code u8}), 2 octets réservés, puis la position de la direction ({@code f32}). Un enregistrement par véhicule
- * éveillé.
+ * ({@code u8}), 2 octets réservés, la position de la direction, le carburant et la batterie ({@code f32}). Un
+ * enregistrement par véhicule éveillé.
  *
  * <p>Dans {@code SIM_OUT} (schéma 4), la section des véhicules suit celle des roues : leur nombre ({@code u32}),
  * 4 octets réservés, puis les enregistrements ({@link #decodeSection}).
@@ -22,12 +22,15 @@ import java.util.List;
  * @param flags drapeaux {@link #SHIFTING}, {@link #RUNNING}, {@link #DRIVER}
  * @param steer position de la direction dans [-1, 1], positive à droite : la consigne après la vitesse de braquage
  *     (ADR-159 D7), celle que les roues suivent
+ * @param fuel carburant restant, en litres ; 0 sans réservoir (ADR-176 D3)
+ * @param battery charge restante de la batterie ; 0 sans batterie (ADR-176 D3)
  */
 public record VehicleReport(
-        int handleIndex, int handleGeneration, float rpm, float load, int gear, int flags, float steer) {
+        int handleIndex, int handleGeneration, float rpm, float load, int gear, int flags, float steer, float fuel,
+        float battery) {
 
     /** Taille de la structure sur la frontière, en octets. */
-    public static final int BYTES = 24;
+    public static final int BYTES = 32;
 
     /** Taille de l'en-tête de la section : le nombre de véhicules et 4 octets réservés. */
     public static final int SECTION_HEADER_BYTES = 8;
@@ -56,7 +59,9 @@ public record VehicleReport(
                 buffer.getFloat(base + 12),
                 buffer.get(base + 16),
                 Byte.toUnsignedInt(buffer.get(base + 17)),
-                buffer.getFloat(base + 20));
+                buffer.getFloat(base + 20),
+                buffer.getFloat(base + 24),
+                buffer.getFloat(base + 28));
     }
 
     /**

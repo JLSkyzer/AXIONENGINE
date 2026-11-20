@@ -45,4 +45,26 @@ At schema 7, in `powertrain.engine`:
 The `engine.running` source is 1 while the engine runs, 0 otherwise: a procedural track can light a lamp or cut a
 sound. Your mod reads it through `assembly.source("engine.running")` in the API, and a mod sets the ignition by writing the variable.
 
-Energy (fuel, battery, running dry) comes with the next slice of ADR-176.
+## The tank and the battery
+
+A schema 7 definition can declare its energy ([ADR-176](../../decisions/ADR-176.md) D3):
+
+```json
+"energy": {
+  "fuel": { "capacity": 40.0, "unit_mass": 0.75, "consumption": [[0.0, 0.4], [1.0, 9.0]] },
+  "battery": { "capacity": 1.0, "starter_draw": 0.02, "charge_rate": 0.002 }
+}
+```
+
+- **`fuel.consumption`**: litres per hour according to engine load (0 to 1), multiplied by engine speed over maximum speed.
+  Loads strictly increase.
+- **`unit_mass`**: the mass of a litre. It requires `physics.mass`, which is then the **dry mass**.
+- **`battery`**: the starter draws `starter_draw` per second from it, a running engine gives back `charge_rate`. It requires a
+  `starter`.
+- **Empty tank**: the engine stops, and does not restart without a new ignition edge. **Empty battery or empty tank**: the
+  starter does not turn.
+- **A sleeping vehicle burns nothing**: combustion follows being awake, like the rest of the simulation.
+- With no `energy`, nothing changes.
+
+The native side holds the energy (fuel and battery), deterministic, which the client replays; reading it from Java, saving,
+the `energy.*` sources and the API come with the next slices of ADR-176.

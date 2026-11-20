@@ -481,6 +481,26 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeLEnergieD_UnVehicule() throws IOException {
+        // ADR-176 D3 : SetEnergy, 16 octets — handle, carburant, batterie.
+        byte[] bytes = new SimCommandStream().setEnergy(7, 3, 12.5f, Float.NaN).toBytes();
+        assertEquals(8 + 8 + SimCommandStream.SET_ENERGY_BYTES, bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_ENERGY, b.getInt(8), "opcode");
+        assertEquals(16, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(3, b.getInt(20), "handle.generation");
+        assertEquals(12.5f, b.getFloat(24), "carburant");
+        assertTrue(Float.isNaN(b.getFloat(28)), "NaN garde la batterie");
+        Path source = Path.of(System.getProperty("axion.crates.dir"), "ax-model", "src", "dm", "commands.rs");
+        String rust = Files.readString(source, StandardCharsets.UTF_8);
+        assertTrue(rust.contains("pub const SET_ENERGY: u32 = " + SimCommandStream.OP_SET_ENERGY + ";"));
+        Matcher taille = Pattern.compile("impl SetEnergy \\{[^}]*?pub const BYTES: usize = (\\d+);").matcher(rust);
+        assertTrue(taille.find(), "SetEnergy::BYTES dans commands.rs");
+        assertEquals(Integer.parseInt(taille.group(1)), SimCommandStream.SET_ENERGY_BYTES);
+    }
+
+    @Test
     void encodeLeCoupleDesRoues() throws IOException {
         // R-1082, ADR-167 D9 : SetWheelTorques, 12 octets — handle, nombre de couples — puis les couples.
         byte[] bytes = new SimCommandStream().setWheelTorques(7, 3, new float[] {0f, 0f, 150f, -20f})

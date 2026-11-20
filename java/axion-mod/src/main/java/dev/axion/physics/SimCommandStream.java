@@ -104,6 +104,12 @@ public final class SimCommandStream {
     /** Opcode {@code SET_SENSOR} (ADR-174 D5) : un capteur déclaré, posé sur un corps d'une assembly. */
     public static final int OP_SET_SENSOR = 27;
 
+    /** Opcode {@code SET_ENERGY} (ADR-176 D3) : le carburant et la batterie d'un véhicule. */
+    public static final int OP_SET_ENERGY = 28;
+
+    /** Taille du payload {@code SetEnergy}, en octets. */
+    public static final int SET_ENERGY_BYTES = 16;
+
     /** Taille du payload {@code SetSensor}, en octets. */
     public static final int SET_SENSOR_BYTES = 60;
 
@@ -346,7 +352,7 @@ public final class SimCommandStream {
      * Le plus grand bloc d'état, en octets (miroir de {@code world::state::MAX_STATE_BYTES}) : 64 corps, 128 joints,
      * un véhicule de 32 roues.
      */
-    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 56 + 32 * 32;
+    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 72 + 32 * 32;
 
     /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
     public static final int SET_VEHICLE_INPUT_BYTES = 36;
@@ -1265,6 +1271,24 @@ public final class SimCommandStream {
         for (float value : size) {
             command.putFloat(value);
         }
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_ENERGY} (ADR-176 D3) : le carburant, en litres, et la charge de la batterie d'un
+     * véhicule. {@link Float#NaN} garde la valeur ; une valeur hors de {@code [0, capacité]} y est ramenée. Ne réveille
+     * pas le véhicule.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param fuel le carburant, en litres, ou {@code NaN} pour le garder
+     * @param battery la charge de la batterie, ou {@code NaN} pour la garder
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setEnergy(int handleIndex, int handleGeneration, float fuel, float battery) {
+        ByteBuffer command = beginCommand(OP_SET_ENERGY, SET_ENERGY_BYTES);
+        command.putInt(handleIndex).putInt(handleGeneration).putFloat(fuel).putFloat(battery);
         commands.add(command.array());
         return this;
     }

@@ -264,4 +264,28 @@ public final class VehiculesGameTests {
                         "contact coupé : le moteur s'arrête"))
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D3 : l'énergie d'une definition arrive au natif (section du véhicule de {@code DEFN}) : le réservoir est
+     * plein à la création, la batterie aussi, et un moteur qui tourne brûle du carburant, que le rapport du natif
+     * rend en litres.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void adr176_LeNatifConnaitLEnergieDeLaDefinitionEtLaBrule(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_reservoir",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), new float[] {0f, 0f, 0f, 1f});
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.ignitionVariable() >= 0,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    vehicule.variables().set(vehicule.ignitionVariable(), 1.0, "test");
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.vehicleReport() != null
+                        && vehicule.vehicleReport().fuel() > 0f && vehicule.vehicleReport().fuel() < 40f
+                        && vehicule.vehicleReport().battery() > 0.5f && vehicule.vehicleReport().battery() <= 1f,
+                        "le natif a brûlé du carburant sur un réservoir de 40 litres : " + vehicule.vehicleReport()))
+                .thenSucceed();
+    }
 }

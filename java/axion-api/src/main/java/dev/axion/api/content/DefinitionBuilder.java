@@ -339,6 +339,18 @@ public final class DefinitionBuilder {
     }
 
     /**
+     * {@code energy}.
+     *
+     * @param config règle l'objet ; rappelée, elle complète le même
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder energy(Consumer<Energy> config) {
+        Map<String, Object> nested = object(values, "energy");
+        Objects.requireNonNull(config, "config").accept(new Energy(nested));
+        return this;
+    }
+
+    /**
      * {@code events}.
      *
      * @param name clé de la table
@@ -1934,6 +1946,129 @@ public final class DefinitionBuilder {
          */
         public Deformation minQuality(String value) {
             values.put("min_quality", Objects.requireNonNull(value, "min_quality"));
+            return this;
+        }
+    }
+
+    /** {@code energy.battery}. */
+    @Experimental
+    public static final class EnergyBattery {
+
+        private final Map<String, Object> values;
+
+        private EnergyBattery(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code energy.battery.capacity}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyBattery capacity(double value) {
+            values.put("capacity", value);
+            return this;
+        }
+
+        /**
+         * {@code energy.battery.charge_rate}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyBattery chargeRate(double value) {
+            values.put("charge_rate", value);
+            return this;
+        }
+
+        /**
+         * {@code energy.battery.starter_draw}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyBattery starterDraw(double value) {
+            values.put("starter_draw", value);
+            return this;
+        }
+    }
+
+    /** {@code energy.fuel}. */
+    @Experimental
+    public static final class EnergyFuel {
+
+        private final Map<String, Object> values;
+
+        private EnergyFuel(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code energy.fuel.capacity}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyFuel capacity(double value) {
+            values.put("capacity", value);
+            return this;
+        }
+
+        /**
+         * {@code energy.fuel.consumption}.
+         *
+         * @param rows les lignes, une par élément
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyFuel consumption(double[]... rows) {
+            values.put("consumption", rows(rows));
+            return this;
+        }
+
+        /**
+         * {@code energy.fuel.unit_mass}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyFuel unitMass(double value) {
+            values.put("unit_mass", value);
+            return this;
+        }
+    }
+
+    /** {@code energy}. */
+    @Experimental
+    public static final class Energy {
+
+        private final Map<String, Object> values;
+
+        private Energy(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code energy.battery}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Energy battery(Consumer<EnergyBattery> config) {
+            Map<String, Object> nested = object(values, "battery");
+            Objects.requireNonNull(config, "config").accept(new EnergyBattery(nested));
+            return this;
+        }
+
+        /**
+         * {@code energy.fuel}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Energy fuel(Consumer<EnergyFuel> config) {
+            Map<String, Object> nested = object(values, "fuel");
+            Objects.requireNonNull(config, "config").accept(new EnergyFuel(nested));
             return this;
         }
     }

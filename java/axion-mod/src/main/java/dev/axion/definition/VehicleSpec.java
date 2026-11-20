@@ -25,7 +25,22 @@ import java.util.function.BiConsumer;
 final class VehicleSpec {
 
     /** Taille de l'en-tête de la section, en octets. */
-    static final int HEADER_BYTES = 120;
+    static final int HEADER_BYTES = 144;
+
+    /** Capacité maximale d'un réservoir, en litres (ADR-176 D3). */
+    static final float MAX_FUEL_CAPACITY = 100_000f;
+
+    /** Masse maximale d'un litre de carburant, en kg (ADR-176 D3). */
+    static final float MAX_UNIT_MASS = 100f;
+
+    /** Consommation maximale, en litres par heure (ADR-176 D3). */
+    static final float MAX_CONSUMPTION = 1_000_000f;
+
+    /** Capacité maximale d'une batterie, en unités de charge (ADR-176 D3). */
+    static final float MAX_BATTERY = 1_000_000f;
+
+    /** Au plus ce nombre de points de consommation (ADR-176 D3) : {@code EnergyDesc::MAX_POINTS} du natif. */
+    static final int MAX_CONSUMPTION_POINTS = 64;
 
     /** Durée minimale du démarreur, en secondes (ADR-176 D1). */
     static final float MIN_STARTER_TIME = 0.05f;
@@ -122,6 +137,7 @@ final class VehicleSpec {
         if (object(root, "powertrain") != null) {
             checkPowertrain(object(root, "powertrain"), wheels, fault);
         }
+        checkEnergy(root, fault);
         checkSteering(object(root, "steering"), fault);
         checkBrakes(object(root, "brakes"), fault);
         checkAero(object(root, "aero"), fault);
@@ -156,6 +172,70 @@ final class VehicleSpec {
             axles.computeIfAbsent(axle, key -> new ArrayList<>()).add(index);
         } else if (number(suspension, "anti_roll", 0f) != 0f) {
             fault.accept(sat + ".anti_roll", "l'anti-roulis agit entre les deux roues d'un essieu déclaré (R-1061)");
+        }
+    }
+
+    /**
+     * ADR-176 D3 : l'énergie d'un véhicule. Un réservoir déclare sa capacité et sa consommation (charge de 0 à 1,
+     * strictement croissante, litres par heure) ; une batterie, sa capacité, ce que le démarreur en tire et ce que le
+     * moteur lui rend, et exige un démarreur ; la masse par litre exige une masse déclarée, qui est la masse à sec.
+     */
+    private static void checkEnergy(JsonObject root, BiConsumer<String, String> fault) {
+        JsonObject energy = object(root, "energy");
+        if (energy == null) {
+            return;
+        }
+        JsonObject powertrain = object(root, "powertrain");
+        if (powertrain == null) {
+            fault.accept("$.energy", "l'énergie nourrit un groupe motopropulseur : la definition en déclare un");
+            return;
+        }
+        JsonObject fuel = object(energy, "fuel");
+        if (fuel != null) {
+            String at = "$.energy.fuel";
+            if (!(number(fuel, "capacity", 0f) > 0f) || number(fuel, "capacity", 0f) > MAX_FUEL_CAPACITY) {
+                fault.accept(at + ".capacity", "la capacité du réservoir est de 0 (exclu) à " + MAX_FUEL_CAPACITY
+                        + " litres");
+            }
+            if (number(fuel, "unit_mass", 0f) < 0f || number(fuel, "unit_mass", 0f) > MAX_UNIT_MASS) {
+                fault.accept(at + ".unit_mass", "la masse d'un litre est de 0 à " + MAX_UNIT_MASS + " kg");
+            }
+            boolean dryMass = object(root, "physics") != null && object(root, "physics").get("mass") != null;
+            if (number(fuel, "unit_mass", 0f) > 0f && !dryMass) {
+                fault.accept(at + ".unit_mass", "la masse suit le carburant : la definition déclare physics.mass, la masse"
+                        + " à sec");
+            }
+            if (!(fuel.get("consumption") instanceof JsonArray curve) || curve.isEmpty()) {
+                fault.accept(at + ".consumption", "un réservoir déclare sa consommation : un point au moins");
+            } else if (curve.size() > MAX_CONSUMPTION_POINTS) {
+                fault.accept(at + ".consumption", "au plus " + MAX_CONSUMPTION_POINTS + " points");
+            } else {
+                double previous = -1;
+                for (int i = 0; i < curve.size(); i++) {
+                    JsonArray point = curve.get(i).getAsJsonArray();
+                    double load = point.get(0).getAsDouble();
+                    if (load < 0 || load > 1 || load <= previous) {
+                        fault.accept(at + ".consumption[" + i + "]", "les charges sont dans [0, 1], strictement croissantes");
+                    }
+                    if (point.get(1).getAsDouble() < 0 || point.get(1).getAsDouble() > MAX_CONSUMPTION) {
+                        fault.accept(at + ".consumption[" + i + "]", "la consommation est de 0 à " + MAX_CONSUMPTION
+                                + " litres par heure");
+                    }
+                    previous = load;
+                }
+            }
+        }
+        JsonObject battery = object(energy, "battery");
+        if (battery != null) {
+            String at = "$.energy.battery";
+            if (!(number(battery, "capacity", 0f) > 0f) || number(battery, "capacity", 0f) > MAX_BATTERY) {
+                fault.accept(at + ".capacity", "la capacité de la batterie est de 0 (exclu) à " + MAX_BATTERY);
+            }
+            atLeast(battery, "starter_draw", at, true, fault);
+            atLeast(battery, "charge_rate", at, true, fault);
+            if (object(powertrain, "engine") == null || object(object(powertrain, "engine"), "starter") == null) {
+                fault.accept(at, "une batterie nourrit le démarreur : le moteur déclare powertrain.engine.starter");
+            }
         }
     }
 
@@ -321,7 +401,8 @@ final class VehicleSpec {
                 + root.getAsJsonArray("wheels").size() * WHEEL_BYTES
                 + count(engine, "torque_curve") * 8
                 + count(transmission, "gears") * 4
-                + count(aero, "surfaces") * SURFACE_BYTES;
+                + count(aero, "surfaces") * SURFACE_BYTES
+                + consumption(root).size() * 8;
     }
 
     /**
@@ -373,6 +454,14 @@ final class VehicleSpec {
                 number(aero, "downforce_front", DOWNFORCE), number(aero, "downforce_rear", DOWNFORCE));
         put(out, number(traction, "slip_threshold", TRACTION_SLIP_THRESHOLD),
                 number(stability, "yaw_tolerance", STABILITY_YAW_TOLERANCE));
+        // ADR-176 D3 : l'énergie. Sans réservoir ou sans batterie, la capacité vaut 0 : le moteur n'en dépend pas.
+        JsonObject energy = object(root, "energy");
+        JsonObject fuel = object(energy, "fuel");
+        JsonObject battery = object(energy, "battery");
+        out.putShort((short) consumption(root).size());
+        out.putShort((short) 0);
+        put(out, number(fuel, "capacity", 0f), number(fuel, "unit_mass", 0f), number(battery, "capacity", 0f),
+                number(battery, "starter_draw", 0f), number(battery, "charge_rate", 0f));
 
         Set<String> steered = listOr(steering, "steered_wheels");
         Set<String> driven = listOr(powertrain, "drive_wheels");
@@ -418,6 +507,15 @@ final class VehicleSpec {
                 put(out, number(surface, "area", 0f), number(surface, "cl", 0f), number(surface, "cd", 0f));
             }
         }
+        for (JsonElement point : consumption(root)) {
+            put(out, point.getAsJsonArray().get(0).getAsFloat(), point.getAsJsonArray().get(1).getAsFloat());
+        }
+    }
+
+    /** {@return les points de consommation du réservoir, charge puis litres par heure ; vide sans réservoir} */
+    private static JsonArray consumption(JsonObject root) {
+        JsonObject fuel = object(object(root, "energy"), "fuel");
+        return fuel != null && fuel.get("consumption") instanceof JsonArray curve ? curve : new JsonArray();
     }
 
     /**

@@ -57,7 +57,7 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 30 depuis le démarreur du moteur (ADR-176 D1) : `starter_time` dans la section du véhicule de `DEFN` (en-tête de 120 octets), le contact dans `VehicleInput::native_flags` (octet 22), et l'état du moteur dans le bloc d'état. 29 depuis les capteurs déclarés
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 31 depuis l'énergie (ADR-176 D3) : `energy` dans la section du véhicule de `DEFN` (en-tête de 144 octèts, table de consommation en queue), `VehicleReport` de 32 octets (carburant, batterie), opcode `SET_ENERGY`, et le bloc d'état en version 2 (72 octets de véhicule). 30 depuis le démarreur du moteur (ADR-176 D1) : `starter_time` dans la section du véhicule de `DEFN` (en-tête de 120 octets), le contact dans `VehicleInput::native_flags` (octet 22), et l'état du moteur dans le bloc d'état. 29 depuis les capteurs déclarés
 /// (ADR-174 D5) : opcode `SET_SENSOR`, et le rang du capteur dans `data` de `SENSOR_ENTER` et `SENSOR_EXIT`. 28 depuis le poids d'une couche réglé sans
 /// relancer son clip (ADR-174 D4) : action `SET_WEIGHT` des commandes d'animation. 27 depuis les attaches entre assemblies (ADR-171
 /// D6) : opcodes `ATTACH`, `DETACH`, `SET_ATTACHMENT_LENGTH`, et la section `AttachmentReport` de `SIM_OUT` (schéma 7).
@@ -83,7 +83,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 30;
+pub const AXION_ABI_VERSION: u32 = 31;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

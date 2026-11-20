@@ -1854,6 +1854,56 @@
       "maxProperties": 64,
       "x-axion-code": "E-3050"
     },
+    "energy": {
+      "type": "object",
+      "properties": {
+        "fuel": {
+          "type": "object",
+          "properties": {
+            "capacity": {
+              "type": "number"
+            },
+            "unit_mass": {
+              "type": "number"
+            },
+            "consumption": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          },
+          "required": [
+            "capacity"
+          ],
+          "additionalProperties": false
+        },
+        "battery": {
+          "type": "object",
+          "properties": {
+            "capacity": {
+              "type": "number"
+            },
+            "starter_draw": {
+              "type": "number"
+            },
+            "charge_rate": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "capacity"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "revision": {
       "type": "integer",
       "minimum": 1,

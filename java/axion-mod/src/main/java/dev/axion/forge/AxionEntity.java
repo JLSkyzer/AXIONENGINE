@@ -129,6 +129,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private VehicleReport vehicleReport;
 
+    /** {@return le dernier rapport du natif sur le motopropulseur, ou {@code null} tant qu'il n'en a pas envoyé} */
+    VehicleReport vehicleReport() {
+        return vehicleReport;
+    }
+
     /**
      * Les variables de l'assembly (serveur, ADR-163 D2) ; {@code null} tant que sa definition n'est pas compilée.
      * Voir {@link #variables()}.

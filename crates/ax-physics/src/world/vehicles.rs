@@ -19,6 +19,7 @@ use ax_model::dm::vehicle::{
     native_input_flags, transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags,
     wheel_report_flags, VehicleDesc, VehicleInput, VehicleReport, WheelReport,
 };
+use ax_vehicle::energy::{Burn, EnergyState};
 use ax_vehicle::engine::EngineState;
 use ax_vehicle::powertrain::{self, DriveCommand, WheelDrive};
 use ax_vehicle::steering::{self, Geometry, Steering};
@@ -141,6 +142,8 @@ pub(super) struct Vehicle {
     engine_speed: f32,
     /// Arrêté, démarreur ou tournant (ADR-176 D1) ; tournant toujours sans `starter`.
     engine: EngineState,
+    /// Le carburant et la batterie (ADR-176 D3) ; sans effet sans `energy` déclarée.
+    energy: EnergyState,
     gearbox: Gearbox,
     steering: Steering,
     geometry: Geometry,
@@ -306,6 +309,7 @@ impl PhysicsWorld {
             driver: false,
             engine_speed,
             engine,
+            energy: EnergyState::full(&desc.energy),
             gearbox: Gearbox::new(&desc),
             steering: Steering::default(),
             geometry,
@@ -429,6 +433,27 @@ impl PhysicsWorld {
         Some(non_finite)
     }
 
+    /// Pose l'énergie d'un véhicule (ADR-176 D3) : un NaN garde la valeur, une valeur négative ou au-dessus de la capacité
+    /// y est ramenée. Ne réveille pas le véhicule : un plein fait à l'arrêt n'a rien à simuler. Rend faux si l'assembly
+    /// n'est pas un véhicule.
+    pub fn set_vehicle_energy(&mut self, assembly: Handle, fuel: f32, battery: f32) -> bool {
+        let Some(vehicle) = self
+            .vehicles
+            .iter_mut()
+            .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))
+        else {
+            return false;
+        };
+        if fuel.is_finite() {
+            vehicle.energy.fuel = f64::from(fuel);
+        }
+        if battery.is_finite() {
+            vehicle.energy.battery = f64::from(battery);
+        }
+        vehicle.energy.clamp(&vehicle.desc.energy);
+        true
+    }
+
     /// L'état des roues d'un véhicule, ou `None` si l'assembly n'en est pas un.
     #[must_use]
     pub fn vehicle_wheels(&self, assembly: Handle) -> Option<&[WheelState]> {
@@ -493,6 +518,7 @@ impl PhysicsWorld {
             driver: vehicle.driver,
             engine_speed: vehicle.engine_speed,
             engine: vehicle.engine,
+            energy: vehicle.energy,
             gearbox: vehicle.gearbox.parts(),
             steering: vehicle.steering.position(),
             traction_slip: vehicle.traction_slip,
@@ -536,6 +562,8 @@ impl PhysicsWorld {
         vehicle.driver = snapshot.driver;
         vehicle.engine_speed = snapshot.engine_speed;
         vehicle.engine = snapshot.engine;
+        vehicle.energy = snapshot.energy;
+        vehicle.energy.clamp(&vehicle.desc.energy);
         let (gear, target, shift_left, hold) = snapshot.gearbox;
         vehicle.gearbox = Gearbox::from_parts(&vehicle.desc, gear, target, shift_left, hold);
         vehicle.steering = Steering::at(snapshot.steering);
@@ -586,6 +614,8 @@ impl PhysicsWorld {
                     gear: vehicle.gearbox.gear(),
                     flags,
                     steer: vehicle.steering.position(),
+                    fuel: vehicle.energy.fuel as f32,
+                    battery: vehicle.energy.battery as f32,
                 }
             })
             .collect()
@@ -749,9 +779,10 @@ impl PhysicsWorld {
         // ADR-176 D1 : le contact tenu avance l'état du moteur. Il vient de la dernière entrée reçue, conducteur ou non :
         // le conducteur qui descend ne coupe pas le moteur.
         let ignition = vehicle.input.native_flags & native_input_flags::IGNITION != 0;
+        let supply = vehicle.energy.supply(&vehicle.desc.energy);
         vehicle
             .engine
-            .step(vehicle.desc.engine.starter_time, ignition, dt);
+            .step(vehicle.desc.engine.starter_time, ignition, supply, dt);
 
         // D8, Q3 : sans conducteur, le frein de stationnement est serré.
         let input = if vehicle.driver {
@@ -843,6 +874,18 @@ impl PhysicsWorld {
             &command,
             &mut vehicle.engine_speed,
             &mut vehicle.drives,
+            dt,
+        );
+        // ADR-176 D3 : le moteur qui tourne brûle, le démarreur qui tourne décharge la batterie.
+        vehicle.energy.step(
+            &desc.energy,
+            Burn {
+                running,
+                cranking: vehicle.engine.cranking(),
+                load: vehicle.load,
+                rpm: Burn::rpm_of(vehicle.engine_speed),
+                max_rpm: desc.engine.max_rpm,
+            },
             dt,
         );
 
