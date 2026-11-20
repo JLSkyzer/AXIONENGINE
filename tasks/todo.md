@@ -3887,6 +3887,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            répliqué (descripteur 9). Suite : 9b (événements) à 9g.
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
+     - [x] ADR-176, tranche 11a (2026-11-20) : moteur à démarreur (`powertrain.engine.starter`, contact = variable
+           booléenne non sauvegardée), `EngineState` natif, `VehicleInput::native_flags` (`IGNITION`), ABI 30, point mort
+           automatique moteur arrêté. Écarts : bit hors de `flags` (pris par les commandes), buggy d'exemple reporté à 11b
+           (cinq exemples, R-1790). Suite : 11b (énergie), 11c (usure), 11d (météo) ; film d'ADR-175 10e toujours à faire.
      - [x] ADR-175, tranche 10e (2026-11-20) : reliure à chaud des assemblies vivantes après un rechargement
            (`content.rebind_per_tick`), occupants repris par nom de siège ; écart avec D6 : pas de clé native
            `(id, sha256)`, inutile (le natif clone à la création). Reste : le film (un modèle qui change entre deux

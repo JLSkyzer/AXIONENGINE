@@ -105,6 +105,9 @@ pub struct DriveCommand {
     pub clutch: f32,
     /// Seuil de l'ABS, s'il est actif.
     pub abs: Option<f32>,
+    /// Le moteur tourne (ADR-176 D1). Arrêté, il ne donne aucun couple, le plancher de son régime est 0, et il ne
+    /// garde que son frein moteur, que les roues lui rendent par l'embrayage.
+    pub running: bool,
 }
 
 /// Avance moteur et roues d'un sous-pas de `dt`. `engine_speed` est la vitesse du moteur, en rad/s ;
@@ -122,8 +125,12 @@ pub fn step(
     let direct = desc.transmission.kind == transmission_kind::DIRECT;
     let idle = e.idle_rpm / engine::RPM_PER_RAD_S;
     let max = e.max_rpm / engine::RPM_PER_RAD_S;
-    // Une boîte directe n'a pas de ralenti à tenir : le moteur suit les roues jusqu'à l'arrêt.
-    let floor = if direct { 0.0 } else { idle };
+    // Une boîte directe n'a pas de ralenti à tenir : le moteur suit les roues jusqu'à l'arrêt. Un moteur arrêté non plus.
+    let floor = if direct || !command.running {
+        0.0
+    } else {
+        idle
+    };
     let band = (LAUNCH_BAND * (max - idle)).max(f32::EPSILON);
     let capacity = CLUTCH_CAPACITY * engine::peak_torque(&desc.torque_curve).max(e.braking_torque);
     let ratio = command.ratio;
@@ -169,7 +176,12 @@ pub fn step(
             let bound = delta.abs() / (h * (1.0 / engine_inertia + reflected));
             sign(delta) * (engaged * capacity).min(bound)
         };
-        let torque = engine::torque(e, &desc.torque_curve, *engine_speed, command.throttle);
+        let throttle = if command.running {
+            command.throttle
+        } else {
+            0.0
+        };
+        let torque = engine::torque(e, &desc.torque_curve, *engine_speed, throttle);
         *engine_speed =
             (*engine_speed + (torque - clutch_torque) * h / engine_inertia).clamp(floor, max);
         let shaft = clutch_torque * ratio * efficiency;
@@ -373,6 +385,7 @@ mod tests {
             throttle,
             clutch: 0.0,
             abs: None,
+            running: true,
         }
     }
 

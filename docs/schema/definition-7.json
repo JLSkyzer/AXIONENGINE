@@ -414,6 +414,24 @@
             },
             "braking_torque": {
               "type": "number"
+            },
+            "starter": {
+              "type": "object",
+              "properties": {
+                "time": {
+                  "type": "number"
+                },
+                "variable": {
+                  "type": "string",
+                  "pattern": "^[ -~]{1,64}$",
+                  "x-axion-refers": "variable"
+                }
+              },
+              "required": [
+                "time",
+                "variable"
+              ],
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

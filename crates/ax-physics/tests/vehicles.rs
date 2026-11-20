@@ -4,10 +4,10 @@
 use ax_math::{Quat, Vec3};
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
-    differential_kind, transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags,
-    wheel_report_flags, AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc, EngineDesc,
-    SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc, VehicleInput,
-    WheelDesc,
+    differential_kind, native_input_flags, transmission_kind, vehicle_flags, vehicle_report_flags,
+    wheel_flags, wheel_report_flags, AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc,
+    EngineDesc, SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc,
+    VehicleInput, WheelDesc,
 };
 use ax_physics::{
     BodyCollider, BodyId, BodyKind, CollisionGroups, CombineRule, ContactMaterial, Handle,
@@ -111,6 +111,7 @@ fn description(roues: usize) -> VehicleDesc {
             max_rpm: 7000.0,
             inertia: 0.3,
             braking_torque: 25.0,
+            starter_time: 0.0,
         },
         transmission: TransmissionDesc {
             kind: transmission_kind::DIRECT,
@@ -1624,4 +1625,160 @@ fn adr168_d5_restaurer_puis_rejouer_redonne_la_course_d_origine() {
         fin,
         "et l'état du véhicule"
     );
+}
+
+/// La berline, avec un démarreur de `temps` secondes (ADR-176 D1).
+fn berline_a_demarreur(temps: f32) -> VehicleDesc {
+    let mut d = berline();
+    d.engine.starter_time = temps;
+    d
+}
+
+/// Une entrée de conducteur, contact mis ou coupé.
+fn avec_contact(e: VehicleInput, mis: bool) -> VehicleInput {
+    VehicleInput {
+        native_flags: if mis { native_input_flags::IGNITION } else { 0 },
+        ..e
+    }
+}
+
+#[test]
+fn adr176_d1_un_moteur_a_demarreur_ne_donne_rien_tant_que_le_contact_n_est_pas_mis() {
+    let (mut world, v) = sur_le_plat(berline_a_demarreur(0.5), [100.0, 100.0], 1.0);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(!etat.engine.running(), "il attend son démarreur : {etat:?}");
+    assert_eq!(etat.engine_speed, 0.0, "arrêté, il ne tourne pas");
+    conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), false));
+    avancer(&mut world, 2.0);
+    assert!(
+        vers_l_avant(&world, v).abs() < 0.05,
+        "plein gaz, contact coupé : il n'avance pas ({})",
+        vers_l_avant(&world, v)
+    );
+    let rapport = world.vehicle_telemetry(ASSEMBLY).expect("véhicule");
+    assert_eq!(rapport.engine_rpm, 0.0, "régime nul");
+    for rapport in world.vehicle_reports() {
+        assert_eq!(
+            rapport.flags & vehicle_report_flags::RUNNING,
+            0,
+            "pas tournant"
+        );
+    }
+}
+
+#[test]
+fn adr176_d1_le_contact_lance_le_demarreur_puis_le_moteur_tourne_et_emporte_le_vehicule() {
+    let (mut world, v) = sur_le_plat(berline_a_demarreur(0.5), [100.0, 100.0], 1.0);
+    conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), true));
+    avancer(&mut world, 0.25);
+    let pendant = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(
+        pendant.engine.cranking(),
+        "le démarreur tourne : {pendant:?}"
+    );
+    assert!(
+        vers_l_avant(&world, v).abs() < 0.05,
+        "le démarreur ne donne aucun couple"
+    );
+    avancer(&mut world, 0.5);
+    let apres = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(apres.engine.running(), "le moteur a pris : {apres:?}");
+    avancer(&mut world, 3.0);
+    assert!(
+        vers_l_avant(&world, v) > 3.0,
+        "il roule : {}",
+        vers_l_avant(&world, v)
+    );
+    let rapports = world.vehicle_reports();
+    assert_eq!(rapports.len(), 1);
+    assert_ne!(
+        rapports[0].flags & vehicle_report_flags::RUNNING,
+        0,
+        "tournant"
+    );
+    assert!(
+        rapports[0].rpm >= 800.0,
+        "au moins au ralenti : {}",
+        rapports[0].rpm
+    );
+}
+
+#[test]
+fn adr176_d1_couper_le_contact_arrete_le_moteur_et_la_boite_automatique_passe_au_point_mort() {
+    let (mut world, v) = sur_le_plat(berline_a_demarreur(0.2), [200.0, 200.0], 1.0);
+    conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), true));
+    avancer(&mut world, 4.0);
+    let avant = vers_l_avant(&world, v);
+    assert!(avant > 3.0, "il roule : {avant}");
+    conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), false));
+    avancer(&mut world, 0.5);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(!etat.engine.running(), "arrêté : {etat:?}");
+    assert_eq!(etat.load, 0.0, "plus de charge");
+    // Plein gaz et moteur arrêté : le véhicule n'accélère plus, il roule sur son erreur (aucune traînée dans cette
+    // description). Moteur tournant, il aurait gagné plusieurs m/s en deux secondes.
+    let apres_coupure = vers_l_avant(&world, v);
+    avancer(&mut world, 2.0);
+    assert!(
+        vers_l_avant(&world, v) < apres_coupure + 0.05,
+        "sans moteur, le gaz ne donne plus rien : {} puis {}",
+        apres_coupure,
+        vers_l_avant(&world, v)
+    );
+}
+
+#[test]
+fn adr176_d1_le_contact_seul_reveille_un_vehicule_gare() {
+    let (mut world, _) = sur_le_plat(berline_a_demarreur(0.4), [100.0, 100.0], 1.0);
+    avancer(&mut world, 1.0);
+    // Aucun accélérateur, aucun frein, aucune direction : seul le contact change.
+    conduire(&mut world, avec_contact(VehicleInput::NONE, true));
+    avancer(&mut world, 1.0);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(
+        etat.engine.running(),
+        "le démarreur a tourné jusqu'au bout : {etat:?}"
+    );
+    conduire(&mut world, avec_contact(VehicleInput::NONE, false));
+    avancer(&mut world, 0.2);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(
+        !etat.engine.running(),
+        "et le contact coupé l'a arrêté : {etat:?}"
+    );
+}
+
+#[test]
+fn adr176_d1_sans_demarreur_le_contact_est_sans_effet() {
+    let (mut world, v) = sur_le_plat(berline(), [100.0, 100.0], 1.0);
+    conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), false));
+    avancer(&mut world, 3.0);
+    assert!(vers_l_avant(&world, v) > 3.0, "il roule contact « coupé »");
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(etat.engine.running());
+}
+
+#[test]
+fn adr176_d1_l_etat_du_moteur_et_le_contact_passent_dans_le_bloc_d_etat() {
+    let (mut world, _) = sur_le_plat(berline_a_demarreur(0.5), [100.0, 100.0], 1.0);
+    conduire(&mut world, avec_contact(entree(0.3, 0.0, 0.0), true));
+    avancer(&mut world, 0.25);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(etat.engine.cranking());
+    assert_ne!(etat.input.native_flags & native_input_flags::IGNITION, 0);
+    let bloc = ax_physics::state::AssemblyState {
+        bodies: Vec::new(),
+        joints: Vec::new(),
+        vehicle: Some(etat.clone()),
+    };
+    let relu = ax_physics::state::AssemblyState::decode(&bloc.encode()).expect("lisible");
+    assert_eq!(
+        relu.vehicle.as_ref(),
+        Some(&etat),
+        "le démarreur et le contact se relisent"
+    );
+    // Rendu au monde, l'état refait le même démarrage.
+    avancer(&mut world, 1.0);
+    assert!(world.restore_vehicle(ASSEMBLY, &etat));
+    assert_eq!(world.vehicle_snapshot(ASSEMBLY), Some(etat));
 }

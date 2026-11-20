@@ -16,6 +16,7 @@ import java.util.List;
  * @param tuning ses paramètres réglables
  * @param nodeNames le nom de chaque node de son asset, par index
  * @param bodyRests la pose de repos de chacun de ses corps
+ * @param ignition le rang de la variable que le démarreur lit comme contact (ADR-176 D1), -1 sans démarreur
  */
 public record HeldDefinition(
         Definition definition,
@@ -23,7 +24,8 @@ public record HeldDefinition(
         Seating seating,
         Tuning tuning,
         List<String> nodeNames,
-        BodyRests bodyRests) {
+        BodyRests bodyRests,
+        int ignition) {
 
     /** Copie les noms. */
     public HeldDefinition {

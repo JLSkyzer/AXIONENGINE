@@ -22,7 +22,8 @@
 //! près (précisions d'ADR-168).
 
 use ax_math::{DVec3, Quat, Vec3};
-use ax_model::dm::vehicle::VehicleInput;
+use ax_model::dm::vehicle::{native_input_flags, VehicleInput};
+use ax_vehicle::engine::{EnginePhase, EngineState};
 
 use super::PhysicsWorld;
 use crate::body::BodyId;
@@ -128,6 +129,8 @@ pub struct VehicleSnapshot {
     pub traction_slip: f32,
     /// Charge du moteur au dernier sous-pas.
     pub load: f32,
+    /// L'état du moteur : arrêté, démarreur, tournant (ADR-176 D1).
+    pub engine: EngineState,
     /// Chaque roue, dans l'ordre de la definition.
     pub wheels: Vec<WheelSnapshot>,
 }
@@ -207,12 +210,19 @@ impl AssemblyState {
             out.push(input.gear.to_le_bytes()[0]);
             out.push(input.flags);
             out.push(u8::from(vehicle.driver));
-            out.push(0);
+            // Le contact tenu : l'entrée rejouée le garde (ADR-176 D1). Ce remplissage était à zéro avant lui.
+            out.push(input.native_flags);
             out.extend_from_slice(&vehicle.engine_speed.to_le_bytes());
             let (gear, target, shift_left, hold) = vehicle.gearbox;
             out.push(gear.to_le_bytes()[0]);
             out.push(target.to_le_bytes()[0]);
-            out.extend_from_slice(&[0; 2]);
+            // L'état du moteur (ADR-176 D1) : la phase, et le contact du pas précédent. Remplissage jusqu'ici.
+            out.push(match vehicle.engine.phase {
+                EnginePhase::Stopped => 0,
+                EnginePhase::Cranking => 1,
+                EnginePhase::Running => 2,
+            });
+            out.push(u8::from(vehicle.engine.ignition));
             for value in [
                 shift_left,
                 hold,
@@ -222,7 +232,8 @@ impl AssemblyState {
             ] {
                 out.extend_from_slice(&value.to_le_bytes());
             }
-            out.extend_from_slice(&[0; 4]);
+            // Le temps restant au démarreur (ADR-176 D1) ; ces quatre octets étaient du remplissage.
+            out.extend_from_slice(&vehicle.engine.remaining.to_le_bytes());
             for wheel in &vehicle.wheels {
                 for value in [
                     wheel.spin_speed,
@@ -308,7 +319,7 @@ impl AssemblyState {
             reader.skip(7)?;
         }
         if vehicle {
-            let input = VehicleInput {
+            let mut input = VehicleInput {
                 throttle: reader.f32()?,
                 brake: reader.f32()?,
                 steer: reader.f32()?,
@@ -316,21 +327,29 @@ impl AssemblyState {
                 handbrake: reader.f32()?,
                 gear: i8::from_le_bytes([reader.u8()?]),
                 flags: reader.u8()?,
-                _pad: [0; 2],
+                native_flags: 0,
+                _pad: 0,
             };
             let driver = reader.u8()? != 0;
-            reader.skip(1)?;
+            input.native_flags = reader.u8()? & native_input_flags::ALL;
             let engine_speed = reader.f32()?;
             let gear = i8::from_le_bytes([reader.u8()?]);
             let target = i8::from_le_bytes([reader.u8()?]);
-            reader.skip(2)?;
+            let phase = match reader.u8()? {
+                0 => EnginePhase::Stopped,
+                1 => EnginePhase::Cranking,
+                2 => EnginePhase::Running,
+                _ => return Err(StateError::Mismatch),
+            };
+            let ignition = reader.u8()? != 0;
             let shift_left = reader.f32()?;
             let hold = reader.f32()?;
             let steering = reader.f32()?;
             let traction_slip = reader.f32()?;
             let load = reader.f32()?;
-            reader.skip(4)?;
+            let remaining = reader.f32()?;
             let scalars = [
+                remaining,
                 input.throttle,
                 input.brake,
                 input.steer,
@@ -354,6 +373,11 @@ impl AssemblyState {
                 steering,
                 traction_slip,
                 load,
+                engine: EngineState {
+                    phase,
+                    remaining,
+                    ignition,
+                },
                 wheels: Vec::with_capacity(wheels),
             };
             for _ in 0..wheels {

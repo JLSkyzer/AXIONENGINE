@@ -10,7 +10,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
@@ -854,5 +858,59 @@ class DefinitionSchemaTest {
         JsonObject six = septAvec("[{\"hide_node\": \"lamp\"}]", "actions");
         six.addProperty("schema", 6);
         assertThrows(DefinitionException.class, () -> read(six), "la liste n'existe qu'au schéma 7");
+    }
+
+    /** La definition de test à démarreur : un véhicule au schéma 7, dont le démarreur lit la variable {@code contact}. */
+    private static JsonObject avecDemarreur() {
+        try {
+            Path racine = Path.of(System.getProperty("axion.crates.dir")).getParent();
+            JsonObject root = JsonParser.parseString(Files.readString(
+                    racine.resolve("content/test/axion/definitions/test/vehicule_demarreur.json"),
+                    StandardCharsets.UTF_8)).getAsJsonObject();
+            root.addProperty("asset", "mymod:models/pickup.glb");
+            return root;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    @Test
+    @DisplayName("ADR-176 D1 : au schéma 7, le démarreur lit une variable booléenne, de l'assembly, non sauvegardée")
+    void leDemarreurEtSonContact() throws DefinitionException {
+        JsonObject bon = avecDemarreur();
+        assertDoesNotThrow(() -> read(bon));
+        assertEquals(0, Ignition.variable(bon, Variables.of(bon)), "la variable contact, au rang 0");
+        JsonObject sans = avecDemarreur();
+        at(sans, "powertrain", "engine").remove("starter");
+        assertEquals(-1, Ignition.variable(sans, Variables.of(sans)), "sans démarreur, pas de contact");
+
+        JsonObject inconnue = avecDemarreur();
+        at(inconnue, "powertrain", "engine", "starter").addProperty("variable", "clef");
+        assertEquals("$.powertrain.engine.starter.variable",
+                assertThrows(DefinitionException.class, () -> read(inconnue)).path(), "une variable inconnue");
+
+        JsonObject entiere = avecDemarreur();
+        at(entiere, "variables", "contact").addProperty("type", "int");
+        at(entiere, "variables", "contact").remove("default");
+        assertEquals("$.powertrain.engine.starter.variable",
+                assertThrows(DefinitionException.class, () -> read(entiere)).path(), "le contact est un booléen");
+
+        JsonObject sauvee = avecDemarreur();
+        at(sauvee, "variables", "contact").addProperty("persist", true);
+        DefinitionException persistee = assertThrows(DefinitionException.class, () -> read(sauvee));
+        assertEquals("$.powertrain.engine.starter.variable", persistee.path());
+        assertTrue(persistee.getMessage().contains("persist"), persistee.getMessage());
+
+        for (double duree : new double[] {0.0, 0.01, 11.0}) {
+            JsonObject hors = avecDemarreur();
+            at(hors, "powertrain", "engine", "starter").addProperty("time", duree);
+            assertEquals("$.powertrain.engine.starter.time",
+                    assertThrows(DefinitionException.class, () -> read(hors)).path(), "durée " + duree);
+        }
+
+        JsonObject six = avecDemarreur();
+        six.addProperty("schema", 6);
+        assertEquals("$.powertrain.engine.starter", assertThrows(DefinitionException.class, () -> read(six)).path(),
+                "le démarreur n'existe qu'au schéma 7");
     }
 }

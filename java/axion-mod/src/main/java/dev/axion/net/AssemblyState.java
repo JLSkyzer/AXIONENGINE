@@ -466,7 +466,8 @@ public record AssemblyState(
      * des bornes symétriques, relues à l'identique.
      *
      * <p>Tout à zéro, c'est {@link #NONE} : une assembly qui n'est pas un véhicule, et qu'un snapshot ne porte pas.
-     * Un véhicule à motopropulseur a toujours {@link #RUNNING} : il n'est jamais {@code NONE}.
+     * Un véhicule à motopropulseur sans démarreur a toujours {@link #RUNNING} ; avec un démarreur, moteur arrêté, c'est le
+     * frein de stationnement serré sans conducteur, ou {@code DRIVER}, qui l'empêche d'être {@code NONE} (ADR-176 D1).
      *
      * @param packed les valeurs, {@link #BYTES} octets ; copie
      */

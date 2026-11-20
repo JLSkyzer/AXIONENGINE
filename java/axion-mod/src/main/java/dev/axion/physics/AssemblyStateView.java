@@ -12,9 +12,10 @@ import java.nio.ByteOrder;
  * en-tête   16 o : version u16 | drapeaux u16 (1 : véhicule) | corps u16 | joints u16 | roues u16 | 6 o à zéro
  * corps     64 o : position monde f64×3 | rotation f32×4 | vitesse f32×3 | vitesse angulaire f32×3
  * joint      8 o : rompu u8 | 7 o à zéro
- * véhicule  56 o : entrée f32×5 | rapport demandé i8 | drapeaux u8 | conducteur u8 | 1 o | moteur rad/s f32
- *                  | rapport engagé i8 | visé i8 | 2 o | changement f32 | maintien f32 | direction f32 | patinage f32
- *                  | charge f32 | 4 o
+ * véhicule  56 o : entrée f32×5 | rapport demandé i8 | drapeaux u8 | conducteur u8 | contact natif u8 | moteur rad/s f32
+ *                  | rapport engagé i8 | visé i8 | phase du moteur u8 | contact du pas précédent u8 | changement f32
+ *                  | maintien f32 | direction f32 | patinage f32 | charge f32 | temps restant au démarreur f32
+ *                  (ADR-176 D1 : ces trois octets et ces quatre octets étaient du remplissage à zéro ; Java ne les lit pas)
  * roue      32 o : rotation f32 | compression f32 | braquage f32 | charge f32 | glissement long f32 | latéral f32
  *                  | couple posé f32 | au sol u8 | 3 o
  * </pre>

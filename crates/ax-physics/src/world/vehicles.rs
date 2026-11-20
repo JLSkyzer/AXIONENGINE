@@ -16,9 +16,10 @@ use ax_model::dm::debug::{debug_frame, overlay, DebugSegment};
 use ax_model::dm::handle::Handle;
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
-    transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags, wheel_report_flags,
-    VehicleDesc, VehicleInput, VehicleReport, WheelReport,
+    native_input_flags, transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags,
+    wheel_report_flags, VehicleDesc, VehicleInput, VehicleReport, WheelReport,
 };
+use ax_vehicle::engine::EngineState;
 use ax_vehicle::powertrain::{self, DriveCommand, WheelDrive};
 use ax_vehicle::steering::{self, Geometry, Steering};
 use ax_vehicle::transmission::Gearbox;
@@ -138,6 +139,8 @@ pub(super) struct Vehicle {
     driver: bool,
     /// Vitesse du moteur, en rad/s.
     engine_speed: f32,
+    /// Arrêté, démarreur ou tournant (ADR-176 D1) ; tournant toujours sans `starter`.
+    engine: EngineState,
     gearbox: Gearbox,
     steering: Steering,
     geometry: Geometry,
@@ -277,11 +280,14 @@ impl PhysicsWorld {
             })
             .collect();
         let fronts = front.iter().filter(|f| **f).count() as f32;
-        let engine_speed = if desc.transmission.kind == transmission_kind::DIRECT {
-            0.0
-        } else {
-            desc.engine.idle_rpm / engine::RPM_PER_RAD_S
-        };
+        let engine = EngineState::new(desc.engine.starter_time);
+        // Un moteur qui attend son démarreur ne tourne pas : le régime part de zéro.
+        let engine_speed =
+            if desc.transmission.kind == transmission_kind::DIRECT || !engine.running() {
+                0.0
+            } else {
+                desc.engine.idle_rpm / engine::RPM_PER_RAD_S
+            };
         self.attach_aero(bodies, &desc, surfaces);
         let wheels = vec![WheelState::default(); count];
         self.vehicles.push(Vehicle {
@@ -299,6 +305,7 @@ impl PhysicsWorld {
             input: VehicleInput::NONE,
             driver: false,
             engine_speed,
+            engine,
             gearbox: Gearbox::new(&desc),
             steering: Steering::default(),
             geometry,
@@ -407,9 +414,12 @@ impl PhysicsWorld {
             .vehicles
             .iter_mut()
             .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))?;
+        // Le contact change : un véhicule garé, endormi, doit voir son moteur démarrer ou s'arrêter (ADR-176 D1).
+        let ignition_changed = clean.native_flags != vehicle.input.native_flags
+            && vehicle.desc.engine.starter_time > 0.0;
         vehicle.input = clean;
         vehicle.driver = driver;
-        if driver && clean.moves() {
+        if (driver && clean.moves()) || ignition_changed {
             for handle in &vehicle.bodies {
                 if let Some(body) = bodies.get_mut(*handle) {
                     body.wake_up(true);
@@ -482,6 +492,7 @@ impl PhysicsWorld {
             input: vehicle.input,
             driver: vehicle.driver,
             engine_speed: vehicle.engine_speed,
+            engine: vehicle.engine,
             gearbox: vehicle.gearbox.parts(),
             steering: vehicle.steering.position(),
             traction_slip: vehicle.traction_slip,
@@ -524,6 +535,7 @@ impl PhysicsWorld {
         vehicle.input = snapshot.input;
         vehicle.driver = snapshot.driver;
         vehicle.engine_speed = snapshot.engine_speed;
+        vehicle.engine = snapshot.engine;
         let (gear, target, shift_left, hold) = snapshot.gearbox;
         vehicle.gearbox = Gearbox::from_parts(&vehicle.desc, gear, target, shift_left, hold);
         vehicle.steering = Steering::at(snapshot.steering);
@@ -561,7 +573,7 @@ impl PhysicsWorld {
                 if vehicle.gearbox.shifting() {
                     flags |= vehicle_report_flags::SHIFTING;
                 }
-                if vehicle.desc.flags & vehicle_flags::POWERTRAIN != 0 {
+                if vehicle.desc.flags & vehicle_flags::POWERTRAIN != 0 && vehicle.engine.running() {
                     flags |= vehicle_report_flags::RUNNING;
                 }
                 if vehicle.driver {
@@ -632,7 +644,8 @@ impl PhysicsWorld {
         for vehicle in &mut vehicles {
             // Un couple posé sur une roue fait avancer le véhicule comme un conducteur qui accélère (R-1082).
             let driven = vehicle.drives.iter().any(|drive| drive.torque != 0.0);
-            if (vehicle.driver && vehicle.input.moves()) || driven {
+            // Le démarreur tourne : le véhicule reste éveillé jusqu'à ce que son moteur ait pris (ADR-176 D1).
+            if (vehicle.driver && vehicle.input.moves()) || driven || vehicle.engine.cranking() {
                 for handle in &vehicle.bodies {
                     if let Some(body) = self.inner.bodies.get_mut(*handle) {
                         body.wake_up(true);
@@ -733,6 +746,13 @@ impl PhysicsWorld {
         let air_speed = (velocity - self.wind).dot(forward);
         let gravity = self.inner.gravity;
 
+        // ADR-176 D1 : le contact tenu avance l'état du moteur. Il vient de la dernière entrée reçue, conducteur ou non :
+        // le conducteur qui descend ne coupe pas le moteur.
+        let ignition = vehicle.input.native_flags & native_input_flags::IGNITION != 0;
+        vehicle
+            .engine
+            .step(vehicle.desc.engine.starter_time, ignition, dt);
+
         // D8, Q3 : sans conducteur, le frein de stationnement est serré.
         let input = if vehicle.driver {
             vehicle.input
@@ -798,13 +818,18 @@ impl PhysicsWorld {
                 }
             }
         }
-        vehicle.load = if desc.flags & vehicle_flags::POWERTRAIN != 0 {
+        let running = vehicle.engine.running();
+        vehicle.load = if desc.flags & vehicle_flags::POWERTRAIN != 0 && running {
             throttle.clamp(0.0, 1.0)
         } else {
             0.0
         };
+        // Un moteur arrêté ne tient aucun rapport en automatique : la boîte passe au point mort (ADR-176 D1). En
+        // manuelle, le rapport engagé reste, et les roues entraînent le moteur par l'embrayage.
+        let neutral = !running && desc.transmission.kind == transmission_kind::AUTOMATIC;
         let command = DriveCommand {
-            ratio: if desc.flags & vehicle_flags::POWERTRAIN != 0 {
+            running,
+            ratio: if desc.flags & vehicle_flags::POWERTRAIN != 0 && !neutral {
                 vehicle.gearbox.ratio(desc)
             } else {
                 0.0

@@ -238,7 +238,8 @@ public final class DefinitionCompilation {
             return Optional.empty();
         }
         return Optional.of(new HeldDefinition(definition, summary, seating, tuning,
-                nodeNames.getOrDefault(id, List.of()), bodyRests.getOrDefault(id, BodyRests.NONE)));
+                nodeNames.getOrDefault(id, List.of()), bodyRests.getOrDefault(id, BodyRests.NONE),
+                Ignition.variable(definition.root(), seating.variables())));
     }
 
     /**

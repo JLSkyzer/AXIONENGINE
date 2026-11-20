@@ -788,6 +788,33 @@ final class DefinitionChecker {
     }
 
     /**
+     * ADR-176 D1 : la variable que le démarreur lit est le contact du moteur : un booléen de l'assembly, jamais
+     * sauvegardé — un contact sauvegardé « mis » ferait redémarrer le moteur à chaque chargement.
+     */
+    private void checkStarterVariable(JsonObject root, Variables variables) {
+        if (!(root.get("powertrain") instanceof JsonObject powertrain)
+                || !(powertrain.get("engine") instanceof JsonObject engine)
+                || !(engine.get("starter") instanceof JsonObject starter)
+                || !(starter.get("variable") instanceof JsonPrimitive named)) {
+            return;
+        }
+        int index = variables.indexOf(named.getAsString());
+        String path = "$.powertrain.engine.starter.variable";
+        if (index < 0) {
+            return; // la référence inconnue est déjà dite par le schéma
+        }
+        Variables.Variable contact = variables.get(index);
+        if (contact.type() != Variables.Type.BOOL) {
+            invalid(path, "le contact est un booléen : « " + contact.name() + " » est de type " + contact.type().key());
+        } else if (contact.perSeat()) {
+            invalid(path, "le contact est une valeur de l'assembly, pas une valeur par siège (scope « seat »)");
+        } else if (contact.persist()) {
+            invalid(path, "le contact n'est pas sauvegardé : ôte persist de « " + contact.name()
+                    + " » (un contact sauvegardé mis ferait redémarrer le moteur à chaque chargement)");
+        }
+    }
+
+    /**
      * ADR-163 D2 : le défaut et les bornes d'une variable sont de son type, le défaut dans les bornes ; une commande
      * liée l'est une fois par siège, à une variable que ce siège peut écrire, avec des valeurs que la variable
      * accepte ; une interaction {@code set_variable} nomme une variable et une valeur qu'elle accepte.
@@ -819,6 +846,7 @@ final class DefinitionChecker {
                 }
             }
         }
+        checkStarterVariable(root, variables);
         if (root.get("seats") instanceof JsonArray seats) {
             for (int i = 0; i < seats.size(); i++) {
                 if (seats.get(i) instanceof JsonObject seat && seat.get("bindings") instanceof JsonArray bindings) {

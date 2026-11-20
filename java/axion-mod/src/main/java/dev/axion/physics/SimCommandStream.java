@@ -354,6 +354,9 @@ public final class SimCommandStream {
     /** Drapeau {@code DRIVER} de {@code SetVehicleInput} : le siège {@code driver} est occupé (ADR-159 D8). */
     public static final int VEHICLE_INPUT_DRIVER = 1;
 
+    /** Le contact mis, dans {@code VehicleInput::native_flags} du natif (ADR-176 D1) : {@code vehicle_input_flags::IGNITION}. */
+    public static final int VEHICLE_INPUT_IGNITION = 1;
+
     /** Opcode {@code ANIMATE_ASSEMBLY} (ADR-155) : une commande d'animation pour une assembly. */
     public static final int OP_ANIMATE_ASSEMBLY = 16;
 
@@ -1034,7 +1037,9 @@ public final class SimCommandStream {
         command.putInt(handleIndex).putInt(handleGeneration)
                 .putFloat(input.throttle()).putFloat(input.brake()).putFloat(input.steer())
                 .putFloat(input.clutch()).putFloat(input.handbrake())
-                .put(input.gear()).put((byte) input.flags()).putShort((short) 0)
+                .put(input.gear()).put((byte) input.flags())
+                // L'octet suivant est celui des drapeaux que le natif lit : le contact (ADR-176 D1).
+                .put((byte) (input.ignition() ? VEHICLE_INPUT_IGNITION : 0)).put((byte) 0)
                 .putInt(driver ? VEHICLE_INPUT_DRIVER : 0);
         commands.add(command.array());
         return this;

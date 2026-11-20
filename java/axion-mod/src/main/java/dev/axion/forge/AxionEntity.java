@@ -1973,6 +1973,25 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * Sans joueur au volant, l'entrée qu'un mod a posée le conduit (ADR-167 D9), siège {@code driver} ou non.
      */
     public DriverInput driverInput() {
+        DriverInput base = driverInputWithoutIgnition();
+        int variable = ignitionVariable();
+        AssemblyVariables held = variable < 0 ? null : variables();
+        if (held == null) {
+            return base;
+        }
+        // ADR-176 D1 : le contact est la valeur de la variable que le démarreur lit, que le conducteur soit là ou non :
+        // sans conducteur, le moteur continue de tourner, et un mod ou l'API peut le couper.
+        DriverInput carried = base == null ? DriverInput.ABSENT : base;
+        return new DriverInput(carried.input().withIgnition(held.get(variable) != 0.0), carried.present());
+    }
+
+    /** {@return le rang de la variable que le démarreur lit comme contact (ADR-176 D1), -1 sans démarreur} */
+    public int ignitionVariable() {
+        dev.axion.definition.HeldDefinition tenue = held();
+        return tenue == null ? -1 : tenue.ignition();
+    }
+
+    private DriverInput driverInputWithoutIgnition() {
         Seating seating = seating();
         if (seating == null) {
             return null;

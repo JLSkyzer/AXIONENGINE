@@ -226,4 +226,42 @@ public final class VehiculesGameTests {
                         "toujours suspendu : " + hauteur(helper, assembly)))
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D1 : un moteur à démarreur ne donne rien tant que son contact n'est pas mis ; le contact mis, le
+     * démarreur tourne puis le moteur emporte le véhicule ; le contact coupé, il s'arrête. Le contact est la variable
+     * que la definition nomme, écrite ici par l'API, comme la commande d'un siège l'écrirait.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 500)
+    public static void adr176_UnMoteurADemarreurAttendLeContactPuisTourneEtSArrete(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_demarreur",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), new float[] {0f, 0f, 0f, 1f});
+        Vec3[] depart = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.ignitionVariable() >= 0,
+                        "le véhicule est simulé, son contact est une variable"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    depart[0] = vehicule.position();
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(1.0, 0, 0, 0, 0, 1));
+                })
+                .thenIdle(60)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.position().distanceTo(depart[0]) < 0.3,
+                            "plein gaz, contact coupé : il n'avance pas (" + vehicule.position().distanceTo(depart[0]) + ")");
+                    helper.assertTrue(vehicule.sources().applyAsDouble("engine.running") == 0.0, "le moteur est arrêté");
+                    vehicule.variables().set(vehicule.ignitionVariable(), 1.0, "test");
+                })
+                .thenIdle(80)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.position().distanceTo(depart[0]) > 1.0,
+                            "contact mis : il roule (" + vehicule.position().distanceTo(depart[0]) + ")");
+                    helper.assertTrue(vehicule.sources().applyAsDouble("engine.running") == 1.0, "le moteur tourne");
+                    vehicule.variables().set(vehicule.ignitionVariable(), 0.0, "test");
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.sources().applyAsDouble("engine.running") == 0.0,
+                        "contact coupé : le moteur s'arrête"))
+                .thenSucceed();
+    }
 }

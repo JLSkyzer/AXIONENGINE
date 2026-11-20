@@ -25,7 +25,13 @@ import java.util.function.BiConsumer;
 final class VehicleSpec {
 
     /** Taille de l'en-tête de la section, en octets. */
-    static final int HEADER_BYTES = 116;
+    static final int HEADER_BYTES = 120;
+
+    /** Durée minimale du démarreur, en secondes (ADR-176 D1). */
+    static final float MIN_STARTER_TIME = 0.05f;
+
+    /** Durée maximale du démarreur, en secondes (ADR-176 D1). */
+    static final float MAX_STARTER_TIME = 10f;
 
     /** Taille d'une roue, en octets. */
     static final int WHEEL_BYTES = 88;
@@ -177,6 +183,14 @@ final class VehicleSpec {
         atLeast(engine, "braking_torque", eat, true, fault);
         if (number(engine, "max_rpm", MAX_RPM) <= number(engine, "idle_rpm", IDLE_RPM)) {
             fault.accept(eat + ".max_rpm", "doit dépasser idle_rpm");
+        }
+        JsonObject starter = object(engine, "starter");
+        if (starter != null) {
+            double time = number(starter, "time", 0f);
+            if (!(time >= MIN_STARTER_TIME && time <= MAX_STARTER_TIME)) {
+                fault.accept(eat + ".starter.time", "le démarreur tourne de " + MIN_STARTER_TIME + " à " + MAX_STARTER_TIME
+                        + " secondes (ADR-176 D1)");
+            }
         }
 
         JsonObject transmission = object(powertrain, "transmission");
@@ -343,7 +357,8 @@ final class VehicleSpec {
         out.put((byte) DIFFERENTIALS.indexOf(stringOr(differential, "type", "open")));
 
         put(out, number(engine, "idle_rpm", IDLE_RPM), number(engine, "max_rpm", MAX_RPM),
-                number(engine, "inertia", 0.3f), number(engine, "braking_torque", 25f));
+                number(engine, "inertia", 0.3f), number(engine, "braking_torque", 25f),
+                number(object(engine, "starter"), "time", 0f));
         boolean direct = transmission == null;
         put(out, number(transmission, "final_drive", direct ? FINAL_DRIVE_DIRECT : FINAL_DRIVE),
                 number(transmission, "shift_time", direct ? SHIFT_TIME_DIRECT : SHIFT_TIME),

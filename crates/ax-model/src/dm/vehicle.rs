@@ -131,7 +131,8 @@ impl WheelReport {
 pub mod vehicle_report_flags {
     /// Un changement de rapport est en cours.
     pub const SHIFTING: u8 = 1 << 0;
-    /// Le moteur tourne : le véhicule a un motopropulseur (ADR-159 D6 ; il ne cale pas avant CAP-12).
+    /// Le moteur tourne : le véhicule a un motopropulseur et, s'il déclare un démarreur, son moteur a pris (ADR-176 D1) ;
+    /// un moteur qui tourne ne cale pas (ADR-159 D6).
     pub const RUNNING: u8 = 1 << 1;
     /// Le siège `driver` est occupé (ADR-159 D8).
     pub const DRIVER: u8 = 1 << 2;
@@ -266,10 +267,12 @@ pub struct VehicleInput {
     pub handbrake: f32,
     /// Rapport demandé, relatif au rapport nul de `gears` : 0 point mort, négatif en marche arrière.
     pub gear: i8,
-    /// Drapeaux ; aucun n'est défini à ce jour.
+    /// Drapeaux de commandes génériques (ADR-163 D2) : le natif les ignore, la Java les consomme.
     pub flags: u8,
+    /// Drapeaux que le natif lit, voir [`native_input_flags`] (ADR-176 D1).
+    pub native_flags: u8,
     /// Réservé, à zéro.
-    pub _pad: [u8; 2],
+    pub _pad: u8,
 }
 
 impl VehicleInput {
@@ -285,7 +288,8 @@ impl VehicleInput {
         handbrake: 0.0,
         gear: 0,
         flags: 0,
-        _pad: [0; 2],
+        native_flags: 0,
+        _pad: 0,
     };
 
     /// L'entrée bornée (R-1110, INV-02) : une valeur non finie vaut zéro, chacune est ramenée dans
@@ -315,7 +319,8 @@ impl VehicleInput {
                 handbrake: bound(self.handbrake, 0.0),
                 gear: self.gear,
                 flags: 0,
-                _pad: [0; 2],
+                native_flags: self.native_flags & native_input_flags::ALL,
+                _pad: 0,
             },
             !values.iter().all(|value| value.is_finite()),
         )
@@ -341,7 +346,8 @@ impl VehicleInput {
         }
         out.extend_from_slice(&self.gear.to_le_bytes());
         out.push(self.flags);
-        out.extend_from_slice(&[0u8; 2]);
+        out.push(self.native_flags);
+        out.push(0);
     }
 
     /// Lit une entrée au début de `bytes` ; `None` si elle est tronquée. Ses valeurs restent à borner.
@@ -357,9 +363,21 @@ impl VehicleInput {
             handbrake: f32_at(16),
             gear: i8::from_le_bytes([bytes[20]]),
             flags: bytes[21],
-            _pad: [0; 2],
+            native_flags: bytes[22],
+            _pad: 0,
         })
     }
+}
+
+/// Les drapeaux de l'entrée du conducteur que le natif lit (`VehicleInput::native_flags`, ADR-176 D1).
+///
+/// Les bits de `VehicleInput::flags` sont pris par les huit commandes génériques d'ADR-163 D2, que le natif ignore ;
+/// ceux-ci sont à part, jamais confondus avec elles.
+pub mod native_input_flags {
+    /// Le contact est mis : le démarreur d'un moteur qui en a un tourne, le moteur tourne ensuite tant qu'il l'est.
+    pub const IGNITION: u8 = 1 << 0;
+    /// Tous les drapeaux connus.
+    pub const ALL: u8 = IGNITION;
 }
 
 /// Types de transmission (12.5, ADR-159 D6).
@@ -461,6 +479,8 @@ pub struct EngineDesc {
     pub inertia: f32,
     /// Couple de frein moteur, en N·m.
     pub braking_torque: f32,
+    /// Durée du démarreur, en secondes ; 0 : pas de démarreur, le moteur tourne toujours (ADR-176 D1).
+    pub starter_time: f32,
 }
 
 /// La transmission (12.5).
@@ -716,7 +736,7 @@ fn put_curve(out: &mut Vec<u8>, curve: &TireCurve) {
 
 impl VehicleDesc {
     /// Taille de l'en-tête de la section, en octets.
-    pub const HEADER_BYTES: usize = 116;
+    pub const HEADER_BYTES: usize = 120;
 
     /// Écrit la section en little-endian à la fin de `out`.
     ///
@@ -751,6 +771,7 @@ impl VehicleDesc {
                 e.max_rpm,
                 e.inertia,
                 e.braking_torque,
+                e.starter_time,
                 t.final_drive,
                 t.shift_time,
                 t.auto_shift_up_rpm,
@@ -845,7 +866,11 @@ impl VehicleDesc {
             max_rpm: c.f32("engine")?,
             inertia: c.f32("engine")?,
             braking_torque: c.f32("engine")?,
+            starter_time: c.f32("engine")?,
         };
+        if !(engine.starter_time.is_finite() && engine.starter_time >= 0.0) {
+            return Err(DefnError::Field("engine.starter_time"));
+        }
         let transmission = TransmissionDesc {
             kind: transmission_type,
             final_drive: c.f32("transmission")?,
@@ -1075,6 +1100,7 @@ mod tests {
                 max_rpm: 7000.0,
                 inertia: 0.3,
                 braking_torque: 25.0,
+                starter_time: 0.8,
             },
             transmission: TransmissionDesc {
                 kind: transmission_kind::AUTOMATIC,
@@ -1156,6 +1182,7 @@ mod tests {
         assert_eq!(offset_of!(VehicleInput, handbrake), 16);
         assert_eq!(offset_of!(VehicleInput, gear), 20);
         assert_eq!(offset_of!(VehicleInput, flags), 21);
+        assert_eq!(offset_of!(VehicleInput, native_flags), 22);
         let entree = VehicleInput {
             throttle: 0.5,
             brake: 0.25,
@@ -1164,7 +1191,8 @@ mod tests {
             handbrake: 1.0,
             gear: -1,
             flags: 0,
-            _pad: [0; 2],
+            native_flags: native_input_flags::IGNITION,
+            _pad: 0,
         };
         let mut octets = Vec::new();
         entree.write_le(&mut octets);
@@ -1181,7 +1209,8 @@ mod tests {
             handbrake: -2.0,
             gear: 4,
             flags: 0xFF,
-            _pad: [0; 2],
+            native_flags: 0xFF,
+            _pad: 0,
         };
         let bornee = VehicleInput {
             throttle: 0.0,
@@ -1191,7 +1220,8 @@ mod tests {
             handbrake: 0.0,
             gear: 4,
             flags: 0,
-            _pad: [0; 2],
+            native_flags: native_input_flags::IGNITION,
+            _pad: 0,
         };
         assert_eq!(folle.sanitized(), (bornee, true));
         assert!(!VehicleInput::NONE.moves());

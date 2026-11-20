@@ -129,10 +129,10 @@ class VehicleSpecTest {
         assertEquals(1, in.getShort(0), "roues");
         assertEquals(0, in.getShort(8), "ni moteur ni ABS");
         assertEquals(2, in.get(10), "transmission directe");
-        assertEquals(0.61f, in.getFloat(12 + 11 * 4), "angle maximal");
-        assertEquals(3000f, in.getFloat(12 + 16 * 4), "frein avant");
-        assertEquals(VehicleSpec.TRACTION_SLIP_THRESHOLD, in.getFloat(12 + 24 * 4), "seuil de l'antipatinage");
-        assertEquals(VehicleSpec.STABILITY_YAW_TOLERANCE, in.getFloat(12 + 25 * 4), "tolérance de la stabilité");
+        assertEquals(0.61f, in.getFloat(12 + 12 * 4), "angle maximal");
+        assertEquals(3000f, in.getFloat(12 + 17 * 4), "frein avant");
+        assertEquals(VehicleSpec.TRACTION_SLIP_THRESHOLD, in.getFloat(12 + 25 * 4), "seuil de l'antipatinage");
+        assertEquals(VehicleSpec.STABILITY_YAW_TOLERANCE, in.getFloat(12 + 26 * 4), "tolérance de la stabilité");
         int roue = VehicleSpec.HEADER_BYTES;
         assertEquals(0, in.getInt(roue), "la seule référence : le node de la roue");
         assertEquals(4, in.getShort(roue + 4), "le frein à main serre toutes les roues");
@@ -178,8 +178,8 @@ class VehicleSpecTest {
                 + ", \"traction_control\": {\"enabled\": true, \"slip_threshold\": 0.3}},"
                 + "\"brakes\": {\"stability_control\": {\"enabled\": true, \"yaw_tolerance\": 0.25}}"), TireProfiles.empty());
         assertEquals(1 | 4 | 8, in.getShort(8), "moteur, antipatinage, stabilité ; pas d'ABS");
-        assertEquals(0.3f, in.getFloat(12 + 24 * 4));
-        assertEquals(0.25f, in.getFloat(12 + 25 * 4));
+        assertEquals(0.3f, in.getFloat(12 + 25 * 4));
+        assertEquals(0.25f, in.getFloat(12 + 26 * 4));
         assertEquals("$.powertrain.traction_control.slip_threshold", refus(vehicule(MOTRICE + ", \"powertrain\": {" + MOTEUR
                 + ", \"traction_control\": {\"slip_threshold\": 0}}")));
         assertEquals("$.brakes.stability_control.yaw_tolerance", refus(vehicule(ROUE

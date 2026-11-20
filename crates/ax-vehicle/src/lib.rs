@@ -75,6 +75,7 @@ mod tests_support {
                 max_rpm: 7000.0,
                 inertia: 0.3,
                 braking_torque: 25.0,
+                starter_time: 0.0,
             },
             transmission: TransmissionDesc {
                 kind: transmission_kind::MANUAL,

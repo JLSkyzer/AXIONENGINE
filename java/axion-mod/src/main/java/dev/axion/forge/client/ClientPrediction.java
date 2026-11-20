@@ -204,7 +204,13 @@ public final class ClientPrediction {
             if (stepTick >= 0) {
                 around.merge(proxies.poses(stepTick, loop.lastServerTick()));
             }
-            lastStep = world.step(input, around);
+            // ADR-176 D1 : le contact est la variable prédite que le démarreur lit ; le natif prédit le reçoit comme le serveur.
+            int ignitionVariable = vehicle.ignitionVariable();
+            VehicleInput stepped = variables != null && ignitionVariable >= 0
+                    && ignitionVariable < variables.values().length
+                    ? input.withIgnition(variables.values()[ignitionVariable] != 0.0)
+                    : input;
+            lastStep = world.step(stepped, around);
             for (BodyState state : lastStep.result().bodies()) {
                 if (state.handleIndex() == world.handle() && state.handleGeneration() == PredictedWorld.GENERATION
                         && state.node() == rootNode) {

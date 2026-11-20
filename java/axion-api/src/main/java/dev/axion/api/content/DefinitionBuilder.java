@@ -4302,6 +4302,39 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code powertrain.engine.starter}. */
+    @Experimental
+    public static final class PowertrainEngineStarter {
+
+        private final Map<String, Object> values;
+
+        private PowertrainEngineStarter(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code powertrain.engine.starter.time}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineStarter time(double value) {
+            values.put("time", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.starter.variable} : nom (variable) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineStarter variable(String value) {
+            values.put("variable", Objects.requireNonNull(value, "variable"));
+            return this;
+        }
+    }
+
     /** {@code powertrain.engine}. */
     @Experimental
     public static final class PowertrainEngine {
@@ -4353,6 +4386,18 @@ public final class DefinitionBuilder {
          */
         public PowertrainEngine maxRpm(double value) {
             values.put("max_rpm", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.starter}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngine starter(Consumer<PowertrainEngineStarter> config) {
+            Map<String, Object> nested = object(values, "starter");
+            Objects.requireNonNull(config, "config").accept(new PowertrainEngineStarter(nested));
             return this;
         }
 

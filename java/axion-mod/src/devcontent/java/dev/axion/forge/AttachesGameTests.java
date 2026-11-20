@@ -137,7 +137,10 @@ public final class AttachesGameTests {
                 .thenIdle(20)
                 .thenExecute(() -> attendu(helper, vue(a).attachments().attach("avant", vue(b), "arriere", "rope"),
                         AttachResult.Status.ATTACHED))
-                .thenIdle(5)
+                // Le natif a créé l'attache et la rapporte : sous charge, cinq ticks ne suffisaient pas, et l'événement
+                // de départ arrivait avant qu'elle existe côté natif (CI locale du 2026-11-20, deux échecs de suite).
+                .thenWaitUntil(() -> helper.assertTrue(vue(a).attachments().list().size() == 1
+                        && vue(a).attachments().list().get(0).length() > 0, "l'attache existe au natif"))
                 // Ce que Minecraft fait quand le chunk de b cesse d'être suivi, b existant toujours.
                 .thenExecute(() -> net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
                         new net.minecraftforge.event.entity.EntityLeaveLevelEvent(b, helper.getLevel())))

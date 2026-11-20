@@ -455,7 +455,14 @@ class SimCommandStreamTest {
         assertEquals(1f, b.getFloat(40), "handbrake");
         assertEquals(-1, b.get(44), "gear, i8");
         assertEquals(0, b.get(45), "flags de l'entrée");
+        assertEquals(0, b.get(46), "le contact est coupé");
+        assertEquals(0, b.get(47), "réservé");
         assertEquals(SimCommandStream.VEHICLE_INPUT_DRIVER, b.getInt(48), "conducteur présent");
+        // ADR-176 D1 : le contact passe dans l'octet des drapeaux natifs, jamais dans celui des commandes.
+        ByteBuffer contact = wrap(new SimCommandStream()
+                .setVehicleInput(7, 3, entree.withIgnition(true), true).toBytes());
+        assertEquals(SimCommandStream.VEHICLE_INPUT_IGNITION, contact.get(46), "le contact est mis");
+        assertEquals(0, contact.get(45), "les commandes n'en savent rien");
         assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 40), "commande suivante, alignée");
         byte[] sans = new SimCommandStream().setVehicleInput(7, 3, VehicleInput.NONE, false).toBytes();
         assertEquals(0, wrap(sans).getInt(48), "siège libre");
@@ -467,6 +474,10 @@ class SimCommandStreamTest {
         assertTrue(taille.find(), "SetVehicleInput::BYTES dans commands.rs");
         assertEquals(Integer.parseInt(taille.group(1)), SimCommandStream.SET_VEHICLE_INPUT_BYTES);
         assertTrue(rust.contains("pub const DRIVER: u32 = 1 << 0;"));
+        String vehicule = Files.readString(source.resolveSibling("vehicle.rs"), StandardCharsets.UTF_8);
+        assertTrue(vehicule.contains("pub mod native_input_flags {"));
+        assertTrue(vehicule.contains("pub const IGNITION: u8 = 1 << " + Integer.numberOfTrailingZeros(
+                SimCommandStream.VEHICLE_INPUT_IGNITION) + ";"), "le bit du contact, au natif");
     }
 
     @Test

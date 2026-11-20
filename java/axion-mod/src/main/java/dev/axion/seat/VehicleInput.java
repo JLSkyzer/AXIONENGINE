@@ -12,9 +12,17 @@ import dev.axion.definition.Seating;
  * @param clutch embrayage, dans [0, 1]
  * @param handbrake frein à main, dans [0, 1]
  * @param gear rapport engagé
- * @param flags les commandes génériques tenues (ADR-163 D2), un bit par commande : le bit 0 pour la commande 1
+ * @param flags les commandes génériques tenues (ADR-163 D2), un bit par commande : le bit 0 pour la commande 1 ;
+ *     {@link #IGNITION}, au-dessus des huit, est le contact du moteur (ADR-176 D1), que le natif lit
  */
 public record VehicleInput(float throttle, float brake, float steer, float clutch, float handbrake, byte gear, int flags) {
+
+    /**
+     * Le contact du moteur (ADR-176 D1), dans {@code flags} au-dessus des huit commandes : le serveur et le client
+     * qui prédit l'y posent d'après la variable que le démarreur lit, jamais le joueur ni le réseau. Le natif le reçoit
+     * dans son propre octet, à part des commandes qu'il ignore.
+     */
+    public static final int IGNITION = 1 << 8;
 
     /** Aucune entrée : ce qu'un siège libre ou muet commande. */
     public static final VehicleInput NONE = new VehicleInput(0f, 0f, 0f, 0f, 0f, (byte) 0, 0);
@@ -58,6 +66,17 @@ public record VehicleInput(float throttle, float brake, float steer, float clutc
         // de celui d'une entrée nulle.
         return new VehicleInput(Math.max(forward, 0f), Math.max(-forward, 0f), 0f - left, 0f, jumping ? 1f : 0f, gear,
                 commands);
+    }
+
+    /** {@return cette entrée, le contact mis ou coupé selon {@code on}} */
+    public VehicleInput withIgnition(boolean on) {
+        int next = on ? flags | IGNITION : flags & ~IGNITION;
+        return next == flags ? this : new VehicleInput(throttle, brake, steer, clutch, handbrake, gear, next);
+    }
+
+    /** {@return vrai si le contact est mis} */
+    public boolean ignition() {
+        return (flags & IGNITION) != 0;
     }
 
     /** {@return vrai si toutes les valeurs sont finies : une autre se journalise (R-1110)} */

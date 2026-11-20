@@ -149,7 +149,7 @@ final class SchemaOne {
                 .opt("joints", cap(version >= 2 ? jointTwo() : joint(), 128))
                 // R-1052 : de 1 à 32 roues.
                 .opt("wheels", new Arr(wheel(), 1, 32, false))
-                .opt("powertrain", powertrain())
+                .opt("powertrain", powertrain(version))
                 .opt("steering", steering())
                 .opt("brakes", brakes())
                 .opt("aero", aero())
@@ -391,15 +391,22 @@ final class SchemaOne {
     }
 
     /** §12.5. */
-    private static SchemaNode powertrain() {
+    private static SchemaNode powertrain(int version) {
+        ObjBuilder engine = obj()
+                .opt("torque_curve", curve())
+                .opt("idle_rpm", number())
+                .opt("max_rpm", number())
+                .opt("inertia", number())
+                .opt("braking_torque", number());
+        if (version >= 7) {
+            // ADR-176 D1 : le démarreur, et la variable booléenne qui est le contact.
+            engine.opt("starter", obj()
+                    .req("time", number())
+                    .req("variable", refers(NameCategory.VARIABLE))
+                    .build());
+        }
         return obj()
-                .opt("engine", obj()
-                        .opt("torque_curve", curve())
-                        .opt("idle_rpm", number())
-                        .opt("max_rpm", number())
-                        .opt("inertia", number())
-                        .opt("braking_torque", number())
-                        .build())
+                .opt("engine", engine.build())
                 .opt("transmission", obj()
                         .opt("type", text())
                         .opt("gears", list(number()))
