@@ -39,3 +39,26 @@ The definition names this profile like any tyre: `"tire": "mymod:tire/road"` in 
 - **Interaction**: a `set_wear { "wheel": "rear_left", "value": 0 }` action in an interaction's `actions` list (without `wheel`, all
   the wheels).
 - **Diagnostics**: the wheels overlay (`/axion debug`) draws a second, smaller circle as the tyre wears.
+
+## Showing the wear
+
+The engine draws no worn tyre of its own: there is no default wear model or texture, and you do not have to supply a single one.
+Wear is a **source** (`wheel.<wheel>.wear`, from 0 to 1) that the definition's `procedural` tracks wire to the appearance channels
+of a node of your asset:
+
+- **Swap two models**: put the new tyre and the worn tyre in the asset as two nodes, each with its own geometry and texture, and
+  drive their `visibility` with `map`. A worn texture is therefore a node whose material is the worn tyre's.
+- **Tint**: `color` multiplies a node's albedo by a per-channel factor (`axis`: `r`, `g` or `b`), to darken a tyre as it wears.
+
+```json
+"procedural": [
+  { "node": "tyre_fl_new",  "channel": "visibility", "source": "wheel.front_left.wear", "map": [[0.3, 1], [0.5, 0]] },
+  { "node": "tyre_fl_worn", "channel": "visibility", "source": "wheel.front_left.wear", "map": [[0.3, 0], [0.5, 1]] }
+]
+```
+
+A `visibility` track hides its node below 0.5; `map` is linear between its points and holds its ends. Here the new tyre shows up
+to 0.3 wear and fades out around 0.5, and the worn tyre does the opposite. The client reads the wear received from the server, so
+a tyre change (`setWear`, `/axion wear`, `set_wear`) puts the new model back as soon as the client receives the next state. What the engine does not do:
+change the texture of **one and the same** node according to wear, or draw wear layers on the surface (C-47); two nodes or a tint
+cover that need. A test (`ProceduralTracksTest`) holds the swap through `visibility` and `map` on `wheel.<wheel>.wear`.

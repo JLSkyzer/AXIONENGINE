@@ -321,6 +321,27 @@ class ProceduralTracksTest {
     }
 
     @Test
+    @DisplayName("ADR-176 D3 : l'usure d'une roue échange deux modèles de pneu, neuf et usé, par visibility et map")
+    void usureEchangeLesModelesDePneu() {
+        // roue_g est usée à 0,25 et roue_d à 0,75 (ROUES). Un pneu neuf se montre sous 0,3 et s'efface vers 0,5 ; le
+        // pneu usé fait l'inverse : deux nœuds de l'asset, deux modèles, aucune règle propre à un contenu.
+        List<String> journal = new ArrayList<>();
+        ProceduralTracks pistes = pistesDuVehicule(
+                "{\"node\":\"roue_g\",\"channel\":\"visibility\",\"source\":\"wheel.roue_g.wear\",\"map\":[[0.3,1],[0.5,0]]},"
+                + "{\"node\":\"jante_g\",\"channel\":\"visibility\",\"source\":\"wheel.roue_g.wear\",\"map\":[[0.3,0],[0.5,1]]},"
+                + "{\"node\":\"roue_d\",\"channel\":\"visibility\",\"source\":\"wheel.roue_d.wear\",\"map\":[[0.3,1],[0.5,0]]},"
+                + "{\"node\":\"caisse\",\"channel\":\"visibility\",\"source\":\"wheel.roue_d.wear\",\"map\":[[0.3,0],[0.5,1]]}",
+                journal);
+        assertTrue(journal.isEmpty(), journal.toString());
+        float[] looks = pistes.evaluate(cadre(0, 0f, 0f, 0f)).looks();
+        int pas = ProceduralTracks.LOOK_FLOATS;
+        assertEquals(1f, looks[0], "roue_g à 0,25 : son pneu neuf se montre");
+        assertEquals(0f, looks[pas], "roue_g à 0,25 : son pneu usé est caché");
+        assertEquals(0f, looks[2 * pas], "roue_d à 0,75 : son pneu neuf est caché");
+        assertEquals(1f, looks[3 * pas], "roue_d à 0,75 : son pneu usé se montre");
+    }
+
+    @Test
     @DisplayName("ADR-163 D3 : sans piste d'apparence, une pose ne porte pas d'apparence")
     void sansApparence() {
         ProceduralTracks pistes = apparence(

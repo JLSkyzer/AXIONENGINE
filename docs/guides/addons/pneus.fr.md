@@ -40,3 +40,27 @@ La definition nomme ce profil comme tout pneu : `"tire": "monmod:tire/route"` da
 - **Interaction** : une action `set_wear { "wheel": "roue_arriere_gauche", "value": 0 }` dans la liste `actions` d'une interaction
   (sans `wheel`, toutes les roues).
 - **Diagnostic** : l'overlay des roues (`/axion debug`) dessine un second cercle, plus petit à mesure que le pneu s'use.
+
+## Montrer l'usure
+
+Le moteur ne dessine aucun pneu usé de lui-même : il n'y a pas de modèle ni de texture d'usure par défaut, et il n'y a pas à en
+fournir un seul. L'usure est une **source** (`wheel.<roue>.wear`, de 0 à 1) que les pistes `procedural` de la definition
+branchent sur les canaux d'apparence d'un nœud de ton asset :
+
+- **Échanger deux modèles** : mets le pneu neuf et le pneu usé dans l'asset comme deux nœuds, chacun avec sa géométrie et sa
+  texture, et pilote leur `visibility` avec `map`. Une texture usée est donc un nœud dont le matériau est celui du pneu usé.
+- **Teinter** : `color` multiplie l'albédo d'un nœud par un facteur par canal (`axis` : `r`, `g` ou `b`), pour assombrir un pneu
+  à mesure qu'il s'use.
+
+```json
+"procedural": [
+  { "node": "pneu_avg_neuf", "channel": "visibility", "source": "wheel.avant_gauche.wear", "map": [[0.3, 1], [0.5, 0]] },
+  { "node": "pneu_avg_use",  "channel": "visibility", "source": "wheel.avant_gauche.wear", "map": [[0.3, 0], [0.5, 1]] }
+]
+```
+
+Une piste `visibility` cache son nœud sous 0,5 ; `map` est linéaire entre ses points et tient ses bouts. Ici le pneu neuf se
+montre jusqu'à 0,3 d'usure et s'efface vers 0,5, le pneu usé fait l'inverse. Le client lit l'usure reçue du serveur : le
+changement de pneus (`setWear`, `/axion wear`, `set_wear`) remet le modèle neuf dès que le client reçoit l'état suivant. Ce que le moteur ne fait pas :
+changer la texture d'**un même** nœud selon l'usure, ni dessiner des couches d'usure sur la surface (C-47) ; deux nœuds ou une
+teinte tiennent ce besoin. Un test (`ProceduralTracksTest`) tient l'échange par `visibility` et `map` sur `wheel.<roue>.wear`.
