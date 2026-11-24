@@ -2252,3 +2252,54 @@ fn adr176_d5_le_mouille_se_relit_dans_le_bloc_d_etat_et_se_rend() {
     assert!(world.restore_vehicle(ASSEMBLY, &etat));
     assert_eq!(world.vehicle_snapshot(ASSEMBLY), Some(etat), "et se rend");
 }
+
+/// Le coût au natif de l'énergie, de l'usure et du mouillé (ADR-176, grille D7) : un pas de simulation d'un véhicule plein gaz,
+/// avec et sans ces trois états. Une mesure, pas un test : `cargo test -p ax-physics --test vehicles --release -- --ignored
+/// --nocapture adr176_cout`. Chaque configuration se joue sept fois ; la médiane et le minimum sont affichés, en nanosecondes par
+/// pas.
+#[test]
+#[ignore = "mesure : à lancer à la main, en release"]
+fn adr176_cout_de_l_energie_de_l_usure_et_du_mouille() {
+    use std::time::Instant;
+
+    fn pas(desc: VehicleDesc, contact: bool, mouille: f32) -> f64 {
+        let (mut world, _) = sur_le_plat(desc, [400.0, 400.0], 1.0);
+        conduire(&mut world, avec_contact(entree(1.0, 0.0, 0.0), contact));
+        world.set_vehicle_wet(ASSEMBLY, mouille);
+        avancer(&mut world, 1.0);
+        let n = 2000;
+        let debut = Instant::now();
+        for _ in 0..n {
+            world.advance(TICK);
+        }
+        debut.elapsed().as_nanos() as f64 / f64::from(n)
+    }
+
+    let mut tout = berline_a_reservoir();
+    for roue in &mut tout.wheels {
+        roue.wear_rate = 0.02;
+        roue.wear_grip_loss = 0.4;
+        roue.wet_grip = 1.2;
+    }
+    let configurations: [(&str, VehicleDesc, bool, f32); 4] = [
+        ("sans rien (berline)", berline(), false, 0.0),
+        (
+            "energie (reservoir, batterie, demarreur)",
+            berline_a_reservoir(),
+            true,
+            0.0,
+        ),
+        ("usure des pneus", berline_a_pneus_uses(0.02), false, 0.0),
+        ("energie + usure + mouille a 0,5", tout, true, 0.5),
+    ];
+    for (nom, desc, contact, mouille) in configurations {
+        let mut mesures: Vec<f64> = (0..7)
+            .map(|_| pas(desc.clone(), contact, mouille))
+            .collect();
+        mesures.sort_by(|a, b| a.total_cmp(b));
+        println!(
+            "COUT {nom} : mediane {:.0} ns/pas, minimum {:.0} ns/pas",
+            mesures[3], mesures[0]
+        );
+    }
+}

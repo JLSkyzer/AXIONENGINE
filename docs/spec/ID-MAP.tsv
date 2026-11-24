@@ -65,7 +65,7 @@ ADR-172	ADR		7483	19	M12 — Optimisation client et serveur (amendement A22)
 ADR-173	ADR		7985	4	38.9 Registre des amendements postérieurs au gel
 ADR-174	ADR		4548	19	18.2 Échantillonnage et blending
 ADR-175	ADR		5311	6	22.2 Format NBT
-ADR-176	ADR		3315	14	12.4 Modèle de pneu
+ADR-176	ADR		3315	15	12.4 Modèle de pneu
 ADR-177	ADR		5972	3	26.2 Empreinte Mixin (liste fermée)
 B-01	B	6580	5947	9	30.2 Ce qui est mesuré
 B-02	B	6581	6581	3	30.2 Ce qui est mesuré

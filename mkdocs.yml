@@ -97,6 +97,7 @@ nav:
       - Faire évoluer son contenu: addons/evoluer.md
       - Moteur, démarreur et contact: addons/moteur.md
       - Pneus et usure: addons/pneus.md
+      - Pluie, neige et adhérence: addons/meteo.md
       - Glossaire: addons/glossaire.md
   - Jouer et héberger:
       - Configuration: CONFIGURATION.md

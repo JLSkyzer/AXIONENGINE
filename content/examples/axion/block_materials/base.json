@@ -14,6 +14,9 @@
     "minecraft:packed_ice": "axion:ice",
     "minecraft:blue_ice": "axion:blue_ice",
     "minecraft:slime_block": "axion:slime",
-    "minecraft:honey_block": "axion:honey"
+    "minecraft:honey_block": "axion:honey",
+    "minecraft:snow": "axion:snow",
+    "minecraft:snow_block": "axion:snow",
+    "minecraft:powder_snow": "axion:snow"
   }
 }

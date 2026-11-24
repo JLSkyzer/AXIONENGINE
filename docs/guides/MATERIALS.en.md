@@ -27,6 +27,7 @@ declares (R-1032). Without `hardness_pressure` in the chain, the value is `3 × 
 | Group | Fields | Unit, range |
 |---|---|---|
 | Contact | `friction`, `restitution`, `rolling_friction` | [0, 2], [0, 1], ≥ 0 |
+| Wet | `wet`: friction factor in the rain (0.75 by default; [rain and grip](addons/meteo.md)) | [0.05, 1] |
 | | `friction_combine`, `restitution_combine` | `average`, `min`, `max`, `multiply` |
 | Mass | `density` | kg/m³, > 0 |
 | Stiffness | `stiffness`, `hardness_pressure`, `deformation_resistance` | Pa > 0; Pa [1e5, 1e11]; [0.01, 100] |

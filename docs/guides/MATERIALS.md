@@ -27,6 +27,7 @@ ne déclare (R-1032). Sans `hardness_pressure` dans la chaîne, la valeur est `3
 | Groupe | Champs | Unité, plage |
 |---|---|---|
 | Contact | `friction`, `restitution`, `rolling_friction` | [0, 2], [0, 1], ≥ 0 |
+| Mouillé | `wet` : facteur du frottement sous la pluie (0,75 par défaut ; [la pluie et l'adhérence](addons/meteo.md)) | [0,05, 1] |
 | | `friction_combine`, `restitution_combine` | `average`, `min`, `max`, `multiply` |
 | Masse | `density` | kg/m³, > 0 |
 | Rigidité | `stiffness`, `hardness_pressure`, `deformation_resistance` | Pa > 0 ; Pa [1e5, 1e11] ; [0,01, 100] |

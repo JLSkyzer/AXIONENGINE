@@ -482,4 +482,67 @@ public final class VehiculesGameTests {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D5, la preuve d'effet : sous la même pluie, le véhicule à l'air libre freine plus mal que son jumeau sous un toit.
+     * Les deux prennent la même vitesse (le moteur ne patine pas) ; freinés ensemble, le mouillé garde plus de vitesse au bout
+     * du même temps.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 900)
+    public static void adr176_SousLaPluieOnFreineMoinsBien(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity dehors = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(3.5, DESSUS_DALLE + 0.6, 14.5), IDENTITE);
+        AxionEntity dessous = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(11.5, DESSUS_DALLE + 0.6, 14.5), IDENTITE);
+        // Un toit de pierre à trois blocs au-dessus de la dalle, sur la moitié du second seulement.
+        for (int x = 8; x <= 14; x++) {
+            for (int z = 0; z <= 15; z++) {
+                helper.setBlock(new BlockPos(x, (int) DESSUS_DALLE + 2, z), Blocks.STONE);
+            }
+        }
+        dev.axion.api.vehicle.DriverInput frein = new dev.axion.api.vehicle.DriverInput(0, 1.0, 0, 0, 0, 0);
+        double[] lancee = new double[2];
+        // Chacun tient 5 m/s : mouillé, le moteur patine plus longtemps, il ne faut pas comparer deux vitesses de départ.
+        boolean[] tient = {false};
+        helper.onEachTick(() -> {
+            if (tient[0]) {
+                dehors.drive(new dev.axion.api.vehicle.DriverInput(vitesse(dehors) < 5.0 ? 1.0 : 0.0, 0, 0, 0, 0, 1));
+                dessous.drive(new dev.axion.api.vehicle.DriverInput(vitesse(dessous) < 5.0 ? 1.0 : 0.0, 0, 0, 0, 0, 1));
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(dehors.hasPhysicalBounds() && dessous.hasPhysicalBounds(),
+                        "les deux véhicules sont simulés"))
+                .thenExecute(() -> helper.getLevel().setWeatherParameters(0, 12000, true, false))
+                .thenWaitUntil(() -> helper.assertTrue(dehors.wetness() >= 1.0 && dessous.wetness() == 0.0,
+                        "l'un mouillé, l'autre sec : " + dehors.wetness() + ", " + dessous.wetness()))
+                .thenExecute(() -> tient[0] = true)
+                .thenIdle(60)
+                .thenExecute(() -> {
+                    lancee[0] = vitesse(dehors);
+                    lancee[1] = vitesse(dessous);
+                    helper.assertTrue(Math.abs(lancee[0] - 5.0) < 0.7 && Math.abs(lancee[1] - 5.0) < 0.7,
+                            "ils tiennent 5 m/s : " + lancee[0] + ", " + lancee[1]);
+                    tient[0] = false;
+                    dehors.drive(frein);
+                    dessous.drive(frein);
+                })
+                .thenIdle(8)
+                .thenExecute(() -> {
+                    double mouille = vitesse(dehors);
+                    double sec = vitesse(dessous);
+                    helper.assertTrue(mouille > sec + 0.2,
+                            "sous la pluie il garde plus de vitesse après le même freinage : " + mouille + " contre " + sec);
+                    dehors.drive(dev.axion.api.vehicle.DriverInput.NONE);
+                    dessous.drive(dev.axion.api.vehicle.DriverInput.NONE);
+                    helper.getLevel().setWeatherParameters(12000, 0, false, false);
+                })
+                .thenSucceed();
+    }
+
+    private static double vitesse(AxionEntity vehicule) {
+        return dev.axion.api.AxionApi.get().assemblies().byEntity(vehicule).orElseThrow().vehicle().orElseThrow()
+                .state().speed();
+    }
 }

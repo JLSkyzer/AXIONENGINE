@@ -78,7 +78,8 @@ public final class FilmDesParametres {
                 "AXION ENGINE, ADR-167 5b"),
         LIMITEUR("limiteur", "axion:example/buggy", List.of(VITESSE_MAX), "AXION ENGINE, ADR-167 5c"),
         MOTEUR("moteur", "axion:example/buggy", List.of(), "AXION ENGINE, ADR-176 D1-D3"),
-        PNEUS("pneus", "axion:test/vehicule_pneus", List.of(), "AXION ENGINE, ADR-176 D4");
+        PNEUS("pneus", "axion:test/vehicule_pneus", List.of(), "AXION ENGINE, ADR-176 D4"),
+        PLUIE("pluie", "axion:test/vehicule", List.of(), "AXION ENGINE, ADR-176 D5");
 
         final String cle;
         final String definition;
@@ -221,6 +222,28 @@ public final class FilmDesParametres {
     private static boolean regleArreteTemoinMarche;
     private static boolean regleMarcheVu;
     private static boolean temoinMarcheVu;
+
+    // Scène pluie : le mouillé que le client lit, et le freinage de chaque buggy sur la dernière étape (ADR-176 D5).
+    private static float mouilleRegle;
+    private static float mouilleTemoin;
+    private static double zFreinRegle = Double.NaN;
+    private static double zFreinTemoin = Double.NaN;
+    private static volatile double distFreinRegle;
+    private static volatile double distFreinTemoin;
+    private static double vFreinRegle;
+    private static double vFreinTemoin;
+
+    /** La vitesse que chaque conducteur de la scène pluie tient avant de freiner, en m/s : la même, sec ou mouillé. */
+    private static final double VITESSE_PLUIE = 8.0;
+
+    /** L'accélérateur d'un conducteur qui tient {@link #VITESSE_PLUIE} : à fond sous elle, relâché au-dessus. */
+    private static VehicleInput tenirLaVitesse(double vitesse, int rapport) {
+        float gaz = (float) Math.max(0.0, Math.min(1.0, (VITESSE_PLUIE - vitesse) / 1.5));
+        return new VehicleInput(gaz, 0f, 0f, 0f, 0f, (byte) rapport, 0);
+    }
+
+    /** Frein à fond, sans accélérateur : ce que le conducteur de la scène pluie fait à la dernière étape. */
+    private static final VehicleInput FREIN = new VehicleInput(0f, 1f, 0f, 0f, 0f, (byte) 0, 0);
 
     private static final List<String> MESURES = new ArrayList<>();
 
@@ -381,6 +404,15 @@ public final class FilmDesParametres {
         // Le joueur filme de loin, derrière la caméra : hors du champ, mais assez près pour que tout se charge.
         ServerPlayer joueur = serveur.getPlayerList().getPlayers().get(0);
         joueur.teleportTo(-34.0, SOL + 2.0, 60.0);
+        if (SCENE == Scene.PLUIE) {
+            // ADR-176 D5 : il pleut ; le témoin roule sous un toit de verre — on le voit, et la pluie ne le touche pas.
+            level.setWeatherParameters(0, 24000, true, false);
+            for (int x = 1; x <= 6; x++) {
+                for (int z = 0; z < MUR; z++) {
+                    level.setBlockAndUpdate(new BlockPos(x, SOL + 3, z), Blocks.GLASS.defaultBlockState());
+                }
+            }
+        }
         decorPret = true;
     }
 
@@ -433,7 +465,7 @@ public final class FilmDesParametres {
      * siège, comme la touche du conducteur, qui bascule la variable du mode sport (5b, D4).
      */
     private static void regler(MinecraftServer serveur) {
-        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
+        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS || SCENE == Scene.PLUIE) {
             // Rien à régler : la scène tourne sur le contact et les pneus, et le client lit l'état reçu (lireLeClient).
             regle = true;
             return;
@@ -532,11 +564,15 @@ public final class FilmDesParametres {
             return new SimCommandStream();
         }
         if (assis) {
-            boolean roule = phase == Phase.TOURNAGE && etape != Etape.ARRET;
+            boolean freine = SCENE == Scene.PLUIE && phase == Phase.TOURNAGE && etape == Etape.BILAN;
+            boolean roule = phase == Phase.TOURNAGE && etape != Etape.ARRET && !freine;
             rapportRegle = roule ? rapport(regleIci, rapportRegle) : 0;
             rapportTemoin = roule ? rapport(temoinIci, rapportTemoin) : 0;
-            regleIci.receiveInput(piloteRegle, regleIci.seatOf(piloteRegle), entree(roule, rapportRegle));
-            temoinIci.receiveInput(piloteTemoin, temoinIci.seatOf(piloteTemoin), entree(roule, rapportTemoin));
+            boolean tient = SCENE == Scene.PLUIE && roule;
+            regleIci.receiveInput(piloteRegle, regleIci.seatOf(piloteRegle), freine ? FREIN
+                    : tient ? tenirLaVitesse(vitesseRegle, rapportRegle) : entree(roule, rapportRegle));
+            temoinIci.receiveInput(piloteTemoin, temoinIci.seatOf(piloteTemoin), freine ? FREIN
+                    : tient ? tenirLaVitesse(vitesseTemoin, rapportTemoin) : entree(roule, rapportTemoin));
         }
         if (assis && phase == Phase.TOURNAGE && tournage != null) {
             double secondes = (System.nanoTime() - tournage.debut()) / 1e9;
@@ -552,6 +588,16 @@ public final class FilmDesParametres {
                     }
                 }
             }
+        }
+        if (SCENE == Scene.PLUIE && phase == Phase.TOURNAGE && etape == Etape.BILAN) {
+            if (Double.isNaN(zFreinRegle)) {
+                zFreinRegle = regleIci.getZ();
+                zFreinTemoin = temoinIci.getZ();
+                vFreinRegle = vitesseRegle;
+                vFreinTemoin = vitesseTemoin;
+            }
+            distFreinRegle = Math.abs(regleIci.getZ() - zFreinRegle);
+            distFreinTemoin = Math.abs(temoinIci.getZ() - zFreinTemoin);
         }
         double[] regleXyz = {regleIci.getX(), regleIci.getY(), regleIci.getZ()};
         double[] temoinXyz = {temoinIci.getX(), temoinIci.getY(), temoinIci.getZ()};
@@ -674,6 +720,7 @@ public final class FilmDesParametres {
             case LIMITEUR -> "limité";
             case MOTEUR -> "contact tardif";
             case PNEUS -> "pneus d'origine";
+            case PLUIE -> "à l'air libre";
         };
         String legende = switch (etape) {
             case ARRET -> switch (SCENE) {
@@ -684,6 +731,7 @@ public final class FilmDesParametres {
                         + " attaché par l'API";
                 case MOTEUR -> "Deux buggys, contact coupé, frein à main serré : le moteur est arrêté";
                 case PNEUS -> "Deux buggys ; les pneus du premier plan s'useront, ceux du témoin sont changés à chaque tick";
+                case PLUIE -> "Il pleut : le premier buggy est à l'air libre, le second roule sous un toit de verre";
             };
             case COURSE -> switch (SCENE) {
                 case PARAMETRES -> "Pied au plancher depuis l'arrêt : seul le buggy réglé accélère moins";
@@ -693,6 +741,7 @@ public final class FilmDesParametres {
                 case MOTEUR -> String.format(Locale.ROOT, "Pied au plancher : contact, démarreur, il part ; le second"
                         + " met le contact %.0f s plus tard", RETARD_CONTACT);
                 case PNEUS -> "Pied au plancher : les roues motrices patinent et le pneu s'use ; le témoin reste neuf";
+                case PLUIE -> "Les deux tiennent 8 m/s, l'un sous la pluie, l'autre à l'abri (le mouillé met plus de temps)";
             };
             case BILAN -> switch (SCENE) {
                 case PARAMETRES -> "Le client reçoit les modificateurs et compose : les valeurs du serveur, au bit près";
@@ -701,6 +750,7 @@ public final class FilmDesParametres {
                         + " près";
                 case MOTEUR -> "Le client lit l'état du moteur, la batterie et le réservoir reçus du serveur";
                 case PNEUS -> "L'usure part au client en un octet par roue : le bandeau la lit";
+                case PLUIE -> "Frein à fond : le véhicule mouillé s'arrête plus mal ; le client lit son mouillé";
             };
         };
         if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
@@ -714,6 +764,11 @@ public final class FilmDesParametres {
                         nom, marcheRegle ? "tourne" : "arrêté", 100 * batterieRegle, 100 * carburantRegle,
                         metres(parcoursRegle), marcheTemoin ? "tourne" : "arrêté", 100 * batterieTemoin,
                         100 * carburantTemoin, metres(parcoursTemoin))
+                : SCENE == Scene.PLUIE ? String.format(Locale.ROOT,
+                        "%s : mouillé %.0f %%, %.1f m/s, freinage %.1f m    témoin à l'abri : mouillé %.0f %%, %.1f m/s,"
+                                + " freinage %.1f m",
+                        nom, 100 * mouilleRegle, vitesseRegle, distFreinRegle, 100 * mouilleTemoin, vitesseTemoin,
+                        distFreinTemoin)
                 : SCENE == Scene.PNEUS ? String.format(Locale.ROOT,
                         "%s : usure %.0f %%, %.1f m/s, %s m    témoin : usure %.0f %%, %.1f m/s, %s m",
                         nom, 100 * usureRegle, vitesseRegle, metres(parcoursRegle), 100 * usureTemoin, vitesseTemoin,
@@ -734,7 +789,7 @@ public final class FilmDesParametres {
             ecartMiroir = "un buggy a disparu du client";
             return;
         }
-        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
+        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS || SCENE == Scene.PLUIE) {
             lireLEtat(regleClient, temoinClient);
             return;
         }
@@ -784,7 +839,10 @@ public final class FilmDesParametres {
         batterieTemoin = temoinEtat.vehicle().battery();
         usureRegle = usureMax(regleEtat);
         usureTemoin = usureMax(temoinEtat);
-        etatPret = true;
+        mouilleRegle = regleEtat.vehicle().wet();
+        mouilleTemoin = temoinEtat.vehicle().wet();
+        // La pluie n'est filmée qu'une fois le mouillé arrivé au client : l'un tout à fait mouillé, l'autre sec.
+        etatPret = SCENE != Scene.PLUIE || mouilleRegle > 0.95f && mouilleTemoin < 0.05f;
     }
 
     private static float usureMax(Interpolation.Pose etat) {
@@ -807,7 +865,7 @@ public final class FilmDesParametres {
 
     /** {@return vrai si le client lit le réglage du serveur : au bit près, et autre que la base} */
     private static boolean reglageLu() {
-        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
+        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS || SCENE == Scene.PLUIE) {
             return etatPret;
         }
         return ecartMiroir == null && reglesClient.length > 0 && !Double.isNaN(reglesClient[0])
@@ -861,6 +919,8 @@ public final class FilmDesParametres {
             case MOTEUR -> parcoursRegle < 0.8 * parcoursTemoin;
             // Un pneu usé n'avance jamais plus que le neuf, à une demi-mesure près.
             case PNEUS -> parcoursRegle <= parcoursTemoin + 0.5;
+            // Même vitesse au début du freinage, mais le mouillé parcourt plus de distance avant de s'arrêter.
+            case PLUIE -> distFreinRegle > distFreinTemoin + 0.3 && distFreinTemoin > 0.5;
         };
         if (!attendu) {
             return String.format(Locale.ROOT, "le réglé a parcouru %.2f m contre %.2f m pour le témoin", parcoursRegle,
@@ -869,6 +929,11 @@ public final class FilmDesParametres {
         if (SCENE == Scene.MOTEUR && !(temoinMarcheVu && regleArreteTemoinMarche && regleMarcheVu)) {
             return "moteur : témoin en marche vu " + temoinMarcheVu + ", réglé arrêté pendant que le témoin tourne "
                     + regleArreteTemoinMarche + ", réglé en marche vu " + regleMarcheVu;
+        }
+        if (SCENE == Scene.PLUIE && !(Math.abs(vFreinRegle - vFreinTemoin) < 0.8 && mouilleRegle > 0.9f
+                && mouilleTemoin < 0.1f)) {
+            return String.format(Locale.ROOT, "pluie : vitesses au freinage %.2f et %.2f m/s, mouillé lu %.2f et %.2f",
+                    vFreinRegle, vFreinTemoin, mouilleRegle, mouilleTemoin);
         }
         if (SCENE == Scene.PNEUS && !(usureRegle > 0.5f && usureTemoin < 0.15f)) {
             return String.format(Locale.ROOT, "usure lue au client : %.3f d'origine, %.3f témoin", usureRegle,
@@ -922,11 +987,12 @@ public final class FilmDesParametres {
         String bilan = String.format(Locale.ROOT,
                 "{\"scene\": \"%s\", \"images\": %d, \"uniques\": %d, \"echec\": %s, \"parcours_regle\": %.2f,"
                         + " \"parcours_temoin\": %.2f, \"vitesse_max_regle\": %.2f, \"vitesse_max_temoin\": %.2f,"
-                        + " \"regle_client\": \"%s\", \"usure_regle\": %.3f, \"usure_temoin\": %.3f,"
+                        + " \"regle_client\": \"%s\", \"usure_regle\": %.3f, \"usure_temoin\": %.3f, \"frein_regle\": %.2f,"
+                        + " \"frein_temoin\": %.2f,"
                         + " \"capture_ms_mediane\": %.1f, \"capture_ms_p90\": %.1f}%n",
                 SCENE.cle, tournage == null ? 0 : tournage.images(), tournage == null ? 0 : tournage.uniques(),
                 faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"", parcoursRegle, parcoursTemoin,
-                vitesseMaxRegle, vitesseMaxTemoin, montres(), usureRegle, usureTemoin,
+                vitesseMaxRegle, vitesseMaxTemoin, montres(), usureRegle, usureTemoin, distFreinRegle, distFreinTemoin,
                 tournage == null ? 0.0 : tournage.quantileMs(0.5),
                 tournage == null ? 0.0 : tournage.quantileMs(0.9));
         try {

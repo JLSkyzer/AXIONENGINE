@@ -298,6 +298,18 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmPluie {
+            // ADR-176, tranche 11d : la pluie sur l'adherence, un buggy a l'air libre et son jumeau sous un toit de verre
+            // (FilmDesParametres).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-pluie')
+            property 'axion.film', 'pluie'
+            property 'axion.souris.libre', 'true'
+            property 'axion.film.definition', 'axion:test/vehicule'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmPneus {
             // ADR-176, tranche 11 : l'usure des pneus du buggy d'essai (FilmDesParametres).
             parent minecraft.runs.client
@@ -647,7 +659,7 @@ tasks.matching { it.name == 'runFilmVues' }.configureEach {
 }
 
 ['runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur', 'runFilmMoteur': 'moteur',
-        'runFilmPneus': 'pneus'].each { tache, scene ->
+        'runFilmPneus': 'pneus', 'runFilmPluie': 'pluie'].each { tache, scene ->
     tasks.matching { it.name == tache }.configureEach {
         standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
         doFirst {
