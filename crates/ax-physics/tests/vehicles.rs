@@ -2100,3 +2100,35 @@ fn adr176_d4_l_usure_se_relit_dans_le_bloc_d_etat_et_se_rend() {
     let rapports = world.wheel_reports();
     assert!(rapports.iter().all(|r| r.wear >= 0.0 && r.wear <= 1.0));
 }
+
+#[test]
+fn adr176_d4_un_pneu_use_montre_un_second_cercle_dans_l_overlay_des_roues() {
+    use ax_math::{DVec3, FloatingOrigin};
+    use ax_model::dm::debug::overlay;
+
+    let (mut world, _) = sur_le_plat(berline_a_pneus_uses(0.0), [20.0, 20.0], 1.0);
+    let origine = FloatingOrigin::new(DVec3::ZERO);
+    let traits = |world: &PhysicsWorld| {
+        world
+            .debug_drafts(&origine, DVec3::ZERO, overlay::WHEELS)
+            .iter()
+            .find(|plage| plage.overlay == overlay::rank(overlay::WHEELS))
+            .map_or(0, |plage| plage.segments.len())
+    };
+    conduire(&mut world, entree(0.0, 0.0, 0.0));
+    assert_eq!(
+        traits(&world),
+        4 * 16,
+        "des pneus neufs : un cercle par roue"
+    );
+    assert!(world.set_wheel_wear(ASSEMBLY, 2, 0.5));
+    assert_eq!(
+        traits(&world),
+        4 * 16 + 16,
+        "un pneu usé : un second cercle, plus petit"
+    );
+    for roue in 0..4 {
+        assert!(world.set_wheel_wear(ASSEMBLY, roue, 1.0));
+    }
+    assert_eq!(traits(&world), 4 * 16 * 2);
+}

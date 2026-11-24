@@ -2228,6 +2228,39 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code interaction[].actions[].set_wear}. */
+    @Experimental
+    public static final class InteractionActionSetWear {
+
+        private final Map<String, Object> values;
+
+        private InteractionActionSetWear(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_wear.value} : au moins 0 ; au plus 1.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetWear value(double value) {
+            values.put("value", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_wear.wheel} : nom (wheel) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionSetWear wheel(String value) {
+            values.put("wheel", Objects.requireNonNull(value, "wheel"));
+            return this;
+        }
+    }
+
     /** {@code interaction[].actions[].swap_mesh}. */
     @Experimental
     public static final class InteractionActionSwapMesh {
@@ -2315,6 +2348,18 @@ public final class DefinitionBuilder {
         public InteractionAction setMaterialParam(Consumer<InteractionActionSetMaterialParam> config) {
             Map<String, Object> nested = object(values, "set_material_param");
             Objects.requireNonNull(config, "config").accept(new InteractionActionSetMaterialParam(nested));
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].set_wear}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionAction setWear(Consumer<InteractionActionSetWear> config) {
+            Map<String, Object> nested = object(values, "set_wear");
+            Objects.requireNonNull(config, "config").accept(new InteractionActionSetWear(nested));
             return this;
         }
 

@@ -25,13 +25,20 @@ public final class VehicleSnapshot implements VehicleView {
      * @param steer son braquage, en radians
      * @param slipLong son glissement longitudinal
      * @param slipLat son glissement latéral, en radians
+     * @param wear l'usure de son pneu, de 0 à 1 (ADR-176 D4)
      */
     public record Wheel(String node, boolean grounded, double compression, double spin, double steer,
-            double slipLong, double slipLat) implements WheelView {
+            double slipLong, double slipLat, double wear) implements WheelView {
 
         /** Refuse un node absent. */
         public Wheel {
             Objects.requireNonNull(node, "node");
+        }
+
+        /** Une roue au pneu neuf. */
+        public Wheel(String node, boolean grounded, double compression, double spin, double steer, double slipLong,
+                double slipLat) {
+            this(node, grounded, compression, spin, steer, slipLong, slipLat, 0.0);
         }
     }
 

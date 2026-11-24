@@ -704,11 +704,15 @@ final class DefinitionChecker {
     /** Vrai si la definition déclare un réservoir : une action {@code refuel} a de quoi verser (ADR-176 D3). */
     private boolean refuelable;
 
+    /** Vrai si la definition déclare des roues : une action {@code set_wear} a un pneu à user (ADR-176 D4). */
+    private boolean wheeled;
+
     private void checkInteractions(JsonObject root) {
         if (!(root.get("interaction") instanceof JsonArray interactions)) {
             return;
         }
         refuelable = EnergySpec.of(root).fuelCapacity() > 0f;
+        wheeled = root.get("wheels") instanceof JsonArray roues && !roues.isEmpty();
         for (int i = 0; i < interactions.size(); i++) {
             if (!(interactions.get(i) instanceof JsonObject interaction)) {
                 continue;
@@ -758,9 +762,13 @@ final class DefinitionChecker {
     private void checkNodeAction(JsonObject step, String path) {
         if (step.size() != 1) {
             invalid(path, "une action est un objet à une seule clé — hide_node, show_node, swap_mesh,"
-                    + " set_material_param ou emit_event —, pour que la liste garde son ordre ; " + step.size()
+                    + " set_material_param, emit_event, refuel ou set_wear —, pour que la liste garde son ordre ; " + step.size()
                     + " clés ici");
             return;
+        }
+        if (step.get("set_wear") != null && !wheeled) {
+            invalid(path + ".set_wear", "l'action « set_wear » pose l'usure d'un pneu : la definition déclare des roues"
+                    + " (wheels, ADR-176 D4)");
         }
         if (step.get("refuel") != null && !refuelable) {
             invalid(path + ".refuel", "l'action « refuel » verse dans le réservoir que la definition déclare"

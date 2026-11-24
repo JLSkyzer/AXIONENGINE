@@ -883,6 +883,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     refuel(action.value());
                     continue;
                 }
+                if (action.kind() == Seating.NodeActionKind.SET_WEAR) {
+                    setWearByName(action.name().isEmpty() ? null : action.name(), action.value());
+                    continue;
+                }
                 int swapped = current == null ? -1 : current.swapped();
                 switch (action.kind()) {
                     case HIDE -> hidden = true;
@@ -895,8 +899,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                             color = action.color();
                         }
                     }
-                    case EMIT, REFUEL -> {
-                        // Traités plus haut : un événement ou un plein ne change aucun node.
+                    case EMIT, REFUEL, SET_WEAR -> {
+                        // Traités plus haut : un événement, un plein ou un pneu changé ne changent aucun node.
                     }
                     case SWAP -> {
                         // Le remplaçant d'avant retourne à l'ombre ; le nouveau se montre, l'original se cache.
@@ -1560,7 +1564,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             boolean known = i < wheelCompression.length;
             wheels.add(new dev.axion.entity.VehicleSnapshot.Wheel(nodes.get(i), known && wheelGround[i],
                     known ? wheelCompression[i] : 0.0, known ? wheelSpin[i] : 0.0, known ? wheelSteer[i] : 0.0,
-                    known ? wheelSlipLong[i] : 0.0, known ? wheelSlipLat[i] : 0.0));
+                    known ? wheelSlipLong[i] : 0.0, known ? wheelSlipLat[i] : 0.0, wheelWear(i)));
         }
         AssemblyVariables held = variables();
         List<String> variableNames = held == null ? List.of()
@@ -2979,6 +2983,29 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
         wheelWear[wheel] = (float) value;
         wearPending = true;
+    }
+
+    /**
+     * Pose l'usure du pneu d'une roue nommée, ou de toutes (ADR-176 D4) ; l'action de contenu {@code set_wear} et l'API s'en
+     * servent.
+     *
+     * @param wheel le node de la roue, {@code null} pour toutes
+     * @param value l'usure, de 0 à 1
+     * @throws IllegalArgumentException si la roue n'existe pas, ou si l'usure n'est pas de 0 à 1
+     */
+    public void setWearByName(String wheel, double value) {
+        List<String> names = wheelNodes();
+        if (wheel == null) {
+            for (int rank = 0; rank < names.size(); rank++) {
+                setWear(rank, value);
+            }
+            return;
+        }
+        int rank = names.indexOf(wheel);
+        if (rank < 0) {
+            throw new IllegalArgumentException("roue « " + wheel + " » : la definition déclare " + names);
+        }
+        setWear(rank, value);
     }
 
     /** {@return vrai une seule fois, quand l'usure que Java tient doit partir au natif ({@code SET_WEAR})} */

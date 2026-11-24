@@ -374,6 +374,12 @@ public final class ForgeAxionApi implements AxionApi {
         }
 
         @Override
+        public void setWear(String wheel, double wear) {
+            authoritative();
+            entity.setWearByName(java.util.Objects.requireNonNull(wheel, "wheel"), wear);
+        }
+
+        @Override
         public void attach(String controller) {
             authoritative();
             entity.attachController(java.util.Objects.requireNonNull(controller, "controller"));

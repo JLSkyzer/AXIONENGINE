@@ -807,6 +807,11 @@ final class SchemaOne {
                         .build())
                 // ADR-176 D3 : verser du carburant dans le réservoir du véhicule (la definition en déclare un).
                 .opt("refuel", obj().req("litres", positive()).build())
+                // ADR-176 D4 : poser l'usure du pneu d'une roue, ou de toutes (un pneu neuf : 0).
+                .opt("set_wear", obj()
+                        .opt("wheel", refers(NameCategory.WHEEL))
+                        .req("value", new Num(0, 1, false, false))
+                        .build())
                 .opt("set_material_param", obj()
                         .req("node", refers(NameCategory.NODE))
                         .req("param", oneOf("emissive", "color"))

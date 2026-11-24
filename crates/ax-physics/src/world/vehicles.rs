@@ -760,6 +760,20 @@ impl PhysicsWorld {
                         b: relative(point(step + 1)),
                     });
                 }
+                // ADR-176 D4 : un pneu usé montre un second cercle, d'autant plus petit qu'il est usé. Neuf, rien ne change.
+                if state.wear > 0.0 {
+                    let inner = (1.0 - state.wear as f32).clamp(0.05, 1.0);
+                    let worn = |step: u32| {
+                        let angle = std::f32::consts::TAU * step as f32 / ROUND_SUBDIVISIONS as f32;
+                        center + (forward * angle.cos() + up * angle.sin()) * radius * inner
+                    };
+                    for step in 0..ROUND_SUBDIVISIONS {
+                        circles.push(DebugSegment {
+                            a: relative(worn(step)),
+                            b: relative(worn(step + 1)),
+                        });
+                    }
+                }
             }
             let anchor = vehicle
                 .wheels

@@ -524,6 +524,17 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         }
 
         /**
+         * {@return la pose de l'usure d'un pneu (ADR-176 D4)}
+         *
+         * @param wheel le node de la roue, {@code null} pour toutes
+         * @param value l'usure, de 0 à 1
+         */
+        public static NodeAction setWear(String wheel, double value) {
+            return new NodeAction(NodeActionKind.SET_WEAR, -1, wheel == null ? "" : wheel, Float.NaN,
+                    null, -1, null, value);
+        }
+
+        /**
          * {@return le plein d'un réservoir (ADR-176 D3)}
          *
          * @param litres ce que l'action verse
@@ -547,6 +558,8 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         EMIT,
         /** Verser du carburant dans le réservoir (ADR-176 D3) : la valeur est le nombre de litres. */
         REFUEL,
+        /** Poser l'usure du pneu d'une roue, ou de toutes (ADR-176 D4) : la valeur est l'usure, de 0 à 1. */
+        SET_WEAR,
         /** Une action qu'un mod enregistre (ADR-174 D6) : son nom est son identifiant. */
         ADDON
     }
@@ -678,6 +691,9 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                 actions.add(new NodeAction(NodeActionKind.SWAP, node(byPath, at + ".swap_mesh.node"),
                         swap.get("node").getAsString(), Float.NaN, null,
                         with == null ? -1 : node(byPath, at + ".swap_mesh.with"), with));
+            } else if (step.get("set_wear") instanceof JsonObject wear) {
+                actions.add(NodeAction.setWear(wear.get("wheel") == null ? null : wear.get("wheel").getAsString(),
+                        wear.get("value").getAsDouble()));
             } else if (step.get("refuel") instanceof JsonObject refuel) {
                 actions.add(NodeAction.refuel(refuel.get("litres").getAsDouble()));
             } else if (step.get("emit_event") instanceof JsonObject emit) {

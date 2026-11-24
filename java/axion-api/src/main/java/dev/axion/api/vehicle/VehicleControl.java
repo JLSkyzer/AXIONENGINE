@@ -26,6 +26,20 @@ public interface VehicleControl {
      */
     VehicleView state();
 
+    /**
+     * Pose l'usure du pneu d'une roue (ADR-176 D4) : un pneu neuf pour 0, usé à fond pour 1. Le natif la reçoit sans que
+     * le véhicule soit réveillé ; elle se sauvegarde par nom de roue.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755).
+     *
+     * @param wheel le node de la roue, tel que la definition le nomme dans {@code wheels}
+     * @param wear l'usure, de 0 à 1
+     * @throws IllegalArgumentException si la definition n'a pas cette roue, ou si l'usure n'est pas de 0 à 1
+     */
+    default void setWear(String wheel, double wear) {
+        throw new UnsupportedOperationException("setWear : ce véhicule n'expose pas l'usure de ses pneus");
+    }
+
     /** {@return les identifiants de ses contrôleurs : ceux de sa definition, puis ceux que l'API a attachés} */
     List<String> controllers();
 

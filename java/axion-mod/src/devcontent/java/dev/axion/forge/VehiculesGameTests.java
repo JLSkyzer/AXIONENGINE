@@ -383,4 +383,60 @@ public final class VehiculesGameTests {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D4 : un pneu usé se change — par l'API ({@code setWear}), par l'action de contenu {@code set_wear} et par
+     * {@code /axion wear} —, et le natif reçoit le changement sans que le véhicule soit réveillé.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 600)
+    public static void adr176_UnPneuUseSeChangeParLAPiLActionEtLaCommande(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_pneus",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), new float[] {0f, 0f, 0f, 1f});
+        dev.axion.api.assembly.Assembly api = dev.axion.api.AxionApi.get().assemblies().byEntity(vehicule).orElseThrow();
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.wheelNodes().size() == 4,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> vehicule.drive(new dev.axion.api.vehicle.DriverInput(1.0, 0, 0, 0, 0, 1)))
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.wheelWear(2) > 0.05f,
+                        "le pneu arrière gauche s'est usé : " + vehicule.wheelWear(2)))
+                .thenExecute(() -> {
+                    vehicule.drive(dev.axion.api.vehicle.DriverInput.NONE);
+                    // 1. L'API : un pneu neuf.
+                    api.vehicle().orElseThrow().setWear("roue_arriere_gauche", 0.0);
+                    helper.assertTrue(vehicule.wheelWear(2) == 0f, "l'API a changé le pneu : " + vehicule.wheelWear(2));
+                    helper.assertTrue(api.vehicle().orElseThrow().state().wheels().get(2).wear() == 0.0,
+                            "et la vue de l'API le dit");
+                    try {
+                        api.vehicle().orElseThrow().setWear("roue_inconnue", 0.5);
+                        helper.fail("une roue inconnue doit être refusée");
+                    } catch (IllegalArgumentException attendu) {
+                        // refusée, nommée
+                    }
+                    // 2. L'action de contenu, sur toutes les roues.
+                    vehicule.runActions(java.util.List.of(dev.axion.definition.Seating.NodeAction.setWear(null, 0.5)),
+                            "test");
+                    for (int roue = 0; roue < 4; roue++) {
+                        helper.assertTrue(vehicule.wheelWear(roue) == 0.5f, "l'action pose 0,5 sur la roue " + roue);
+                    }
+                })
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    // Le natif a reçu le changement : il repart des 0,5 — le véhicule roule encore sur son élan, l'usure a
+                    // pu monter depuis, jamais redescendre ni revenir à l'usure d'avant.
+                    helper.assertTrue(vehicule.wheelWear(2) >= 0.5f - 0.01f,
+                            "le natif tient au moins les 0,5 : " + vehicule.wheelWear(2));
+                    // 3. La commande d'administration.
+                    var serveur = helper.getLevel().getServer();
+                    serveur.getCommands().performPrefixedCommand(serveur.createCommandSourceStack(),
+                            "axion wear " + vehicule.getUUID() + " reset");
+                    helper.assertTrue(vehicule.wheelWear(0) == 0f && vehicule.wheelWear(3) == 0f,
+                            "/axion wear reset : des pneus neufs : " + vehicule.wheelWear(0));
+                    serveur.getCommands().performPrefixedCommand(serveur.createCommandSourceStack(),
+                            "axion wear " + vehicule.getUUID() + " set roue_avant_droite 0.75");
+                    helper.assertTrue(Math.abs(vehicule.wheelWear(1) - 0.75f) < 1e-6f,
+                            "/axion wear set : " + vehicule.wheelWear(1));
+                })
+                .thenSucceed();
+    }
 }

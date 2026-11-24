@@ -1003,4 +1003,23 @@ class DefinitionSchemaTest {
         DefinitionException refus = assertThrows(DefinitionException.class, () -> read(six));
         assertTrue(refus.path().startsWith("$.procedural["), refus.path());
     }
+
+    @Test
+    @DisplayName("ADR-176 D4 : l'action set_wear pose l'usure d'une roue de la definition, ou de toutes, de 0 à 1")
+    void l_actionSetWear() {
+        String action = "[{\"node\": \"siege_conducteur\", \"action\": \"actions\", \"actions\": [%s]}]";
+        JsonObject bon = avecReservoir();
+        bon.add("interaction", JsonParser.parseString(String.format(action,
+                "{\"set_wear\": {\"wheel\": \"roue_avant_gauche\", \"value\": 0}}, {\"set_wear\": {\"value\": 0.5}}")));
+        assertDoesNotThrow(() -> read(bon));
+
+        JsonObject inconnue = avecReservoir();
+        inconnue.add("interaction", JsonParser.parseString(String.format(action,
+                "{\"set_wear\": {\"wheel\": \"roue_fantome\", \"value\": 0}}")));
+        assertThrows(DefinitionException.class, () -> read(inconnue), "une roue que la definition n'a pas");
+
+        JsonObject hors = avecReservoir();
+        hors.add("interaction", JsonParser.parseString(String.format(action, "{\"set_wear\": {\"value\": 1.5}}")));
+        assertThrows(DefinitionException.class, () -> read(hors), "une usure de 0 à 1");
+    }
 }

@@ -184,7 +184,7 @@ CAP-16	CAP	8418	7984	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-17	CAP	8419	7406	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-18	CAP	8420	8420	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-19	CAP	8421	7406	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-20	CAP	8422	7986	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-20	CAP	8422	7986	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-21	CAP	8423	8423	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-22	CAP	8424	8424	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-23	CAP	8425	8425	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
@@ -623,7 +623,7 @@ R-790	R	2432	2432	1	5.53 C-66 : Skinning GPU
 R-791	R	2433	2433	1	5.53 C-66 : Skinning GPU
 R-792	R	2434	2434	3	5.53 C-66 : Skinning GPU
 R-800	R	2442	2442	1	5.54 C-67 : Debug Renderer
-R-810	R	2484	2484	2	5.58 C-71 : Commandes
+R-810	R	2484	2484	3	5.58 C-71 : Commandes
 R-811	R	2485	2485	1	5.58 C-71 : Commandes
 R-820	R	2497	2497	1	5.60 C-73 : Overlay diagnostics
 R-830	R	2515	2515	3	5.61 C-74 : CLI `axion-cli`
@@ -696,7 +696,7 @@ R-1060	R	3296	3296	1	12.3 Suspension
 R-1061	R	3297	3297	1	12.3 Suspension
 R-1070	R	3313	3313	1	12.4 Modèle de pneu
 R-1071	R	3315	3314	2	12.4 Modèle de pneu
-R-1072	R	3314	3314	3	12.4 Modèle de pneu
+R-1072	R	3314	3314	4	12.4 Modèle de pneu
 R-1080	R	3332	3332	1	12.5 Groupe motopropulseur
 R-1081	R	3333	3333	1	12.5 Groupe motopropulseur
 R-1082	R	3334	3334	1	12.5 Groupe motopropulseur

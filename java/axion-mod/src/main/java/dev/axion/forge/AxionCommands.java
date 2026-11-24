@@ -274,6 +274,26 @@ final class AxionCommands {
                                                         .executes(context -> energyBattery(context.getSource(),
                                                                 EntityArgument.getEntity(context, "cible"),
                                                                 DoubleArgumentType.getDouble(context, "charge")))))))
+                        // ADR-176 D4 : voir et poser l'usure des pneus d'un véhicule.
+                        .then(Commands.literal("wear")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .executes(context -> wear(context.getSource(),
+                                                EntityArgument.getEntity(context, "cible")))
+                                        .then(Commands.literal("set")
+                                                .then(Commands.argument("roue", StringArgumentType.word())
+                                                        .suggests((context, builder) ->
+                                                                SharedSuggestionProvider.suggest(wheelNames(context),
+                                                                        builder))
+                                                        .then(Commands.argument("usure",
+                                                                        DoubleArgumentType.doubleArg(0.0, 1.0))
+                                                                .executes(context -> wearSet(context.getSource(),
+                                                                        EntityArgument.getEntity(context, "cible"),
+                                                                        StringArgumentType.getString(context, "roue"),
+                                                                        DoubleArgumentType.getDouble(context,
+                                                                                "usure"))))))
+                                        .then(Commands.literal("reset")
+                                                .executes(context -> wearSet(context.getSource(),
+                                                        EntityArgument.getEntity(context, "cible"), null, 0.0)))))
                         .then(Commands.literal("debug")
                                 .then(Commands.literal("trace")
                                         .then(Commands.literal("on")
@@ -626,6 +646,62 @@ final class AxionCommands {
         LOGGER.info("AXION : /axion energy battery {} sur {} ({}) demandé par {}", charge, target.getUUID(),
                 assembly.definitionId(), source.getTextName());
         List<String> lines = energyLines(assembly);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), true);
+        return 1;
+    }
+
+    /** {@return les roues de la cible, pour la complétion ; aucune si elle n'est pas un véhicule compilé} */
+    private static List<String> wheelNames(
+            com.mojang.brigadier.context.CommandContext<CommandSourceStack> context) {
+        try {
+            return EntityArgument.getEntity(context, "cible") instanceof AxionEntity assembly ? assembly.wheelNodes()
+                    : List.of();
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException absente) {
+            return List.of();
+        }
+    }
+
+    /** L'usure des pneus d'un véhicule, une ligne par roue (ADR-176 D4). */
+    private static List<String> wearLines(AxionEntity assembly) {
+        List<String> lines = new java.util.ArrayList<>();
+        lines.add("AXION : pneus de " + assembly.definitionId());
+        List<String> wheels = assembly.wheelNodes();
+        if (wheels.isEmpty()) {
+            lines.add("  aucune roue : la definition n'est pas un véhicule");
+            return lines;
+        }
+        for (int rank = 0; rank < wheels.size(); rank++) {
+            lines.add(String.format(java.util.Locale.ROOT, "  %s : %.1f %% d'usure", wheels.get(rank),
+                    100.0 * assembly.wheelWear(rank)));
+        }
+        return lines;
+    }
+
+    private static int wear(CommandSourceStack source, Entity target) {
+        AxionEntity assembly = energyTarget(source, target);
+        if (assembly == null) {
+            return 0;
+        }
+        List<String> lines = wearLines(assembly);
+        source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
+        return assembly.wheelNodes().size();
+    }
+
+    /** Change un pneu, ou tous : commande d'administration, mutante, journalisée avec son auteur (R-810). */
+    private static int wearSet(CommandSourceStack source, Entity target, String wheel, double wear) {
+        AxionEntity assembly = energyTarget(source, target);
+        if (assembly == null) {
+            return 0;
+        }
+        try {
+            assembly.setWearByName(wheel, wear);
+        } catch (IllegalArgumentException refus) {
+            source.sendFailure(Component.literal("AXION : refusé — " + refus.getMessage()));
+            return 0;
+        }
+        LOGGER.info("AXION : /axion wear set {} {} sur {} ({}) demandé par {}", wheel == null ? "(toutes)" : wheel, wear,
+                target.getUUID(), assembly.definitionId(), source.getTextName());
+        List<String> lines = wearLines(assembly);
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), true);
         return 1;
     }

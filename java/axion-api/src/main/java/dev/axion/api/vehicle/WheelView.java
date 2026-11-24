@@ -29,4 +29,12 @@ public interface WheelView {
 
     /** {@return son glissement latéral, en radians} */
     double slipLat();
+
+    /**
+     * {@return l'usure de son pneu, de 0 (neuf) à 1 (usé à fond) (ADR-176 D4) ; 0 si son profil de pneu ne déclare pas
+     * de {@code wear}}
+     */
+    default double wear() {
+        return 0.0;
+    }
 }
