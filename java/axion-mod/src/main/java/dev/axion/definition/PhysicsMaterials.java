@@ -114,6 +114,8 @@ public final class PhysicsMaterials {
         ROLLING_FRICTION("rolling_friction", "sans dimension", 0, false, Double.POSITIVE_INFINITY),
         FRICTION_COMBINE("friction_combine", Kind.COMBINE),
         RESTITUTION_COMBINE("restitution_combine", Kind.COMBINE),
+        // ADR-176 D5 : le facteur du frottement d'une roue sur ce matériau mouillé (1 : aucun effet).
+        WET("wet", "sans dimension", 0.05, false, 1),
         DENSITY("density", "kg/m³", 0, true, Double.POSITIVE_INFINITY),
         HARDNESS("hardness", "sans dimension", 0, false, 1),
         STIFFNESS("stiffness", "Pa", 0, true, Double.POSITIVE_INFINITY),

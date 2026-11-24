@@ -16,8 +16,8 @@ use ax_model::dm::commands::{
     AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly,
     RemoveWorldTile, SetAssemblyPose, SetAssemblyState, SetDimensionEnv, SetEnergy,
     SetEntityProxies, SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSensor,
-    SetSimMode, SetStateExport, SetVehicleInput, SetWear, SetWheelTorques, SetWorldCollision,
-    SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
+    SetSimMode, SetStateExport, SetVehicleInput, SetWear, SetWet, SetWheelTorques,
+    SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -384,6 +384,12 @@ fn apply_one(
                 read_u32(payload, 8) as usize,
                 read_f32(payload, 12),
             );
+            outcome.applied += 1;
+        }
+        // ADR-176 D5 : le mouillé de la route sous un véhicule ; NaN garde la valeur, rien ne réveille.
+        opcode::SET_WET => {
+            expect_len(payload, SetWet::BYTES)?;
+            driver.apply_set_wet(read_handle(payload, 0), read_f32(payload, 8));
             outcome.applied += 1;
         }
         // ADR-176 D3 : le carburant et la batterie d'un véhicule ; NaN garde la valeur, rien ne réveille.

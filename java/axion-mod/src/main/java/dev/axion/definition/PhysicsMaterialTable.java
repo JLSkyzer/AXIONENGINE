@@ -140,7 +140,8 @@ public final class PhysicsMaterialTable {
         out.putFloat((float) material.number(Field.ROLLING_FRICTION));
         out.put(wire(material.combine(Field.FRICTION_COMBINE)));
         out.put(wire(material.combine(Field.RESTITUTION_COMBINE)));
-        out.put((byte) 0).put((byte) 0);
+        // ADR-176 D5 : le facteur mouillé, au millième ; 0 serait « non déclaré », mais la plage commence à 0,05.
+        out.putShort((short) Math.round(material.number(Field.WET) * 1000.0));
         for (Field field : QUANTITIES) {
             out.putFloat((float) material.number(field));
         }

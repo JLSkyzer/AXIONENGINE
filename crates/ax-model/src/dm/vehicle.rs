@@ -16,7 +16,7 @@
 //!                                 enfin l'énergie (ADR-176 D3) : points de consommation u16, 2 o à zéro,
 //!                                 puis 5 f32 : capacité du réservoir, masse par litre, capacité de la
 //!                                 batterie, tirage du démarreur, charge
-//! WheelDesc[roues]         88 o
+//! WheelDesc[roues]        100 o
 //! [f32; 2][points]          8 o : régime, couple
 //! f32[rapports]             4 o
 //! AeroSurfaceDesc[surfaces] 16 o
@@ -484,11 +484,13 @@ pub struct WheelDesc {
     pub wear_rate: f32,
     /// Part de l'adhérence que perd un pneu usé à fond, dans [0, 1] (ADR-176 D4).
     pub wear_grip_loss: f32,
+    /// Adhérence de ce pneu sous la pluie, dans [0,1 ; 4] : 1 n'a aucun effet, plus de 1 est un pneu pluie (ADR-176 D5).
+    pub wet_grip: f32,
 }
 
 impl WheelDesc {
-    /// Taille d'une roue, en octets : 88, puis l'usure du pneu (ADR-176 D4).
-    pub const BYTES: usize = 96;
+    /// Taille d'une roue, en octets : 88, puis l'usure du pneu (ADR-176 D4), puis son adhérence sous la pluie (D5).
+    pub const BYTES: usize = 100;
 }
 
 /// Le moteur (12.5).
@@ -748,6 +750,10 @@ impl Cursor<'_> {
         {
             return Err(DefnError::Field("wheels.wear"));
         }
+        let wet_grip = self.f32("wheels.wet_grip")?;
+        if !(wet_grip.is_finite() && (0.1..=4.0).contains(&wet_grip)) {
+            return Err(DefnError::Field("wheels.wet_grip"));
+        }
         if flags & !wheel_flags::ALL != 0 {
             return Err(DefnError::Field("wheels.flags"));
         }
@@ -782,6 +788,7 @@ impl Cursor<'_> {
             lat,
             wear_rate,
             wear_grip_loss,
+            wet_grip,
         })
     }
 }
@@ -903,7 +910,10 @@ impl VehicleDesc {
             );
             put_curve(out, &wheel.long);
             put_curve(out, &wheel.lat);
-            put(out, &[wheel.wear_rate, wheel.wear_grip_loss]);
+            put(
+                out,
+                &[wheel.wear_rate, wheel.wear_grip_loss, wheel.wet_grip],
+            );
         }
         for point in &self.torque_curve {
             put(out, point);
@@ -1219,6 +1229,7 @@ mod tests {
             lat: courbe(),
             wear_rate: 0.0,
             wear_grip_loss: 0.4,
+            wet_grip: 1.0,
         }
     }
 
@@ -1491,6 +1502,27 @@ mod tests {
             refus(&|d| d.wheels[0].wear_grip_loss = 1.5),
             Some(DefnError::Field("wheels.wear"))
         );
-        assert_eq!(WheelDesc::BYTES, 96);
+        assert_eq!(WheelDesc::BYTES, 100);
+    }
+
+    #[test]
+    fn adr176_d5_l_adherence_sous_la_pluie_d_une_roue_se_relit_et_ses_refus_sont_nommes() {
+        let mut avec = vehicule();
+        avec.wheels[1].wet_grip = 1.4;
+        let octets_pluie = octets(&avec);
+        assert_eq!(lire(&octets_pluie), Ok((avec.clone(), octets_pluie.len())));
+
+        let refus = |valeur: f32| {
+            let mut d = avec.clone();
+            d.wheels[0].wet_grip = valeur;
+            lire(&octets(&d)).err()
+        };
+        for faux in [0.0, 0.05, 4.5, f32::NAN, f32::INFINITY] {
+            assert_eq!(
+                refus(faux),
+                Some(DefnError::Field("wheels.wet_grip")),
+                "{faux}"
+            );
+        }
     }
 }

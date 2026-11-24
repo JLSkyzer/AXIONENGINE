@@ -146,6 +146,8 @@ pub(super) struct Vehicle {
     engine: EngineState,
     /// Le carburant et la batterie (ADR-176 D3) ; sans effet sans `energy` déclarée.
     energy: EnergyState,
+    /// Le mouillé de la route sous le véhicule, dans [0, 1] : une entrée que Java pose (ADR-176 D5).
+    wet: f64,
     gearbox: Gearbox,
     steering: Steering,
     geometry: Geometry,
@@ -312,6 +314,7 @@ impl PhysicsWorld {
             engine_speed,
             engine,
             energy: EnergyState::full(&desc.energy),
+            wet: 0.0,
             gearbox: Gearbox::new(&desc),
             steering: Steering::default(),
             geometry,
@@ -456,6 +459,23 @@ impl PhysicsWorld {
         true
     }
 
+    /// Pose le mouillé de la route sous un véhicule (ADR-176 D5) : un NaN garde la valeur, une valeur hors de [0, 1] y est
+    /// ramenée. Ne réveille pas le véhicule : un mouillé posé à l'arrêt n'a rien à simuler. Rend faux si l'assembly n'est pas
+    /// un véhicule.
+    pub fn set_vehicle_wet(&mut self, assembly: Handle, wet: f32) -> bool {
+        let Some(vehicle) = self
+            .vehicles
+            .iter_mut()
+            .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))
+        else {
+            return false;
+        };
+        if wet.is_finite() {
+            vehicle.wet = f64::from(wet).clamp(0.0, 1.0);
+        }
+        true
+    }
+
     /// Pose l'usure d'une roue (ADR-176 D4) : un NaN garde la valeur, une valeur hors de [0, 1] y est ramenée. Ne réveille
     /// pas le véhicule. Rend faux si l'assembly n'est pas un véhicule ou n'a pas cette roue.
     pub fn set_wheel_wear(&mut self, assembly: Handle, wheel: usize, wear: f32) -> bool {
@@ -539,6 +559,7 @@ impl PhysicsWorld {
             engine_speed: vehicle.engine_speed,
             engine: vehicle.engine,
             energy: vehicle.energy,
+            wet: vehicle.wet,
             gearbox: vehicle.gearbox.parts(),
             steering: vehicle.steering.position(),
             traction_slip: vehicle.traction_slip,
@@ -585,6 +606,7 @@ impl PhysicsWorld {
         vehicle.engine = snapshot.engine;
         vehicle.energy = snapshot.energy;
         vehicle.energy.clamp(&vehicle.desc.energy);
+        vehicle.wet = snapshot.wet.clamp(0.0, 1.0);
         let (gear, target, shift_left, hold) = snapshot.gearbox;
         vehicle.gearbox = Gearbox::from_parts(&vehicle.desc, gear, target, shift_left, hold);
         vehicle.steering = Steering::at(snapshot.steering);
@@ -1132,7 +1154,12 @@ impl PhysicsWorld {
             // ADR-176 D4 : un pneu usé adhère moins ; l'usure agit ici, sur ce que le matériau laisse, et jamais sur la
             // description du pneu, que les réglages d'une instance refont à chaque pas (ADR-167 D6).
             let worn = (1.0 - state.wear as f32 * wheel.wear_grip_loss).clamp(0.0, 1.0);
-            drive.surface = material.map_or(1.0, |m| m.friction) * worn;
+            // ADR-176 D5 : sur route mouillée, le matériau (`wet`) et le pneu (`wet_grip`) disent ce qui reste ; un pneu pluie
+            // (au-delà de 1) rend ce que le matériau ôte. Le mouillé est celui du véhicule : sous un toit, il ne glisse pas.
+            let damp = 1.0
+                - vehicle.wet as f32
+                    * (1.0 - (material.map_or(1.0, |m| m.wet) * wheel.wet_grip).min(1.0));
+            drive.surface = material.map_or(1.0, |m| m.friction) * worn * damp;
             drive.ground_speed = v_long;
             drive.lateral_speed = v_lat;
             drive.slip_lat = slip_lat;

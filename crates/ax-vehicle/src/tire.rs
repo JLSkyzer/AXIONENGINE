@@ -97,6 +97,7 @@ mod tests {
             lat: COURBE,
             wear_rate: 0.0,
             wear_grip_loss: 0.4,
+            wet_grip: 1.0,
         }
     }
 

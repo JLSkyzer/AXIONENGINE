@@ -91,6 +91,8 @@ pub mod opcode {
     pub const SET_ENERGY: u32 = 28;
     /// Poser l'usure d'un pneu ([`super::SetWear`]). ADR-176 D4.
     pub const SET_WEAR: u32 = 29;
+    /// Poser le mouillé de la route sous un véhicule ([`super::SetWet`]). ADR-176 D5.
+    pub const SET_WET: u32 = 30;
 }
 
 /// Les formes d'un capteur déclaré, champ `shape` de [`SetSensor`] (ADR-174 D5).
@@ -162,6 +164,25 @@ pub struct SetWear {
 }
 
 impl SetWear {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 16;
+}
+
+/// Payload de `SET_WET` (ADR-176 D5) : 16 octets. Le mouillé de la route sous un véhicule, dans [0, 1] ; **NaN** garde la
+/// valeur. Une valeur hors de [0, 1] y est ramenée. Ne réveille pas le véhicule. Java le pose à chaque changement qu'il lit
+/// de la pluie, ou le rend après un rechargement.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SetWet {
+    /// L'assembly.
+    pub handle: Handle,
+    /// Le mouillé.
+    pub wet: f32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl SetWet {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 16;
 }
@@ -1183,6 +1204,11 @@ mod tests {
         assert_eq!(opcode::SET_SENSOR, 27);
         assert_eq!(opcode::SET_ENERGY, 28);
         assert_eq!(opcode::SET_WEAR, 29);
+        assert_eq!(opcode::SET_WET, 30);
+        assert_eq!(size_of::<SetWet>(), SetWet::BYTES);
+        assert_eq!(align_of::<SetWet>(), 4);
+        assert_eq!(offset_of!(SetWet, wet), 8);
+        assert_eq!(offset_of!(SetWet, _pad), 12);
         assert_eq!(size_of::<SetWear>(), SetWear::BYTES);
         assert_eq!(align_of::<SetWear>(), 4);
         assert_eq!(offset_of!(SetWear, wheel), 8);

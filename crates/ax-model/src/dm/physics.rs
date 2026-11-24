@@ -273,8 +273,9 @@ pub struct PhysicsMaterial {
     pub friction_combine: u8,
     /// Mode de combinaison de la restitution, voir [`combine`].
     pub restitution_combine: u8,
-    /// Réservé, à zéro.
-    pub _pad0: [u8; 2],
+    /// Facteur du frottement d'un matériau mouillé, au millième, dans [50, 1000] ; `0` : non déclaré, ce qui vaut 1 (aucun
+    /// effet) — ce que lisent les tables écrites avant lui (ADR-176 D5).
+    pub wet: u16,
     /// Masse volumique, kg/m³.
     pub density: f32,
     /// Résistance à la rayure, `[0, 1]`.
@@ -360,12 +361,8 @@ impl PhysicsMaterial {
         for value in [self.friction, self.restitution, self.rolling_friction] {
             out.extend_from_slice(&value.to_le_bytes());
         }
-        out.extend_from_slice(&[
-            self.friction_combine,
-            self.restitution_combine,
-            self._pad0[0],
-            self._pad0[1],
-        ]);
+        out.extend_from_slice(&[self.friction_combine, self.restitution_combine]);
+        out.extend_from_slice(&self.wet.to_le_bytes());
         for value in self.quantities() {
             out.extend_from_slice(&value.to_le_bytes());
         }
@@ -399,7 +396,7 @@ impl PhysicsMaterial {
             rolling_friction: f(16),
             friction_combine: bytes[20],
             restitution_combine: bytes[21],
-            _pad0: [bytes[22], bytes[23]],
+            wet: u16::from_le_bytes([bytes[22], bytes[23]]),
             density: f(24),
             hardness: f(28),
             stiffness: f(32),
@@ -926,7 +923,7 @@ mod tests {
         assert_eq!(offset_of!(PhysicsMaterial, rolling_friction), 16);
         assert_eq!(offset_of!(PhysicsMaterial, friction_combine), 20);
         assert_eq!(offset_of!(PhysicsMaterial, restitution_combine), 21);
-        assert_eq!(offset_of!(PhysicsMaterial, _pad0), 22);
+        assert_eq!(offset_of!(PhysicsMaterial, wet), 22);
         assert_eq!(offset_of!(PhysicsMaterial, density), 24);
         assert_eq!(offset_of!(PhysicsMaterial, hardness), 28);
         assert_eq!(offset_of!(PhysicsMaterial, stiffness), 32);
@@ -966,7 +963,7 @@ mod tests {
             rolling_friction: v(),
             friction_combine: combine::MULTIPLY,
             restitution_combine: combine::MAX,
-            _pad0: [0, 0],
+            wet: 750,
             density: v(),
             hardness: v(),
             stiffness: v(),

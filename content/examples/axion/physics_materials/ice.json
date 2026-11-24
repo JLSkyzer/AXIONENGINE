@@ -6,6 +6,7 @@
   "max_strain": 2.1e-4,
   "fracture_energy": 4.2,
   "friction": 0.05,
+  "wet": 1.0,
   "plasticity": 0.0,
   "flags": ["brittle"]
 }

@@ -105,7 +105,7 @@ class PhysicsMaterialTableTest {
         // MULTIPLY vaut 2 et MAX 3 sur la frontière, quel que soit l'ordre de l'énumération Java.
         assertEquals(2, balle.get(20), "friction_combine");
         assertEquals(3, balle.get(21), "restitution_combine");
-        assertEquals(0, balle.getShort(22), "_pad0");
+        assertEquals(750, balle.getShort(22), "wet : le défaut, 0,75 (ADR-176 D5)");
         assertEquals(1100f, balle.getFloat(24), "density");
         assertEquals((int) DefinitionIds.hash("mymod:caoutchouc"), balle.getInt(104), "sound_group");
         assertEquals(0, balle.getInt(108), "sans groupe de particules");

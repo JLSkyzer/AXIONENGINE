@@ -116,6 +116,12 @@ public final class SimCommandStream {
     /** Taille du payload {@code SetWear}, en octets. */
     public static final int SET_WEAR_BYTES = 16;
 
+    /** Opcode {@code SET_WET} (ADR-176 D5) : le mouillé de la route sous un véhicule. */
+    public static final int OP_SET_WET = 30;
+
+    /** Taille du payload {@code SetWet}, en octets. */
+    public static final int SET_WET_BYTES = 16;
+
     /** Taille du payload {@code SetSensor}, en octets. */
     public static final int SET_SENSOR_BYTES = 60;
 
@@ -358,7 +364,7 @@ public final class SimCommandStream {
      * Le plus grand bloc d'état, en octets (miroir de {@code world::state::MAX_STATE_BYTES}) : 64 corps, 128 joints,
      * un véhicule de 32 roues.
      */
-    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 72 + 32 * 40;
+    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 80 + 32 * 40;
 
     /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
     public static final int SET_VEHICLE_INPUT_BYTES = 36;
@@ -1312,6 +1318,22 @@ public final class SimCommandStream {
     public SimCommandStream setWear(int handleIndex, int handleGeneration, int wheel, float wear) {
         ByteBuffer command = beginCommand(OP_SET_WEAR, SET_WEAR_BYTES);
         command.putInt(handleIndex).putInt(handleGeneration).putInt(wheel).putFloat(wear);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_WET} (ADR-176 D5) : le mouillé de la route sous un véhicule, de 0 (sec) à 1.
+     * {@link Float#NaN} garde la valeur ; une valeur hors de [0, 1] y est ramenée. Ne réveille pas le véhicule.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param wet le mouillé, ou {@code NaN} pour le garder
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setWet(int handleIndex, int handleGeneration, float wet) {
+        ByteBuffer command = beginCommand(OP_SET_WET, SET_WET_BYTES);
+        command.putInt(handleIndex).putInt(handleGeneration).putFloat(wet).putInt(0);
         commands.add(command.array());
         return this;
     }

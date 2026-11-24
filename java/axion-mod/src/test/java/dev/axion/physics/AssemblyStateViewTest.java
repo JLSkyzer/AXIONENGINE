@@ -74,14 +74,23 @@ class AssemblyStateViewTest {
         assertEquals(0.0, AssemblyStateView.errors(deux, deux.clone()).position());
     }
 
-    /** Un bloc d'un corps et d'un véhicule sans roue, au format v2 d'{@code world::state} : le carburant, la batterie. */
+    /** Un bloc d'un corps et d'un véhicule sans roue, au format v4 d'{@code world::state} : carburant, batterie, mouillé. */
     private static byte[] blocDeVehicule(double fuel, double battery) {
-        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 72).order(ByteOrder.LITTLE_ENDIAN);
-        b.putShort((short) 2).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 0);
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 80).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 4).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 0);
         b.position(16 + 64);
         b.position(16 + 64 + 56);
         b.putDouble(fuel).putDouble(battery);
         return b.array();
+    }
+
+    @Test
+    @DisplayName("ADR-176 D5 : le bloc de véhicule porte le mouillé, un f64 après la batterie")
+    void mouille() {
+        byte[] bloc = blocDeVehicule(0, 0);
+        ByteBuffer.wrap(bloc).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 72, 0.625);
+        assertEquals(0.625, AssemblyStateView.vehicle(bloc).wet());
+        assertEquals(0.0, AssemblyStateView.vehicle(blocDeVehicule(0, 0)).wet());
     }
 
     @Test
@@ -105,9 +114,9 @@ class AssemblyStateViewTest {
 
     /** Un bloc d'un corps et d'un véhicule à une roue, au format v3 d'{@code world::state} : l'usure de la roue. */
     private static byte[] blocAUneRoue(double usure) {
-        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 72 + 40).order(ByteOrder.LITTLE_ENDIAN);
-        b.putShort((short) 3).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 1);
-        b.position(16 + 64 + 72 + 32);
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 80 + 40).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 4).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 1);
+        b.position(16 + 64 + 80 + 32);
         b.putDouble(usure);
         return b.array();
     }

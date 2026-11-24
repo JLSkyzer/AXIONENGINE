@@ -63,6 +63,25 @@ class TireProfilesTest {
     }
 
     @Test
+    @DisplayName("ADR-176 D5 : wet_grip est optionnel (1 par défaut), de 0,1 à 4")
+    void adherenceSousLaPluie() {
+        TireProfiles.Tire sans = TireProfiles.load(VehicleSpecTest.source(Map.of("m:axion/tires/x.json", GLACE)))
+                .resolve("m:tire/x");
+        assertEquals(1f, sans.wetGrip());
+        assertEquals(1f, TireProfiles.GENERIC.wetGrip());
+
+        String pluie = GLACE.replace("\"schema\": 1,", "\"schema\": 1, \"wet_grip\": 1.35,");
+        assertEquals(1.35f, TireProfiles.load(VehicleSpecTest.source(Map.of("m:axion/tires/x.json", pluie)))
+                .resolve("m:tire/x").wetGrip());
+
+        for (String faute : new String[] {"0", "0.05", "4.5", "-1", "\"mouillé\""}) {
+            List<String> refus = refus(GLACE.replace("\"schema\": 1,", "\"schema\": 1, \"wet_grip\": " + faute + ","));
+            assertEquals(1, refus.size(), faute + " : " + refus);
+            assertTrue(refus.get(0).contains("wet_grip"), refus.toString());
+        }
+    }
+
+    @Test
     @DisplayName("ADR-176 D4 : wear est optionnel : sans lui le pneu ne s'use pas ; avec lui, un taux et une perte d'adhérence")
     void usure() {
         TireProfiles.Tire sans = TireProfiles.load(VehicleSpecTest.source(Map.of("m:axion/tires/x.json", GLACE)))

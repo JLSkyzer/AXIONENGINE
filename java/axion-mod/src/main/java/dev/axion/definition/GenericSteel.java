@@ -45,6 +45,8 @@ final class GenericSteel {
         values.put(Field.ROLLING_FRICTION, 0.0);
         values.put(Field.FRICTION_COMBINE, Combine.AVERAGE);
         values.put(Field.RESTITUTION_COMBINE, Combine.AVERAGE);
+        // ADR-176 D5 : mouillé, une surface perd le quart de son frottement, sauf celle qui glisse déjà (la glace : 1).
+        values.put(Field.WET, 0.75);
         // MASSE, RIGIDITÉ, SEUILS — sourcés (ASTM A36), sauf l'énergie de rupture, dérivée.
         values.put(Field.DENSITY, 7850.0);
         values.put(Field.STIFFNESS, 2.0e11);

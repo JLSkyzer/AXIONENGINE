@@ -19,7 +19,7 @@ fn materiau(friction: f32, restitution: f32, rolling: f32, modes: (u8, u8)) -> P
         rolling_friction: rolling,
         friction_combine: modes.0,
         restitution_combine: modes.1,
-        _pad0: [0; 2],
+        wet: 0,
         density: 1000.0,
         hardness: 0.5,
         stiffness: 1.0e9,

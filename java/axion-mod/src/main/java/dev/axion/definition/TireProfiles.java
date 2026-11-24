@@ -34,7 +34,7 @@ public final class TireProfiles {
     /** Seule version de format lue. */
     public static final int SCHEMA = 1;
 
-    private static final Set<String> KEYS = Set.of("schema", "mu_long", "mu_lat", "long", "lat", "wear");
+    private static final Set<String> KEYS = Set.of("schema", "mu_long", "mu_lat", "long", "lat", "wear", "wet_grip");
     private static final Set<String> WEAR_KEYS = Set.of("rate", "grip_loss");
 
     /** La perte d'adhérence d'un pneu usé à fond, quand le profil ne la dit pas (ADR-176 D4). */
@@ -61,14 +61,19 @@ public final class TireProfiles {
      * @param lateral courbe latérale
      * @param wearRate usure par kilojoule de travail de frottement ; 0 : le pneu ne s'use pas (ADR-176 D4)
      * @param wearGripLoss part de l'adhérence que perd un pneu usé à fond, dans [0, 1]
+     * @param wetGrip adhérence de ce pneu sous la pluie, dans [0,1 ; 4] : 1 n'a aucun effet, plus de 1 est un pneu pluie
+     *     (ADR-176 D5)
      */
     public record Tire(String id, float muLong, float muLat, Curve longitudinal, Curve lateral, float wearRate,
-            float wearGripLoss) {}
+            float wearGripLoss, float wetGrip) {}
+
+    /** L'adhérence sous la pluie d'un pneu qui ne la dit pas : aucun effet de plus que le matériau (ADR-176 D5). */
+    public static final float DEFAULT_WET_GRIP = 1.0f;
 
     /** Le pneu d'une roue qui n'en nomme pas, ou n'en nomme aucun de déclaré : choix d'ADR-159, un pneu routier. */
     public static final Tire GENERIC = new Tire(null, 1.0f, 1.0f,
             new Curve(0.12f, 1.0f, 0.5f, 0.75f),
-            new Curve(0.15f, 1.0f, 0.6f, 0.8f), 0f, DEFAULT_GRIP_LOSS);
+            new Curve(0.15f, 1.0f, 0.6f, 0.8f), 0f, DEFAULT_GRIP_LOSS, DEFAULT_WET_GRIP);
 
     private static final TireProfiles EMPTY = new TireProfiles(new TreeMap<>(), List.of());
 
@@ -158,7 +163,20 @@ public final class TireProfiles {
                 curve(root, "long"),
                 curve(root, "lat"),
                 wear(root, "rate"),
-                wear(root, "grip_loss"));
+                wear(root, "grip_loss"),
+                wetGrip(root));
+    }
+
+    /** ADR-176 D5 : {@code wet_grip}, de 0,1 à 4 (1 par défaut). */
+    private static float wetGrip(JsonObject root) throws DefinitionException {
+        if (root.get("wet_grip") == null) {
+            return DEFAULT_WET_GRIP;
+        }
+        float value = value(root, "$", "wet_grip");
+        if (value < 0.1f || value > 4f) {
+            throw DefinitionException.invalid("$.wet_grip", "de 0,1 à 4");
+        }
+        return value;
     }
 
     /**

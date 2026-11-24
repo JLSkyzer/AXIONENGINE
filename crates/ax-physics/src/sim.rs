@@ -1628,6 +1628,13 @@ impl SimDriver {
             .is_some_and(|world| world.set_wheel_wear(handle, wheel, wear))
     }
 
+    /// Applique `SET_WET` (ADR-176 D5) : le mouillé de la route sous le véhicule ; NaN garde la valeur. Faux si l'assembly
+    /// est inconnue ou n'est pas un véhicule.
+    pub fn apply_set_wet(&mut self, handle: Handle, wet: f32) -> bool {
+        self.assembly_world(handle)
+            .is_some_and(|world| world.set_vehicle_wet(handle, wet))
+    }
+
     /// Applique `SET_SENSOR` (ADR-174 D5) : le capteur déclaré de rang `index`, sur le corps de node racine
     /// `body_node` de l'assembly. Faux pour une assembly, un corps ou une forme inconnus, ou une taille invalide.
     pub fn apply_set_sensor(&mut self, sensor: &ax_model::dm::commands::SetSensor) -> bool {

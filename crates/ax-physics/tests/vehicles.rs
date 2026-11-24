@@ -102,6 +102,7 @@ fn roue() -> WheelDesc {
         lat: courbe(),
         wear_rate: 0.0,
         wear_grip_loss: 0.4,
+        wet_grip: 1.0,
     }
 }
 
@@ -2131,4 +2132,123 @@ fn adr176_d4_un_pneu_use_montre_un_second_cercle_dans_l_overlay_des_roues() {
         assert!(world.set_wheel_wear(ASSEMBLY, roue, 1.0));
     }
     assert_eq!(traits(&world), 4 * 16 * 2);
+}
+
+/// Une dalle dont le matériau perd de son frottement mouillé : `wet` est son facteur (ADR-176 D5).
+fn dalle_a_mouille(world: &mut PhysicsWorld, demi: [f32; 2], friction: f32, wet: f32) {
+    let mut sol = collider([demi[0], 0.5, demi[1]], 1000.0, friction);
+    sol.material.wet = wet;
+    world
+        .add_assembly(
+            BodyKind::Static,
+            Vec3::new(0.0, -0.5, 0.0),
+            Quat::IDENTITY,
+            &[sol],
+        )
+        .expect("dalle");
+}
+
+/// La berline de `desc` sur une dalle de matériau `wet`, `mouille` posé sur le véhicule, plein gaz trois secondes : la
+/// vitesse.
+fn vitesse_apres_trois_secondes(desc: VehicleDesc, wet_materiau: f32, mouille: f32) -> f32 {
+    let mut world = monde();
+    dalle_a_mouille(&mut world, [300.0, 300.0], 1.0, wet_materiau);
+    let v = poser(
+        &mut world,
+        Vec3::new(0.0, hauteur_equilibre(), 0.0),
+        Quat::IDENTITY,
+        desc,
+        &QUATRE,
+    );
+    conduire(&mut world, VehicleInput::NONE);
+    avancer(&mut world, 0.5);
+    assert!(world.set_vehicle_wet(ASSEMBLY, mouille));
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    avancer(&mut world, 3.0);
+    vers_l_avant(&world, v)
+}
+
+#[test]
+fn adr176_d5_une_route_mouillee_adhere_moins_selon_son_materiau() {
+    let mut desc = berline();
+    desc.wheels.iter_mut().for_each(|roue| roue.wet_grip = 1.0);
+    let sec = vitesse_apres_trois_secondes(desc.clone(), 0.5, 0.0);
+    let humide = vitesse_apres_trois_secondes(desc.clone(), 0.5, 0.5);
+    let mouille = vitesse_apres_trois_secondes(desc.clone(), 0.5, 1.0);
+    assert!(
+        mouille < humide && humide < sec,
+        "plus il est mouillé, moins il accélère : sec {sec}, humide {humide}, mouillé {mouille}"
+    );
+    // Un matériau qui ne perd rien (wet = 1, le défaut) n'a aucune raison de glisser plus : au bit près.
+    let insensible = vitesse_apres_trois_secondes(desc.clone(), 1.0, 1.0);
+    let reference = vitesse_apres_trois_secondes(desc, 1.0, 0.0);
+    assert_eq!(
+        insensible.to_bits(),
+        reference.to_bits(),
+        "un matériau sans `wet` ne change rien"
+    );
+}
+
+#[test]
+fn adr176_d5_un_pneu_pluie_rend_ce_que_la_route_mouillee_ote() {
+    let mut ordinaire = berline();
+    ordinaire
+        .wheels
+        .iter_mut()
+        .for_each(|roue| roue.wet_grip = 1.0);
+    let mut pluie = berline();
+    pluie.wheels.iter_mut().for_each(|roue| roue.wet_grip = 2.0);
+    let sec = vitesse_apres_trois_secondes(ordinaire.clone(), 0.5, 0.0);
+    let ordinaire_mouille = vitesse_apres_trois_secondes(ordinaire, 0.5, 1.0);
+    let pluie_mouille = vitesse_apres_trois_secondes(pluie, 0.5, 1.0);
+    assert!(ordinaire_mouille < sec, "le pneu ordinaire glisse");
+    // wet (0,5) x wet_grip (2) = 1 : le pneu pluie retrouve l'adhérence du sec, au bit près.
+    assert_eq!(
+        pluie_mouille.to_bits(),
+        sec.to_bits(),
+        "pluie {pluie_mouille}, sec {sec}"
+    );
+}
+
+#[test]
+fn adr176_d5_set_vehicle_wet_ne_reveille_pas_borne_et_garde_le_nan() {
+    let (mut world, _) = sur_le_plat(berline(), [100.0, 100.0], 1.0);
+    avancer(&mut world, 3.0);
+    assert!(world.vehicle_reports().is_empty(), "il dort");
+    let mouille = |world: &PhysicsWorld| world.vehicle_snapshot(ASSEMBLY).expect("véhicule").wet;
+    assert!(world.set_vehicle_wet(ASSEMBLY, 0.4));
+    assert!(
+        world.vehicle_reports().is_empty(),
+        "poser le mouillé ne réveille pas"
+    );
+    assert_eq!(mouille(&world), f64::from(0.4f32));
+    assert!(world.set_vehicle_wet(ASSEMBLY, f32::NAN), "NaN garde");
+    assert_eq!(mouille(&world), f64::from(0.4f32));
+    assert!(world.set_vehicle_wet(ASSEMBLY, 9.0));
+    assert_eq!(mouille(&world), 1.0, "borné");
+    assert!(world.set_vehicle_wet(ASSEMBLY, -3.0));
+    assert_eq!(mouille(&world), 0.0, "borné");
+    assert!(!monde().set_vehicle_wet(ASSEMBLY, 0.5), "pas de véhicule");
+}
+
+#[test]
+fn adr176_d5_le_mouille_se_relit_dans_le_bloc_d_etat_et_se_rend() {
+    let (mut world, _) = sur_le_plat(berline(), [300.0, 300.0], 1.0);
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    assert!(world.set_vehicle_wet(ASSEMBLY, 0.6));
+    avancer(&mut world, 1.0);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert_eq!(etat.wet, f64::from(0.6f32));
+    let bloc = ax_physics::state::AssemblyState {
+        bodies: Vec::new(),
+        joints: Vec::new(),
+        vehicle: Some(etat.clone()),
+    };
+    let octets = bloc.encode();
+    assert_eq!(octets.len() % 8, 0, "un bloc reste un multiple de 8");
+    let relu = ax_physics::state::AssemblyState::decode(&octets).expect("lisible");
+    assert_eq!(relu.vehicle.as_ref(), Some(&etat), "le mouillé se relit");
+    assert!(world.set_vehicle_wet(ASSEMBLY, 0.0));
+    assert!(world.restore_vehicle(ASSEMBLY, &etat));
+    assert_eq!(world.vehicle_snapshot(ASSEMBLY), Some(etat), "et se rend");
 }

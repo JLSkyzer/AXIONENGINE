@@ -181,9 +181,15 @@ pub struct ContactMaterial {
     pub restitution_combine: CombineRule,
     /// Index du matériau dans la table de la session, ou [`NO_MATERIAL`].
     pub index: u16,
+    /// Facteur du frottement d'une roue sur ce matériau mouillé, dans [0,05 ; 1] : 1 n'a aucun effet (ADR-176 D5).
+    pub wet: f32,
 }
 
 impl ContactMaterial {
+    /// Plage du facteur de mouillé, en millièmes (DM-07 `wet`) : ni nul, ni plus qu'entier.
+    const WET_MIN_MILLI: u16 = 50;
+    const WET_MAX_MILLI: u16 = 1000;
+
     /// Frottement par défaut — celui de rapier, un contact neutre.
     pub const DEFAULT_FRICTION: f32 = 0.5;
     /// Restitution par défaut — celle de rapier : aucun rebond ajouté.
@@ -239,6 +245,12 @@ impl ContactMaterial {
             friction_combine: CombineRule::from_dm(material.friction_combine),
             restitution_combine: CombineRule::from_dm(material.restitution_combine),
             index,
+            // 0 : non déclaré, donc sans effet ; sinon borné à [0,05 ; 1].
+            wet: if material.wet == 0 {
+                1.0
+            } else {
+                f32::from(material.wet.clamp(Self::WET_MIN_MILLI, Self::WET_MAX_MILLI)) / 1000.0
+            },
             ..Self::sanitized(material.friction, material.restitution)
         }
     }
@@ -253,6 +265,7 @@ impl Default for ContactMaterial {
             friction_combine: CombineRule::Average,
             restitution_combine: CombineRule::Average,
             index: NO_MATERIAL,
+            wet: 1.0,
         }
     }
 }
@@ -791,7 +804,7 @@ mod tests {
             rolling_friction: f32::NAN,
             friction_combine: combine::MIN,
             restitution_combine: 77,
-            _pad0: [0; 2],
+            wet: 0,
             density: 1.0,
             hardness: 0.0,
             stiffness: 1.0,
@@ -854,6 +867,51 @@ mod tests {
             [Average, Min, Multiply, Max],
             "valeurs DM-07 de combine"
         );
+    }
+
+    #[test]
+    fn adr176_d5_le_facteur_mouille_d_une_table_est_borne_et_zero_veut_dire_sans_effet() {
+        let table = |wet: u16| {
+            let entree = PhysicsMaterial {
+                name_hash: 1,
+                friction: 1.0,
+                restitution: 0.0,
+                rolling_friction: 0.0,
+                friction_combine: combine::AVERAGE,
+                restitution_combine: combine::AVERAGE,
+                wet,
+                density: 1.0,
+                hardness: 0.0,
+                stiffness: 1.0,
+                elasticity: 0.0,
+                plasticity: 0.0,
+                yield_strength: 1.0,
+                fracture_strength: 1.0,
+                deformation_resistance: 1.0,
+                max_strain: 0.0,
+                damping: 0.0,
+                fracture_energy: 1.0,
+                hardness_pressure: 1.0e5,
+                indenter_radius_ref: 1.0,
+                spread_factor: 1.0,
+                thickness_spread: 0.0,
+                damage_multiplier: 1.0,
+                energy_absorption: 0.0,
+                scratch_resistance: 0.0,
+                burn_threshold: 0.0,
+                soil_rate: 0.0,
+                sound_group: 0,
+                particle_group: 0,
+                flags: 0,
+            };
+            ContactMaterial::from_table(&entree, 3).wet
+        };
+        assert_eq!(table(0), 1.0, "non déclaré : aucun effet");
+        assert_eq!(table(750), 0.75);
+        assert_eq!(table(1000), 1.0);
+        assert_eq!(table(10), 0.05, "borné par le bas");
+        assert_eq!(table(5000), 1.0, "borné par le haut");
+        assert_eq!(ContactMaterial::default().wet, 1.0);
     }
 
     #[test]
