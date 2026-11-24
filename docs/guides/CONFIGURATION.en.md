@@ -40,6 +40,8 @@ ignored (R-1830).
 | `max_events_per_tick` | integer | `4096` | `256..65536` | no | no | Cap on physics events processed per tick. |
 | `entity_push` | boolean | `true` | `true \| false` | no | yes | Assemblies push the vanilla entities they hit, players excepted. |
 | `entity_damage` | boolean | `true` | `true \| false` | no | yes | A hit from an assembly hurts living entities, like a fall at the same speed. |
+| `wet_rise_seconds` | float | `2.0` | `0.1..60.0` | no | yes | Seconds a vehicle in the rain takes to become fully wet. |
+| `wet_dry_seconds` | float | `30.0` | `0.1..600.0` | no | yes | Seconds a wet vehicle, no longer in the rain, takes to dry out completely. |
 
 ### `[damage]`
 
@@ -181,6 +183,7 @@ ignored (R-1830).
 | `prediction_tolerance_position_m` | float | `0.01` | `0.0..` | no | no | Position gap, in metres, below which the predicted state counts as the server's. |
 | `prediction_tolerance_rotation_rad` | float | `0.005` | `0.0..` | no | no | Rotation gap, in radians, below which the predicted state counts as the server's. |
 | `prediction_tolerance_velocity_ms` | float | `0.2` | `0.0..` | no | no | Velocity gap, in metres per second, below which the predicted state counts as the server's. |
+| `prediction_tolerance_wet` | float | `0.05` | `0.0..` | no | no | Road wetness gap, from 0 to 1, below which the predicted state counts as the server's. |
 | `prediction_tolerance_wear` | float | `0.01` | `0.0..` | no | no | Tyre wear gap, from 0 to 1, below which the predicted state counts as the server's. |
 | `prediction_tolerance_energy` | float | `0.01` | `0.0..` | no | no | Fuel or battery gap, as a fraction of the larger of the two values, below which the predicted state counts as the server's. |
 | `prediction_proxy_radius` | float | `32.0` | `0.0..` | no | no | Distance, in blocks, around the predicted vehicle, up to which other assemblies and entities are placed as proxies in the predicted world. |

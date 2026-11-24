@@ -220,7 +220,8 @@ public final class ClientPrediction {
             // ADR-168 D2 : la pose de ce pas, au tick de son entrée ; un pas rejoué réécrit le sien.
             AssemblyState pose = PredictedStates.of(lastStep.result(), world.handle(), PredictedWorld.GENERATION,
                     rootNode, input, variables == null ? vehicle.receivedVariables()
-                            : AssemblyState.VariableValues.of(variables.values()), vehicle.energySpec());
+                            : AssemblyState.VariableValues.of(variables.values()), vehicle.energySpec(),
+                    vehicle.receivedWet());
             boolean afterAcceptance = liveStep && acceptedSinceStep;
             double now = vehicle.localMillis(System.nanoTime());
             if (pose != null) {
@@ -596,13 +597,14 @@ public final class ClientPrediction {
             double velocity = config.getFloat("net.prediction_tolerance_velocity_ms");
             double energy = config.getFloat("net.prediction_tolerance_energy");
             double wear = config.getFloat("net.prediction_tolerance_wear");
+            double wet = config.getFloat("net.prediction_tolerance_wet");
             // D5 : deux mondes natifs ne calculent pas au bit près ; un bloc d'état illisible ne vaut jamais l'autre.
             // ADR-171 D7 : l'état comparé est celui de l'ensemble, membre à membre ; l'observateur des essais voit le
             // véhicule seul, comme avant.
             loop = new Prediction(System::nanoTime, config.getInt("net.prediction_replay_budget_ns"),
                     EnsembleState.tolerance((predicted, server) -> {
                         AssemblyStateView.Errors errors = AssemblyStateView.errors(predicted, server);
-                        return errors != null && errors.within(position, rotation, velocity, energy, wear);
+                        return errors != null && errors.within(position, rotation, velocity, energy, wear, wet);
                     }));
             loop.observe((predicted, server) -> observer.accept(vehicleOf(predicted), vehicleOf(server)));
         }
@@ -961,7 +963,7 @@ public final class ClientPrediction {
         dev.axion.net.Interpolation.VehiclePose pose = new dev.axion.net.Interpolation.VehiclePose((float) view.rpm(),
                 shown.load(), view.gear(), shown.flags(), input.throttle(), input.brake(), input.steer(),
                 input.handbrake(), (float) Math.abs(view.speed()), (float) view.speed(), shown.fuelRatio(),
-                shown.battery());
+                shown.battery(), shown.wet());
         float[] floats = new float[values.length];
         // ADR-174 D2 : une variable par siège ne se prédit pas ; elle se lit telle que le serveur l'a envoyée.
         dev.axion.net.AssemblyState.VariableValues received = vehicle.receivedVariables();

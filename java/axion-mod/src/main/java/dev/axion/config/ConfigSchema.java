@@ -234,6 +234,22 @@ public final class ConfigSchema {
                     true,
                     "Un choc contre une assembly blesse les entités vivantes, comme une chute de même vitesse."),
             new Option(
+                    "physics.wet_rise_seconds",
+                    Kind.FLOAT,
+                    2.0,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.1, 60.0, List.of()),
+                    false,
+                    true,
+                    "Secondes qu'un véhicule sous la pluie met à devenir tout à fait mouillé."),
+            new Option(
+                    "physics.wet_dry_seconds",
+                    Kind.FLOAT,
+                    30.0,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.1, 600.0, List.of()),
+                    false,
+                    true,
+                    "Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait."),
+            new Option(
                     "damage.enabled",
                     Kind.BOOLEAN,
                     true,
@@ -921,6 +937,14 @@ public final class ConfigSchema {
                     false,
                     false,
                     "Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur."),
+            new Option(
+                    "net.prediction_tolerance_wet",
+                    Kind.FLOAT,
+                    0.05,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
+                    false,
+                    false,
+                    "Écart du mouillé de la route, de 0 à 1, en deçà duquel l'état prédit vaut celui du serveur."),
             new Option(
                     "net.prediction_tolerance_wear",
                     Kind.FLOAT,

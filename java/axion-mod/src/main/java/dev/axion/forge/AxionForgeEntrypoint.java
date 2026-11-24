@@ -385,6 +385,8 @@ public final class AxionForgeEntrypoint {
                     runtime::compiledDefinition,
                     runtime.outcome().config().getBoolean("modules.joints"),
                     runtime.outcome().config().getInt("persistence.max_load_ns_per_tick"),
+                    runtime.outcome().config().getFloat("physics.wet_rise_seconds"),
+                    runtime.outcome().config().getFloat("physics.wet_dry_seconds"),
                     runtime::lastSubmitNanos,
                     new dev.axion.entity.ControllerRunner.Limits(
                             runtime.outcome().config().getInt("vehicle.controller_budget_ns"),

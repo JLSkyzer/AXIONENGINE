@@ -85,6 +85,20 @@ class AssemblyStateViewTest {
     }
 
     @Test
+    @DisplayName("ADR-176 D5 : l'écart du mouillé force une correction au-delà de son seuil, pas en deçà")
+    void ecartDuMouille() {
+        byte[] sec = blocDeVehicule(0, 0);
+        byte[] humide = blocDeVehicule(0, 0);
+        ByteBuffer.wrap(humide).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 72, 0.5);
+        byte[] presque = blocDeVehicule(0, 0);
+        ByteBuffer.wrap(presque).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 72, 0.004);
+        AssemblyStateView.Errors ecart = AssemblyStateView.errors(sec, humide);
+        assertEquals(0.5, ecart.wet(), 1e-12);
+        assertFalse(ecart.within(1, 1, 1, 1, 1, 0.05), "un véhicule mouillé par le serveur se corrige");
+        assertTrue(AssemblyStateView.errors(sec, presque).within(1, 1, 1, 1, 1, 0.05), "un cran ne corrige pas");
+    }
+
+    @Test
     @DisplayName("ADR-176 D5 : le bloc de véhicule porte le mouillé, un f64 après la batterie")
     void mouille() {
         byte[] bloc = blocDeVehicule(0, 0);

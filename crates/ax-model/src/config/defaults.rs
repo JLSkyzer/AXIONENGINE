@@ -173,6 +173,11 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Assemblies push the vanilla entities they hit, players excepted."),
     srv(b("physics.entity_damage", true, "Un choc contre une assembly blesse les entités vivantes, comme une chute de même vitesse."))
         .en("A hit from an assembly hurts living entities, like a fall at the same speed."),
+    // ADR-176 D5 : le mouillé d'un véhicule suit la pluie qu'il reçoit, lue par le serveur.
+    srv(f("physics.wet_rise_seconds", 2.0, 0.1, 60.0, "Secondes qu'un véhicule sous la pluie met à devenir tout à fait mouillé."))
+        .en("Seconds a vehicle in the rain takes to become fully wet."),
+    srv(f("physics.wet_dry_seconds", 30.0, 0.1, 600.0, "Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait."))
+        .en("Seconds a wet vehicle, no longer in the rain, takes to dry out completely."),
 
     // [damage]
     b("damage.enabled", true, "Active la chaîne de dommage : impacts, déformation, rupture, usure.")
@@ -389,6 +394,10 @@ pub const COMMON: &[ConfigOption] = &[
     // réservoir périmé tant qu'aucune autre dérive ne l'oblige à se corriger.
     // ADR-176 D4 : une usure posée par le serveur (un pneu changé) ne passe pas non plus par le flux d'entrées. Un cran de
     // l'octet du snapshot vaut 0,0039 : le seuil le dépasse, un pneu qui s'use de lui-même ne force aucune correction.
+    // ADR-176 D5 : le mouillé de la route vient de la pluie que le serveur lit ; le client le reçoit. Un cran de l'octet du
+    // snapshot vaut 0,0039 : le seuil le dépasse, un véhicule qui se mouille de lui-même ne force aucune correction à chaque cran.
+    fp("net.prediction_tolerance_wet", 0.05, "Écart du mouillé de la route, de 0 à 1, en deçà duquel l'état prédit vaut celui du serveur.")
+        .en("Road wetness gap, from 0 to 1, below which the predicted state counts as the server's."),
     fp("net.prediction_tolerance_wear", 0.01, "Écart d'usure d'un pneu, de 0 à 1, en deçà duquel l'état prédit vaut celui du serveur.")
         .en("Tyre wear gap, from 0 to 1, below which the predicted state counts as the server's."),
     fp("net.prediction_tolerance_energy", 0.01, "Écart de carburant ou de batterie, en fraction de la plus grande des deux valeurs, en deçà duquel l'état prédit vaut celui du serveur.")

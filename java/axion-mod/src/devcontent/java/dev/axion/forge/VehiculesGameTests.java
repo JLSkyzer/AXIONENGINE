@@ -439,4 +439,47 @@ public final class VehiculesGameTests {
                 })
                 .thenSucceed();
     }
+
+    /**
+     * ADR-176 D5 : le mouillé d'un véhicule suit la pluie qu'il reçoit, lue à sa position — ciel visible, biome non froid. À
+     * l'air libre il se mouille en {@code physics.wet_rise_seconds} ; sous un toit, au même instant, il reste sec ; sans
+     * pluie, il sèche.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 600)
+    public static void adr176_LaPluieMouilleUnVehiculeALAirLibreEtPasSousUnToit(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity dehors = AssembliesDeTest.poser(helper, "axion:test/vehicule_pneus",
+                new Vec3(2.5, DESSUS_DALLE + 0.6, 4.5), IDENTITE);
+        AxionEntity dessous = AssembliesDeTest.poser(helper, "axion:test/vehicule_pneus",
+                new Vec3(7.5, DESSUS_DALLE + 0.6, 4.5), IDENTITE);
+        // Un toit de pierre à trois blocs au-dessus de la dalle, sur le second seulement.
+        for (int x = 5; x <= 9; x++) {
+            for (int z = 2; z <= 7; z++) {
+                helper.setBlock(new BlockPos(x, (int) DESSUS_DALLE + 2, z), Blocks.STONE);
+            }
+        }
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(dehors.hasPhysicalBounds() && dessous.hasPhysicalBounds(),
+                        "les deux véhicules sont simulés"))
+                .thenExecute(() -> {
+                    helper.assertTrue(dehors.wetness() == 0.0 && dessous.wetness() == 0.0, "secs au départ");
+                    helper.getLevel().setWeatherParameters(0, 12000, true, false);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(dehors.wetness() >= 1.0,
+                        "à l'air libre il se mouille : " + dehors.wetness()))
+                .thenExecute(() -> {
+                    helper.assertTrue(dessous.wetness() == 0.0, "sous un toit il reste sec : " + dessous.wetness());
+                    // Plus de pluie : il sèche, en physics.wet_dry_seconds (30 s) ; deux demi-minutes le vident.
+                    helper.getLevel().setWeatherParameters(12000, 0, false, false);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(!helper.getLevel().isRaining(), "la pluie s'arrête"))
+                .thenExecute(() -> {
+                    double avant = dehors.wetness();
+                    dehors.stepWetness(15.0, 2.0, 30.0);
+                    helper.assertTrue(dehors.wetness() < avant, "il sèche : " + avant + " puis " + dehors.wetness());
+                    dehors.stepWetness(15.0, 2.0, 30.0);
+                    helper.assertTrue(dehors.wetness() == 0.0, "tout à fait sec : " + dehors.wetness());
+                })
+                .thenSucceed();
+    }
 }

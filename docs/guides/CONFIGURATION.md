@@ -40,6 +40,8 @@ alors ignorée (R-1830).
 | `max_events_per_tick` | entier | `4096` | `256..65536` | non | non | Plafond d'événements physiques traités par tick. |
 | `entity_push` | booléen | `true` | `true \| false` | non | oui | Les assemblies poussent les entités vanilla qu'elles heurtent, joueurs exceptés. |
 | `entity_damage` | booléen | `true` | `true \| false` | non | oui | Un choc contre une assembly blesse les entités vivantes, comme une chute de même vitesse. |
+| `wet_rise_seconds` | flottant | `2.0` | `0.1..60.0` | non | oui | Secondes qu'un véhicule sous la pluie met à devenir tout à fait mouillé. |
+| `wet_dry_seconds` | flottant | `30.0` | `0.1..600.0` | non | oui | Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait. |
 
 ### `[damage]`
 
@@ -181,6 +183,7 @@ alors ignorée (R-1830).
 | `prediction_tolerance_position_m` | flottant | `0.01` | `0.0..` | non | non | Écart de position, en mètres, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_rotation_rad` | flottant | `0.005` | `0.0..` | non | non | Écart de rotation, en radians, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_velocity_ms` | flottant | `0.2` | `0.0..` | non | non | Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur. |
+| `prediction_tolerance_wet` | flottant | `0.05` | `0.0..` | non | non | Écart du mouillé de la route, de 0 à 1, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_wear` | flottant | `0.01` | `0.0..` | non | non | Écart d'usure d'un pneu, de 0 à 1, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_tolerance_energy` | flottant | `0.01` | `0.0..` | non | non | Écart de carburant ou de batterie, en fraction de la plus grande des deux valeurs, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_proxy_radius` | flottant | `32.0` | `0.0..` | non | non | Distance, en blocs, autour du véhicule prédit, jusqu'à laquelle les autres assemblies et les entités sont posées en proxies dans le monde prédit. |

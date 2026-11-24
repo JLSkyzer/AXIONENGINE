@@ -150,6 +150,14 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     /** {@code persistence.max_load_ns_per_tick}, en nanosecondes. */
     private final long loadBudgetNs;
 
+    /** {@code physics.wet_rise_seconds} et {@code physics.wet_dry_seconds} : le mouillé suit la pluie (ADR-176 D5). */
+    private final double wetRiseSeconds;
+
+    private final double wetDrySeconds;
+
+    /** Ticks entre deux lectures de la pluie : un véhicule se mouille en secondes, pas en ticks. */
+    private static final int WET_PERIOD = 10;
+
     /** La durée de la dernière soumission native, que la file rapporte à ses créations. */
     private final LongSupplier lastSubmitNs;
 
@@ -197,6 +205,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
      *     qu'elle attend son asset ou sa compilation
      * @param joints {@code modules.joints} : faux, les joints des definitions sont ignorés
      * @param loadBudgetNs {@code persistence.max_load_ns_per_tick}, en nanosecondes
+     * @param wetRiseSeconds {@code physics.wet_rise_seconds} (ADR-176 D5)
+     * @param wetDrySeconds {@code physics.wet_dry_seconds} (ADR-176 D5)
      * @param lastSubmitNs la durée de la dernière soumission native
      * @param controllerLimits le budget des contrôleurs de véhicule ({@code [vehicle]}, ADR-167 D9)
      * @param predictionAllowed {@code server.allow_client_prediction} (ADR-168 D8)
@@ -209,6 +219,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             Function<String, Optional<DefinitionCompiler.Summary>> compiled,
             boolean joints,
             long loadBudgetNs,
+            double wetRiseSeconds,
+            double wetDrySeconds,
             LongSupplier lastSubmitNs,
             dev.axion.entity.ControllerRunner.Limits controllerLimits,
             boolean predictionAllowed,
@@ -218,6 +230,8 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         this.compiled = compiled;
         this.joints = joints;
         this.loadBudgetNs = loadBudgetNs;
+        this.wetRiseSeconds = wetRiseSeconds;
+        this.wetDrySeconds = wetDrySeconds;
         this.lastSubmitNs = lastSubmitNs;
         this.controllers = new dev.axion.entity.ControllerRunner(controllerLimits, System::nanoTime);
         this.predictionAllowed = predictionAllowed;
@@ -493,6 +507,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         drive(stream);
         energy(stream);
         wear(stream);
+        weather(stream, tick);
         tune(stream, tick);
         export(stream);
         return stream;
@@ -600,6 +615,25 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 for (int wheel = 0; wheel < assembly.wheelNodes().size(); wheel++) {
                     stream.setWear(index, GENERATION, wheel, assembly.wheelWear(wheel));
                 }
+            }
+        });
+    }
+
+    /**
+     * Le mouillé de chaque véhicule suit la pluie qu'il reçoit, lue toutes les {@value #WET_PERIOD} ticks (ADR-176 D5), et part au
+     * natif quand il change ou que son corps est recréé : {@code SET_WET}, qui ne réveille pas.
+     */
+    private void weather(SimCommandStream stream, long tick) {
+        boolean read = tick % WET_PERIOD == 0;
+        ledger.forEachBody((index, assembly) -> {
+            if (assembly.wheelNodes().isEmpty()) {
+                return;
+            }
+            if (read) {
+                assembly.stepWetness(WET_PERIOD / 20.0, wetRiseSeconds, wetDrySeconds);
+            }
+            if (assembly.takeWetPush()) {
+                stream.setWet(index, GENERATION, (float) assembly.wetness());
             }
         });
     }

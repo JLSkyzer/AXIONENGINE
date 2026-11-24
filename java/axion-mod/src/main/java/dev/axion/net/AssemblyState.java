@@ -502,7 +502,7 @@ public record AssemblyState(
     public record Vehicle(byte[] packed) {
 
         /** Taille de l'état, en octets. */
-        public static final int BYTES = 11;
+        public static final int BYTES = 12;
 
         /** Pas du régime, en tr/min. */
         public static final int RPM_STEP = 2;
@@ -578,6 +578,27 @@ public record AssemblyState(
          */
         public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
                 float handbrake, float fuelRatio, float battery) {
+            return of(rpm, load, gear, flags, throttle, brake, steer, handbrake, fuelRatio, battery, 0f);
+        }
+
+        /**
+         * Quantifie l'état d'un véhicule, énergie et mouillé compris (ADR-176 D5).
+         *
+         * @param rpm régime, en tr/min
+         * @param load charge du moteur, dans [0, 1]
+         * @param gear rapport engagé, négatif en marche arrière
+         * @param flags {@link #SHIFTING}, {@link #RUNNING}, {@link #DRIVER} ; un autre bit est ignoré
+         * @param throttle accélérateur, dans [0, 1]
+         * @param brake frein, dans [0, 1]
+         * @param steer direction, dans [-1, 1]
+         * @param handbrake frein à main, dans [0, 1]
+         * @param fuelRatio carburant restant sur la capacité du réservoir, dans [0, 1] ; 0 sans réservoir
+         * @param battery charge de la batterie sur sa capacité, dans [0, 1] ; 0 sans batterie
+         * @param wet le mouillé de la route sous le véhicule, dans [0, 1]
+         * @return son état
+         */
+        public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake, float fuelRatio, float battery, float wet) {
             short steps = (short) bounded(rpm / RPM_STEP, -Short.MAX_VALUE, Short.MAX_VALUE);
             return new Vehicle(new byte[] {
                 (byte) (steps >> 8),
@@ -591,6 +612,7 @@ public record AssemblyState(
                 (byte) bounded(handbrake * UNIT_STEPS, 0, 255),
                 (byte) bounded(fuelRatio * UNIT_STEPS, 0, 255),
                 (byte) bounded(battery * UNIT_STEPS, 0, 255),
+                (byte) bounded(wet * UNIT_STEPS, 0, 255),
             });
         }
 
@@ -649,6 +671,11 @@ public record AssemblyState(
         /** {@return la charge de la batterie sur sa capacité, dans [0, 1] ; 0 sans batterie} */
         public float battery() {
             return (packed[10] & 0xFF) / UNIT_STEPS;
+        }
+
+        /** {@return le mouillé de la route sous le véhicule, dans [0, 1] (ADR-176 D5)} */
+        public float wet() {
+            return (packed[11] & 0xFF) / UNIT_STEPS;
         }
 
         /** {@return les valeurs, copie} */

@@ -52,6 +52,23 @@ public final class PredictedStates {
      */
     public static AssemblyState of(CollectResult result, int handle, int generation, int rootNode, VehicleInput input,
             AssemblyState.VariableValues variables, EnergySpec energy) {
+        return of(result, handle, generation, rootNode, input, variables, energy, 0f);
+    }
+
+    /**
+     * {@return l'état de l'assembly à ce pas, l'énergie et le mouillé du véhicule compris (ADR-176 D3, D5)}
+     *
+     * @param result la collecte du pas
+     * @param handle le rang du handle de l'assembly
+     * @param generation sa génération
+     * @param rootNode le node de son corps racine
+     * @param input l'entrée tenue au pas, bornée
+     * @param variables les variables de contenu à porter, celles reçues du serveur
+     * @param energy ce que la definition déclare de réservoir et de batterie
+     * @param wet le mouillé que le serveur a envoyé : le client ne lit pas la pluie, il le reçoit
+     */
+    public static AssemblyState of(CollectResult result, int handle, int generation, int rootNode, VehicleInput input,
+            AssemblyState.VariableValues variables, EnergySpec energy, float wet) {
         List<BodyState> states = result.bodies();
         List<Integer> own = new ArrayList<>();
         int root = -1;
@@ -87,7 +104,7 @@ public final class PredictedStates {
                             (body.flags() & BodyStateFlags.SLEEPING) != 0)
                     .with(others, AssemblyState.JointBits.NONE)
                     .withWheels(wheels(result.wheels(), handle, generation))
-                    .withVehicle(vehicle(result.vehicles(), handle, generation, input, energy))
+                    .withVehicle(vehicle(result.vehicles(), handle, generation, input, energy, wet))
                     .withVariables(variables);
         } catch (IllegalArgumentException notFinite) {
             return null;
@@ -124,12 +141,13 @@ public final class PredictedStates {
     }
 
     private static AssemblyState.Vehicle vehicle(List<VehicleReport> reports, int handle, int generation,
-            VehicleInput input, EnergySpec energy) {
+            VehicleInput input, EnergySpec energy, float wet) {
         for (VehicleReport report : reports) {
             if (report.handleIndex() == handle && report.handleGeneration() == generation) {
                 return AssemblyState.Vehicle.of(report.rpm(), report.load(), report.gear(), report.flags(),
                         input.throttle(), input.brake(), report.steer(), input.handbrake(),
-                        ratio(report.fuel(), energy.fuelCapacity()), ratio(report.battery(), energy.batteryCapacity()));
+                        ratio(report.fuel(), energy.fuelCapacity()), ratio(report.battery(), energy.batteryCapacity()),
+                        wet);
             }
         }
         return AssemblyState.Vehicle.NONE;

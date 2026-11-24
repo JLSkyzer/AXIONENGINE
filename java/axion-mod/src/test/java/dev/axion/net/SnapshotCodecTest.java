@@ -232,7 +232,9 @@ class SnapshotCodecTest {
                 "descripteur 12, antérieur à l'énergie du véhicule (ADR-176 D3)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(13).varUInt(0).toByteArray(),
                 "descripteur 13, antérieur à l'usure des pneus (ADR-176 D4)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(15).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(14).varUInt(0).toByteArray(),
+                "descripteur 14, antérieur au mouillé de la route (ADR-176 D5)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(16).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -872,6 +874,20 @@ class SnapshotCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new Modifier("a:" + "b".repeat(Modifier.MAX_LENGTH), "mass", Modifier.Operation.ADD, 1),
                 "cause trop longue refusée dès l'API");
+    }
+
+    @Test
+    @DisplayName("ADR-176 D5 : le mouillé du véhicule se quantifie au 1/255 et fait le voyage avec lui")
+    void adr176MouilleDuVehicule() throws MalformedPacketException {
+        AssemblyState.Vehicle humide = AssemblyState.Vehicle.of(3000f, 0.5f, 2, AssemblyState.Vehicle.RUNNING, 0.5f, 0f,
+                0f, 0f, 0.5f, 0.75f, 0.6f);
+        assertEquals(0.6f, humide.wet(), 1.0f / 255f);
+        assertEquals(AssemblyState.Vehicle.BYTES, humide.packed().length);
+        assertEquals(0f, AssemblyState.Vehicle.of(0f, 0f, 0, 0, 0f, 0f, 0f, 0f).wet(), "sans mouillé donné, une route sèche");
+        assertEquals(0.6f, AssemblyState.Vehicle.of(0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f, 0.6f).wet(), 1.0f / 255f);
+        AssemblyState.Vehicle sec = AssemblyState.Vehicle.of(3000f, 0.5f, 2, AssemblyState.Vehicle.RUNNING, 0.5f, 0f, 0f,
+                0f, 0.5f, 0.75f, 0f);
+        assertFalse(humide.equals(sec), "le mouillé fait partie de l'état");
     }
 
     @Test

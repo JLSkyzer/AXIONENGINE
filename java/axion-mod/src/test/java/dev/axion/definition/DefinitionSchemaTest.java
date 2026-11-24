@@ -1005,6 +1005,22 @@ class DefinitionSchemaTest {
     }
 
     @Test
+    @DisplayName("ADR-176 D5 : la source vehicle.wet n'existe qu'au schéma 7")
+    void laSourceDuMouille() {
+        String piste = "{\"node\": \"roue_avant_gauche\", \"channel\": \"rotation\", \"axis\": \"x\", \"source\": \"vehicle.wet\"}";
+        JsonObject bon = avecDemarreur();
+        bon.getAsJsonArray("procedural").add(JsonParser.parseString(piste));
+        assertDoesNotThrow(() -> read(bon));
+
+        JsonObject six = avecDemarreur();
+        at(six, "powertrain", "engine").remove("starter");
+        six.addProperty("schema", 6);
+        six.getAsJsonArray("procedural").add(JsonParser.parseString(piste));
+        DefinitionException refus = assertThrows(DefinitionException.class, () -> read(six));
+        assertTrue(refus.path().startsWith("$.procedural["), refus.path());
+    }
+
+    @Test
     @DisplayName("ADR-176 D4 : l'action set_wear pose l'usure d'une roue de la definition, ou de toutes, de 0 à 1")
     void l_actionSetWear() {
         String action = "[{\"node\": \"siege_conducteur\", \"action\": \"actions\", \"actions\": [%s]}]";

@@ -82,7 +82,7 @@ final class SchemaOne {
      * registre 38.9, R-2410).
      */
     static final List<SourceFamily> SOURCES = List.of(
-            fixed("vehicle", "speed", "forward_speed", "throttle", "brake", "steer", "handbrake"),
+            fixed("vehicle", "speed", "forward_speed", "throttle", "brake", "steer", "handbrake", "wet").late("wet"),
             fixed("engine", "rpm", "load", "running"),
             // ADR-176 D3 : au schéma 7, le réservoir et la batterie d'un véhicule.
             fixed("energy", "fuel", "fuel_ratio", "battery").since(7),

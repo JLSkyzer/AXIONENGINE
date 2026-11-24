@@ -128,7 +128,12 @@ public final class AssemblyStateView {
      * @param rotation le plus grand angle entre deux rotations, en radians
      * @param velocity la plus grande différence de vitesse, en m/s
      */
-    public record Errors(double position, double rotation, double velocity, double energy, double wear) {
+    public record Errors(double position, double rotation, double velocity, double energy, double wear, double wet) {
+
+        /** Un écart sans mouillé : deux blocs sur la même route. */
+        public Errors(double position, double rotation, double velocity, double energy, double wear) {
+            this(position, rotation, velocity, energy, wear, 0.0);
+        }
 
         /** Un écart sans usure : deux blocs dont les pneus ne s'usent pas. */
         public Errors(double position, double rotation, double velocity, double energy) {
@@ -137,7 +142,7 @@ public final class AssemblyStateView {
 
         /** Un écart sans énergie : deux blocs dont le véhicule n'en déclare pas. */
         public Errors(double position, double rotation, double velocity) {
-            this(position, rotation, velocity, 0.0, 0.0);
+            this(position, rotation, velocity, 0.0, 0.0, 0.0);
         }
 
         /**
@@ -175,6 +180,21 @@ public final class AssemblyStateView {
          */
         public boolean within(double position, double rotation, double velocity, double energy, double wear) {
             return within(position, rotation, velocity, energy) && this.wear <= wear;
+        }
+
+        /**
+         * {@return vrai si chaque écart reste en deçà de son seuil, le mouillé de la route compris (ADR-176 D5)}
+         *
+         * @param position le seuil de position, en mètres
+         * @param rotation le seuil de rotation, en radians
+         * @param velocity le seuil de vitesse, en m/s
+         * @param energy le seuil d'énergie, en fraction de la plus grande des deux valeurs
+         * @param wear le seuil d'usure : le plus grand écart de l'usure d'un pneu, de 0 à 1
+         * @param wet le seuil de mouillé : l'écart du mouillé de la route, de 0 à 1
+         */
+        public boolean within(double position, double rotation, double velocity, double energy, double wear,
+                double wet) {
+            return within(position, rotation, velocity, energy, wear) && this.wet <= wet;
         }
     }
 
@@ -218,7 +238,10 @@ public final class AssemblyStateView {
             }
             velocity = Math.max(velocity, Math.sqrt(dv));
         }
-        return new Errors(position, rotation, velocity, energy(a, b), wear(a, b));
+        Vehicle vehicleA = vehicle(a);
+        Vehicle vehicleB = vehicle(b);
+        double wet = vehicleA == null || vehicleB == null ? 0.0 : Math.abs(vehicleA.wet() - vehicleB.wet());
+        return new Errors(position, rotation, velocity, energy(a, b), wear(a, b), wet);
     }
 
     /**

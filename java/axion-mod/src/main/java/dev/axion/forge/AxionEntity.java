@@ -139,6 +139,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private boolean wearInit;
     /** Vrai tant que le natif n'a pas reçu l'usure que Java tient ({@code SET_WEAR}). */
     private boolean wearPending;
+
+    /** Le mouillé de la route sous le véhicule, de 0 à 1 (ADR-176 D5) ; il suit la pluie, au serveur, et ne se sauvegarde pas. */
+    private double wetness;
+
+    /** Vrai tant que le natif n'a pas reçu le mouillé que Java tient ({@code SET_WET}). */
+    private boolean wetPending;
     /** L'énergie gardée par la sauvegarde, ou {@code null}. */
     private double[] savedEnergy;
     /** Vrai tant que le natif n'a pas reçu l'énergie que Java tient ({@code SET_ENERGY}). */
@@ -3008,6 +3014,39 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         setWear(rank, value);
     }
 
+    /**
+     * Fait suivre le mouillé du véhicule à la pluie qu'il reçoit (ADR-176 D5) : vers 1 en {@code riseSeconds} sous la pluie,
+     * vers 0 en {@code drySeconds} sinon. La pluie est celle que la position reçoit — ciel visible, biome non froid —, pas
+     * celle du monde : sous un toit, un véhicule sèche. L'orage compte comme la pluie. Serveur seulement.
+     *
+     * @param dt le temps écoulé depuis le dernier appel, en secondes
+     * @param riseSeconds la durée pour devenir tout à fait mouillé
+     * @param drySeconds la durée pour sécher tout à fait
+     */
+    void stepWetness(double dt, double riseSeconds, double drySeconds) {
+        if (level().isClientSide()) {
+            return;
+        }
+        boolean raining = level().isRainingAt(BlockPos.containing(getX(), getBoundingBox().maxY, getZ()));
+        double next = raining ? Math.min(1.0, wetness + dt / riseSeconds) : Math.max(0.0, wetness - dt / drySeconds);
+        if (next != wetness) {
+            wetness = next;
+            wetPending = true;
+        }
+    }
+
+    /** {@return le mouillé de la route sous le véhicule, de 0 (sec) à 1 (ADR-176 D5)} */
+    public double wetness() {
+        return wetness;
+    }
+
+    /** {@return vrai une seule fois, quand le mouillé que Java tient doit partir au natif ({@code SET_WET})} */
+    boolean takeWetPush() {
+        boolean push = wetPending;
+        wetPending = false;
+        return push;
+    }
+
     /** {@return vrai une seule fois, quand l'usure que Java tient doit partir au natif ({@code SET_WEAR})} */
     boolean takeWearPush() {
         initWear();
@@ -3172,7 +3211,17 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 vehicleReport.flags(), input.throttle(), input.brake(), vehicleReport.steer(),
                 held.present() ? input.handbrake() : 1f,
                 dev.axion.net.PredictedStates.ratio(vehicleReport.fuel(), energy.fuelCapacity()),
-                dev.axion.net.PredictedStates.ratio(vehicleReport.battery(), energy.batteryCapacity()));
+                dev.axion.net.PredictedStates.ratio(vehicleReport.battery(), energy.batteryCapacity()),
+                (float) wetness);
+    }
+
+    /**
+     * {@return le mouillé que le serveur a envoyé, de 0 à 1 (client, ADR-176 D5)} Le client ne lit pas la pluie : le natif
+     * prédit le reçoit, au cran du serveur.
+     */
+    public float receivedWet() {
+        AssemblyState received = netState;
+        return received == null || received.vehicle() == null ? 0f : received.vehicle().wet();
     }
 
     private AssemblyState.Wheels wheelStates() {
@@ -3250,6 +3299,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // De même l'usure des pneus : le corps neuf naît avec des pneus neufs.
         if (wearInit) {
             wearPending = true;
+        }
+        // Et le mouillé : le corps neuf naît sec.
+        if (wetness > 0.0) {
+            wetPending = true;
         }
     }
 

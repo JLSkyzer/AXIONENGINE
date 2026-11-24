@@ -92,7 +92,7 @@ public final class ProceduralTracks {
     /** Ce qu'une source lit. Celles d'une roue ou d'un siège portent un rang. */
     private enum Source {
         WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND, WHEEL_WEAR,
-        SPEED, FORWARD_SPEED, THROTTLE, BRAKE, STEER, HANDBRAKE,
+        SPEED, FORWARD_SPEED, THROTTLE, BRAKE, STEER, HANDBRAKE, WET,
         RPM, LOAD, RUNNING,
         FUEL, FUEL_RATIO, BATTERY,
         GEAR, SHIFTING,
@@ -580,6 +580,7 @@ public final class ProceduralTracks {
                 case "brake" -> Source.BRAKE;
                 case "steer" -> Source.STEER;
                 case "handbrake" -> Source.HANDBRAKE;
+                case "wet" -> Source.WET;
                 default -> null;
             };
             case "engine" -> named ? null : switch (field) {
@@ -765,6 +766,7 @@ public final class ProceduralTracks {
             case BRAKE -> (double) vehicle.brake();
             case STEER -> (double) vehicle.steer();
             case HANDBRAKE -> (double) vehicle.handbrake();
+            case WET -> (double) vehicle.wet();
             case RPM -> (double) vehicle.rpm();
             case LOAD -> (double) vehicle.load();
             case RUNNING -> flag((vehicle.flags() & AssemblyState.Vehicle.RUNNING) != 0);
