@@ -2591,3 +2591,21 @@ lambda n'est plus vu comme gardé par l'appelant (`AuthoritativeThread.require()
 
 **Règle.** Retrouver un occupant parmi `getPassengers()`, pas dans le niveau. Un appel qui modifie Minecraft depuis une
 méthode gardée se fait dans le corps de la méthode, pas dans une lambda.
+
+
+## 2026-11-24 | Films de l'ADR-176 : comparer à vitesse tenue, calibrer le seuil du film sur le bruit mesuré, ne pas toucher au code pendant qu'un film compile
+
+**Ce qui a mal tourné.** (1) Le film de la pluie jugeait « même accélérateur, même vitesse » : le véhicule mouillé n'atteint pas la
+même vitesse (12,6 contre 18,7 m/s en 8 s, le moteur patine), le jugement échouait. (2) Le film des pneus exigeait un témoin à moins de 2 %
+d'usure ; le garage qui remet les pneus à neuf à chaque tick laisse 5,9 % entre deux remises. (3) Le premier essai du film du moteur lisait
+`netState()` au client, toujours nul : le film attendait 180 s. (4) Une édition du source pendant qu'un film attendait le verrou aurait
+cassé sa compilation.
+
+**Cause.** Un jugement écrit avant la première mesure ; une lecture client prise sur l'entité serveur ; un lancement en file qui compile
+quand il obtient le verrou, pas quand on le lance.
+
+**Règle.** Comparer deux véhicules à une vitesse tenue, jamais à accélérateur égal. Fixer le seuil d'un film d'après un premier tournage
+mesuré, pas d'après le cas idéal. Au client, lire l'état reçu par `networkView().received()`, pas `netState()`. Ne rien éditer entre
+l'instant où un film (ou une CI) est mis en file et la fin de son tournage ; faire le travail de source avant, ou le garder en note.
+Dans un `bash` du harnais, un heredoc qui contient des apostrophes casse l'analyse : écrire le script Python avec l'outil Write.
+
