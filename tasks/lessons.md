@@ -2609,3 +2609,19 @@ mesuré, pas d'après le cas idéal. Au client, lire l'état reçu par `networkV
 l'instant où un film (ou une CI) est mis en file et la fin de son tournage ; faire le travail de source avant, ou le garder en note.
 Dans un `bash` du harnais, un heredoc qui contient des apostrophes casse l'analyse : écrire le script Python avec l'outil Write.
 
+
+## 2026-11-24 | `t891_UneCordeFragileRompt` échoue sur GitHub (Linux) et jamais en local : l'hypothèse « le maillon dort quand la corde se pose » est réfutée
+
+**Observé.** Le GameTest échoue à la CI GitHub sur `ffb8bb46` (puis passe au second essai), sur `47a9045e` et deux fois sur `356a2121`, avec la
+corde intacte, `tension=0.0`, `distance=4.03` pour `length=2.0`, et le maillon endormi à la fin. Le banc de rendu a échoué sur D5 (client à
+0,068 à 0,093 bloc de la sortie, au lieu de 0,001) à deux backends sur trois, puis est repassé vert au second essai sans changement : bruit de CI,
+pas de défaut du commit.
+
+**Essai fait.** Le test a été rejoué en local avec la corde posée à 120 ticks au lieu de 20, le maillon dormant donc sûrement : il passe quand
+même. Le sommeil à la pose n'explique pas l'échec.
+
+**Règle.** Ne pas conclure d'un test qui passe en local que celui qui échoue à la CI est du bruit : t891 échoue maintenant trois fois sur cinq à
+GitHub, c'est un défaut réel, propre à Linux ou à la charge de la CI. Il faut le reproduire là — un conteneur Linux ou un `workflow_dispatch` qui
+rejoue ce seul test en boucle avec le journal de la corde — avant d'y toucher. Le garde-fou en attendant : relancer le job rouge, comparer au dernier
+commit vert, et ne jamais bloquer une tranche sur lui seul.
+
