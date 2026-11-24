@@ -3888,7 +3888,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [x] ADR-174, tranche 9b (2026-11-18) : `events` au schéma 7, `emit_event`, `ContentEventListener`, `Assembly.emit`,
            `S2C_Event` et protocole 13, `net.events_per_player_tick`.
      - [ ] ADR-176, tranche 11c (usure) : 11c1 natif et contrat FAIT (2026-11-20, ABI 32, formule : travail de frottement) →
-           11c2 instance/sauvegarde par nom FAIT (2026-11-24) → 11c3 réseau/source/tolérance FAIT (2026-11-24) → 11c4 API/commande/action/overlay/guide FAIT (2026-11-24) → 11c3 réseau/source/tolérance → 11c4 API/commande/action/overlay/guide.
+           11c2 instance/sauvegarde par nom FAIT (2026-11-24) → 11c3 réseau/source/tolérance FAIT (2026-11-24) → 11c4 API/commande/action/overlay/guide FAIT (2026-11-24, ffb8bb46) → films moteur (FAIT, vérifié sur images) et pneus (à rejouer : seuil de contrôle corrigé) FAIT dans FilmDesParametres (`runFilmMoteur`, `runFilmPneus`) → 11d météo en quatre pas, voir la précision d'ADR-176 : 11d1 natif (DM-07 `wet`, roue `wet_grip`, `SET_WET`, bloc v4, ABI 33) → 11d2 Java → 11d3 réseau → 11d4 neige, GameTest, guide, mesure de coût, film, clôture D7.
      - [ ] ADR-176, tranche 11b (énergie) : plan et contrats C1 à C7 dans l'ADR (précision « découpage et contrats de
            11b »). 11b1 natif et contrat FAIT (2026-11-20, ABI 31) → 11b2 instance Java/sauvegarde/masse FAIT (2026-11-20) → 11b3 réseau/prédiction/sources FAIT (2026-11-20) → 11b4 API/commande/action/buggy FAIT (2026-11-20, film à faire) →
            réseau/prédiction/sources → 11b4 API/commande/action/buggy/film.

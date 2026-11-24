@@ -286,6 +286,29 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmMoteur {
+            // ADR-176, tranche 11 : le contact, le demarreur et le moteur du buggy d'exemple (FilmDesParametres).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-moteur')
+            property 'axion.film', 'moteur'
+            property 'axion.souris.libre', 'true'
+            property 'axion.film.definition', 'axion:example/buggy'
+            property 'axion.content.examples', 'true'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
+        filmPneus {
+            // ADR-176, tranche 11 : l'usure des pneus du buggy d'essai (FilmDesParametres).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-pneus')
+            property 'axion.film', 'pneus'
+            property 'axion.souris.libre', 'true'
+            property 'axion.film.definition', 'axion:test/vehicule_pneus'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmLimiteur {
             // ADR-167, sous-tranche 5c : le limiteur de vitesse de l'addon temoin, un controleur de vehicule attache
             // par l'API, et sa vitesse maximale, un parametre d'addon (FilmDesParametres).
@@ -623,7 +646,8 @@ tasks.matching { it.name == 'runFilmVues' }.configureEach {
     }
 }
 
-['runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur'].each { tache, scene ->
+['runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur', 'runFilmMoteur': 'moteur',
+        'runFilmPneus': 'pneus'].each { tache, scene ->
     tasks.matching { it.name == tache }.configureEach {
         standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
         doFirst {

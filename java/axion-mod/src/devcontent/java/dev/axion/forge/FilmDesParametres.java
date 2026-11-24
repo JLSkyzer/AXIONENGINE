@@ -4,6 +4,8 @@ import com.mojang.authlib.GameProfile;
 import dev.axion.AxionMod;
 import dev.axion.api.assembly.Parameters;
 import dev.axion.entity.AssemblyParameters;
+import dev.axion.net.AssemblyState;
+import dev.axion.net.Interpolation;
 import dev.axion.physics.SimCommandStream;
 import dev.axion.seat.GearRange;
 import dev.axion.seat.VehicleInput;
@@ -51,6 +53,10 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code limiteur} (5c) : le même véhicule, à qui l'API attache le limiteur de vitesse de l'addon témoin, un
  *       contrôleur de véhicule, et règle sa vitesse maximale — un paramètre de l'addon ; le réglé plafonne, le témoin
  *       continue.</li>
+ *   <li>{@code moteur} (ADR-176 D1 à D3) : le buggy d'exemple, contact coupé ; l'un met le contact tout de suite, le
+ *       démarreur lance son moteur et il part, l'autre le met {@link #RETARD_CONTACT} s plus tard ;</li>
+ *   <li>{@code pneus} (ADR-176 D4) : le buggy aux pneus qui s'usent ; pied au plancher, ses roues motrices patinent et
+ *       s'usent, le témoin a ses pneus changés à chaque tick, comme dans un garage.</li>
  * </ul>
  *
  * <p>Deux conducteurs factices tiennent les volants, et passent les rapports d'une boîte manuelle ; le joueur filme,
@@ -70,7 +76,9 @@ public final class FilmDesParametres {
         SPORT("sport", "axion:example/buggy",
                 List.of(Parameters.ENGINE_TORQUE, Parameters.ENGINE_MAX_RPM, Parameters.TIRES_GRIP),
                 "AXION ENGINE, ADR-167 5b"),
-        LIMITEUR("limiteur", "axion:example/buggy", List.of(VITESSE_MAX), "AXION ENGINE, ADR-167 5c");
+        LIMITEUR("limiteur", "axion:example/buggy", List.of(VITESSE_MAX), "AXION ENGINE, ADR-167 5c"),
+        MOTEUR("moteur", "axion:example/buggy", List.of(), "AXION ENGINE, ADR-176 D1-D3"),
+        PNEUS("pneus", "axion:test/vehicule_pneus", List.of(), "AXION ENGINE, ADR-176 D4");
 
         final String cle;
         final String definition;
@@ -101,6 +109,9 @@ public final class FilmDesParametres {
 
     /** La vitesse maximale que la scène {@code limiteur} règle, en m/s. */
     private static final double LIMITE = 8.0;
+
+    /** Secondes entre le contact du témoin et celui du réglé, dans la scène {@code moteur}. */
+    private static final double RETARD_CONTACT = 3.0;
 
     private static final Scene SCENE = Scene.de(System.getProperty("axion.film"));
     private static final boolean ACTIF = SCENE != null;
@@ -195,6 +206,21 @@ public final class FilmDesParametres {
     private static double[] basesClient = new double[0];
     private static double[] temoinsClient = new double[0];
     private static String ecartMiroir;
+
+    // Scènes moteur et pneus : ce que le client lit de l'état reçu des deux véhicules (ADR-176).
+    private static boolean etatPret;
+    private static boolean marcheRegle;
+    private static boolean marcheTemoin;
+    private static float carburantRegle;
+    private static float carburantTemoin;
+    private static float batterieRegle;
+    private static float batterieTemoin;
+    private static float usureRegle;
+    private static float usureTemoin;
+    /** Le témoin tourne tandis que le réglé est à l'arrêt : le démarreur du second n'a pas encore lancé son moteur. */
+    private static boolean regleArreteTemoinMarche;
+    private static boolean regleMarcheVu;
+    private static boolean temoinMarcheVu;
 
     private static final List<String> MESURES = new ArrayList<>();
 
@@ -387,7 +413,8 @@ public final class FilmDesParametres {
         }
         // ADR-176 D1 : le buggy a un démarreur, et son contact est une variable : les deux conducteurs le mettent.
         for (AxionEntity buggy : new AxionEntity[] {regleServeur, temoinServeur}) {
-            if (buggy.ignitionVariable() >= 0) {
+            // Scène moteur : le contact se met pendant le film, pas ici.
+            if (SCENE != Scene.MOTEUR && buggy.ignitionVariable() >= 0) {
                 buggy.variables().set(buggy.ignitionVariable(), 1.0, "film");
             }
         }
@@ -406,6 +433,11 @@ public final class FilmDesParametres {
      * siège, comme la touche du conducteur, qui bascule la variable du mode sport (5b, D4).
      */
     private static void regler(MinecraftServer serveur) {
+        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
+            // Rien à régler : la scène tourne sur le contact et les pneus, et le client lit l'état reçu (lireLeClient).
+            regle = true;
+            return;
+        }
         AssemblyParameters table = regleServeur.parameters();
         if (SCENE == Scene.PARAMETRES) {
             String cible = "axion params " + regleServeur.getUUID() + " ";
@@ -506,6 +538,21 @@ public final class FilmDesParametres {
             regleIci.receiveInput(piloteRegle, regleIci.seatOf(piloteRegle), entree(roule, rapportRegle));
             temoinIci.receiveInput(piloteTemoin, temoinIci.seatOf(piloteTemoin), entree(roule, rapportTemoin));
         }
+        if (assis && phase == Phase.TOURNAGE && tournage != null) {
+            double secondes = (System.nanoTime() - tournage.debut()) / 1e9;
+            if (SCENE == Scene.MOTEUR) {
+                mettreLeContact(temoinIci, secondes >= Etape.ARRET.duree);
+                mettreLeContact(regleIci, secondes >= Etape.ARRET.duree + RETARD_CONTACT);
+            } else if (SCENE == Scene.PNEUS) {
+                // Le témoin : le garage change ses pneus à chaque tick (VehicleControl.setWear).
+                for (int roue = 0; roue < 4; roue++) {
+                    if (temoinIci.wheelWear(roue) > 0f) {
+                        temoinIci.setWearByName(null, 0.0);
+                        break;
+                    }
+                }
+            }
+        }
         double[] regleXyz = {regleIci.getX(), regleIci.getY(), regleIci.getZ()};
         double[] temoinXyz = {temoinIci.getX(), temoinIci.getY(), temoinIci.getZ()};
         if (precedentRegle != null) {
@@ -538,6 +585,14 @@ public final class FilmDesParametres {
             }
         }
         return new SimCommandStream();
+    }
+
+    /** Met le contact du buggy, une fois, quand {@code voulu}. */
+    private static void mettreLeContact(AxionEntity buggy, boolean voulu) {
+        int variable = buggy.ignitionVariable();
+        if (voulu && variable >= 0 && buggy.variables().get(variable) == 0.0) {
+            buggy.variables().set(variable, 1.0, "film");
+        }
     }
 
     /** {@return l'entrée d'un conducteur : frein à main serré à l'arrêt, puis pied au plancher sur ce rapport} */
@@ -617,6 +672,8 @@ public final class FilmDesParametres {
             case PARAMETRES -> "réglé";
             case SPORT -> "sport";
             case LIMITEUR -> "limité";
+            case MOTEUR -> "contact tardif";
+            case PNEUS -> "pneus d'origine";
         };
         String legende = switch (etape) {
             case ARRET -> switch (SCENE) {
@@ -625,22 +682,42 @@ public final class FilmDesParametres {
                         + commandeSport + ")";
                 case LIMITEUR -> "Deux véhicules identiques ; au premier plan, le limiteur de vitesse d'un addon,"
                         + " attaché par l'API";
+                case MOTEUR -> "Deux buggys, contact coupé, frein à main serré : le moteur est arrêté";
+                case PNEUS -> "Deux buggys ; les pneus du premier plan s'useront, ceux du témoin sont changés à chaque tick";
             };
             case COURSE -> switch (SCENE) {
                 case PARAMETRES -> "Pied au plancher depuis l'arrêt : seul le buggy réglé accélère moins";
                 case SPORT -> "Pied au plancher depuis l'arrêt : le mode sport va plus loin";
                 case LIMITEUR -> String.format(Locale.ROOT, "Pied au plancher : au-delà de %.0f m/s, le contrôleur"
                         + " coupe le couple du moteur ; le témoin continue", LIMITE);
+                case MOTEUR -> String.format(Locale.ROOT, "Pied au plancher : contact, démarreur, il part ; le second"
+                        + " met le contact %.0f s plus tard", RETARD_CONTACT);
+                case PNEUS -> "Pied au plancher : les roues motrices patinent et le pneu s'use ; le témoin reste neuf";
             };
             case BILAN -> switch (SCENE) {
                 case PARAMETRES -> "Le client reçoit les modificateurs et compose : les valeurs du serveur, au bit près";
                 case SPORT -> "Le client reçoit la variable et compose : les valeurs du serveur, au bit près";
                 case LIMITEUR -> "Le client reçoit le contrôleur attaché et compose le paramètre de son addon, au bit"
                         + " près";
+                case MOTEUR -> "Le client lit l'état du moteur, la batterie et le réservoir reçus du serveur";
+                case PNEUS -> "L'usure part au client en un octet par roue : le bandeau la lit";
             };
         };
+        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
+            observerLeMoteur();
+        }
         String valeurs = etape == Etape.ARRET && SCENE == Scene.PARAMETRES
                 ? "/axion params … " + BRIDE + "     /axion params … " + CHARGE
+                : SCENE == Scene.MOTEUR ? String.format(Locale.ROOT,
+                        "%s : moteur %s, batterie %.0f %%, réservoir %.0f %%, %s m    témoin : moteur %s, batterie"
+                                + " %.0f %%, réservoir %.0f %%, %s m",
+                        nom, marcheRegle ? "tourne" : "arrêté", 100 * batterieRegle, 100 * carburantRegle,
+                        metres(parcoursRegle), marcheTemoin ? "tourne" : "arrêté", 100 * batterieTemoin,
+                        100 * carburantTemoin, metres(parcoursTemoin))
+                : SCENE == Scene.PNEUS ? String.format(Locale.ROOT,
+                        "%s : usure %.0f %%, %.1f m/s, %s m    témoin : usure %.0f %%, %.1f m/s, %s m",
+                        nom, 100 * usureRegle, vitesseRegle, metres(parcoursRegle), 100 * usureTemoin, vitesseTemoin,
+                        metres(parcoursTemoin))
                 : String.format(Locale.ROOT, "%s %.1f m/s, %s m    témoin %.1f m/s, %s m    au client : %s",
                         nom, vitesseRegle, metres(parcoursRegle), vitesseTemoin, metres(parcoursTemoin), montres());
         tournage.capturer(minecraft.getMainRenderTarget(), legende, valeurs,
@@ -655,6 +732,10 @@ public final class FilmDesParametres {
         if (!(minecraft.level.getEntity(idRegle) instanceof AxionEntity regleClient)
                 || !(minecraft.level.getEntity(idTemoin) instanceof AxionEntity temoinClient)) {
             ecartMiroir = "un buggy a disparu du client";
+            return;
+        }
+        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
+            lireLEtat(regleClient, temoinClient);
             return;
         }
         AssemblyParameters miroir = regleClient.parameters();
@@ -685,8 +766,50 @@ public final class FilmDesParametres {
         temoinsClient = temoins;
     }
 
+    /** Scènes moteur et pneus : l'état des deux véhicules que le client a reçu — moteur, batterie, réservoir, usure. */
+    private static void lireLEtat(AxionEntity regleClient, AxionEntity temoinClient) {
+        AxionEntity.NetworkView regleVue = regleClient.networkView();
+        AxionEntity.NetworkView temoinVue = temoinClient.networkView();
+        if (regleVue == null || temoinVue == null) {
+            return;
+        }
+        // Le dernier état reçu du serveur, tel quel : moteur, batterie, réservoir et usure de chaque pneu.
+        Interpolation.Pose regleEtat = regleVue.received();
+        Interpolation.Pose temoinEtat = temoinVue.received();
+        marcheRegle = (regleEtat.vehicle().flags() & AssemblyState.Vehicle.RUNNING) != 0;
+        marcheTemoin = (temoinEtat.vehicle().flags() & AssemblyState.Vehicle.RUNNING) != 0;
+        carburantRegle = regleEtat.vehicle().fuelRatio();
+        carburantTemoin = temoinEtat.vehicle().fuelRatio();
+        batterieRegle = regleEtat.vehicle().battery();
+        batterieTemoin = temoinEtat.vehicle().battery();
+        usureRegle = usureMax(regleEtat);
+        usureTemoin = usureMax(temoinEtat);
+        etatPret = true;
+    }
+
+    private static float usureMax(Interpolation.Pose etat) {
+        float plus = 0f;
+        for (Interpolation.WheelPose roue : etat.wheels()) {
+            plus = Math.max(plus, roue.wear());
+        }
+        return plus;
+    }
+
+    /** Ce que le film doit avoir montré du moteur : le témoin en marche tandis que le réglé est arrêté, puis en marche. */
+    private static void observerLeMoteur() {
+        if (SCENE != Scene.MOTEUR || etape != Etape.COURSE) {
+            return;
+        }
+        temoinMarcheVu |= marcheTemoin;
+        regleMarcheVu |= marcheRegle;
+        regleArreteTemoinMarche |= marcheTemoin && !marcheRegle;
+    }
+
     /** {@return vrai si le client lit le réglage du serveur : au bit près, et autre que la base} */
     private static boolean reglageLu() {
+        if (SCENE == Scene.MOTEUR || SCENE == Scene.PNEUS) {
+            return etatPret;
+        }
         return ecartMiroir == null && reglesClient.length > 0 && !Double.isNaN(reglesClient[0])
                 && reglesClient[0] != basesClient[0];
     }
@@ -735,10 +858,21 @@ public final class FilmDesParametres {
             case PARAMETRES -> parcoursRegle < 0.85 * parcoursTemoin;
             case SPORT -> parcoursRegle > 1.05 * parcoursTemoin;
             case LIMITEUR -> parcoursRegle < parcoursTemoin;
+            case MOTEUR -> parcoursRegle < 0.8 * parcoursTemoin;
+            // Un pneu usé n'avance jamais plus que le neuf, à une demi-mesure près.
+            case PNEUS -> parcoursRegle <= parcoursTemoin + 0.5;
         };
         if (!attendu) {
             return String.format(Locale.ROOT, "le réglé a parcouru %.2f m contre %.2f m pour le témoin", parcoursRegle,
                     parcoursTemoin);
+        }
+        if (SCENE == Scene.MOTEUR && !(temoinMarcheVu && regleArreteTemoinMarche && regleMarcheVu)) {
+            return "moteur : témoin en marche vu " + temoinMarcheVu + ", réglé arrêté pendant que le témoin tourne "
+                    + regleArreteTemoinMarche + ", réglé en marche vu " + regleMarcheVu;
+        }
+        if (SCENE == Scene.PNEUS && !(usureRegle > 0.5f && usureTemoin < 0.15f)) {
+            return String.format(Locale.ROOT, "usure lue au client : %.3f d'origine, %.3f témoin", usureRegle,
+                    usureTemoin);
         }
         if (SCENE == Scene.LIMITEUR && !(vitesseMaxRegle < LIMITE + 1.5 && vitesseMaxTemoin > LIMITE + 3.0)) {
             return String.format(Locale.ROOT, "vitesses maximales : %.2f m/s limité, %.2f m/s témoin, pour %.1f m/s",
@@ -788,10 +922,12 @@ public final class FilmDesParametres {
         String bilan = String.format(Locale.ROOT,
                 "{\"scene\": \"%s\", \"images\": %d, \"uniques\": %d, \"echec\": %s, \"parcours_regle\": %.2f,"
                         + " \"parcours_temoin\": %.2f, \"vitesse_max_regle\": %.2f, \"vitesse_max_temoin\": %.2f,"
-                        + " \"regle_client\": \"%s\", \"capture_ms_mediane\": %.1f, \"capture_ms_p90\": %.1f}%n",
+                        + " \"regle_client\": \"%s\", \"usure_regle\": %.3f, \"usure_temoin\": %.3f,"
+                        + " \"capture_ms_mediane\": %.1f, \"capture_ms_p90\": %.1f}%n",
                 SCENE.cle, tournage == null ? 0 : tournage.images(), tournage == null ? 0 : tournage.uniques(),
                 faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"", parcoursRegle, parcoursTemoin,
-                vitesseMaxRegle, vitesseMaxTemoin, montres(), tournage == null ? 0.0 : tournage.quantileMs(0.5),
+                vitesseMaxRegle, vitesseMaxTemoin, montres(), usureRegle, usureTemoin,
+                tournage == null ? 0.0 : tournage.quantileMs(0.5),
                 tournage == null ? 0.0 : tournage.quantileMs(0.9));
         try {
             Files.createDirectories(dossier(minecraft));
