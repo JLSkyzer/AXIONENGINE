@@ -845,6 +845,13 @@ public final class BancDeRendu {
                 passagerAssis = siege.sit(joueur, 1);
             });
             jusqua("le joueur assis chez le client", 60, mc -> mc.player.getVehicle() instanceof AxionEntity);
+            // ADR-177 D1, D2 : l'overlay seats trace l'occupant de ce siège ; le mannequin du dépôt est le modèle du jeu, et le
+            // joueur assis y est où le mannequin assis met ses pieds.
+            une("allumer l'overlay seats", mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.SEATS, true));
+            stabiliser("l'overlay seats");
+            une("juger ADR-177 D1", BancDeRendu::jugerOverlaySieges);
+            une("éteindre l'overlay seats", mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.SEATS, false));
+            une("juger ADR-177 D2", BancDeRendu::jugerMannequin);
             une("presser sneak", mc -> mc.options.keyShift.setDown(true));
             jusqua("le joueur descendu chez le client", 60, mc -> mc.player.getVehicle() == null);
             une("relâcher sneak", mc -> mc.options.keyShift.setDown(false));
@@ -2100,6 +2107,10 @@ public final class BancDeRendu {
                 // Ils tracent l'animation : jugés sur le bras plié (ADR-155, tranche 6b).
                 continue;
             }
+            if (overlay == dev.axion.debug.DebugOverlays.Overlay.SEATS) {
+                // Aucun siège dans cette scène : jugé sur le joueur assis (ADR-177 D1).
+                continue;
+            }
             int n = plages.getOrDefault(overlay.rank(), 0);
             vert &= n > 0;
             detail.append(detail.length() == 0 ? "" : ", ").append(overlay.commandName()).append(' ').append(n);
@@ -2329,6 +2340,70 @@ public final class BancDeRendu {
     private static int passagerChezLeClient(Minecraft minecraft) {
         Entity auClient = minecraft.level.getEntity(passager.getId());
         return auClient != null && auClient.getVehicle() instanceof AxionEntity vehicule ? vehicule.seatOf(auClient) : -1;
+    }
+
+    /** ADR-177 D1 : l'overlay {@code seats} a tracé le siège du joueur assis. */
+    private static void jugerOverlaySieges(Minecraft minecraft) {
+        int plages = AxionRenderPass.debugRangesByOverlay().getOrDefault(dev.axion.debug.DebugOverlays.Overlay.SEATS.rank(), 0);
+        RAPPORT.noter("ADR-177 D1", plages > 0, "overlay seats : " + plages + " siège(s) tracé(s) autour du joueur assis");
+    }
+
+    /**
+     * ADR-177 D2 (CAP-56) : le mannequin du joueur du dépôt est celui du jeu — chaque sommet des deux modèles, aux trois poses, à
+     * 1 mm — et le joueur assis, chez le client, y met ses pieds où le mannequin assis met les siens.
+     */
+    private static void jugerMannequin(Minecraft minecraft) {
+        float decalage = (float) minecraft.player.getMyRidingOffset();
+        StringBuilder detail = new StringBuilder();
+        boolean vert = true;
+        double pire = 0.0;
+        for (Mannequin.Modele modele : Mannequin.Modele.values()) {
+            byte[] depot = Mannequin.depot(modele);
+            if (depot == null) {
+                vert = false;
+                detail.append(modele.fichier).append(" manque au dépôt : ./gradlew genMannequin ; ");
+                continue;
+            }
+            for (Mannequin.Pose pose : Mannequin.Pose.values()) {
+                java.util.Map<String, float[]> lu = Mannequin.sommets(depot, pose.clip);
+                java.util.Map<String, float[]> jeu = Mannequin.sommetsDuJeu(
+                        Mannequin.modeleEnPose(modele, pose, minecraft.player), pose, decalage);
+                vert &= lu.keySet().equals(jeu.keySet());
+                for (String partie : jeu.keySet()) {
+                    float[] a = lu.get(partie);
+                    float[] b = jeu.get(partie);
+                    if (a == null || a.length != b.length) {
+                        vert = false;
+                        continue;
+                    }
+                    for (int i = 0; i < a.length; i++) {
+                        pire = Math.max(pire, Math.abs(a[i] - b[i]));
+                    }
+                }
+            }
+            int[] texture = Mannequin.tailleDeLaTexture(depot);
+            vert &= texture[0] == 64 && texture[1] == 64;
+        }
+        vert &= pire <= 1.0e-3;
+        double ecartPieds = Double.NaN;
+        double ecartCentre = Double.NaN;
+        if (minecraft.player.getVehicle() instanceof AxionEntity assembly && Mannequin.depot(Mannequin.Modele.LARGE) != null) {
+            dev.axion.seat.SeatPlacement.Pose siegeClient = assembly.seatPoseAt(assembly.seatOf(minecraft.player),
+                    assembly.renderPose(minecraft.getFrameTime()));
+            // L'origine de l'entité, telle que le fichier la pose sous le node SEAT, doit être la position du joueur assis.
+            float[] origine = Mannequin.origine(Mannequin.depot(Mannequin.Modele.LARGE), "sit");
+            ecartPieds = Math.abs(origine[1] - (minecraft.player.getY() - siegeClient.y()));
+            ecartCentre = Math.hypot(origine[0] - (minecraft.player.getX() - siegeClient.x()),
+                    origine[2] - (minecraft.player.getZ() - siegeClient.z()));
+            vert &= ecartPieds <= 1.5e-3 && ecartCentre <= 1.5e-3;
+        } else {
+            vert = false;
+        }
+        RAPPORT.noter("ADR-177 D2", vert, String.format(Locale.ROOT,
+                "mannequin large et fin, debout, accroupi et assis : au plus %.4f m d'écart avec les sommets du jeu (1 mm);"
+                        + " joueur assis : à %.4f m en hauteur et %.4f m à l'horizontale de l'origine que le mannequin assis"
+                        + " pose sous le node SEAT (au plus 1,5 mm) %s",
+                pire, ecartPieds, ecartCentre, detail));
     }
 
     private static void jugerSortieClient(Minecraft minecraft) {

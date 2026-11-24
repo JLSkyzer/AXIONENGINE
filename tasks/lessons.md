@@ -2625,3 +2625,19 @@ GitHub, c'est un défaut réel, propre à Linux ou à la charge de la CI. Il fau
 rejoue ce seul test en boucle avec le journal de la corde — avant d'y toucher. Le garde-fou en attendant : relancer le job rouge, comparer au dernier
 commit vert, et ne jamais bloquer une tranche sur lui seul.
 
+## 2026-11-25 | Le mannequin du joueur écrit d'abord en GameTest : le modèle du joueur ne se charge que dans un client
+
+**Observé.** Le GameTest qui écrivait puis jugeait le mannequin a échoué à son premier passage : « Attempted to load class
+net/minecraft/client/model/geom/builders/CubeDeformation for invalid dist DEDICATED_SERVER ». Un JUnit n'y arrive pas non plus : `Bootstrap.bootStrap()`
+meurt sur l'initialisation du réseau de Forge, et `Entity` ne se charge pas sans lui.
+
+**Règle.** Tout ce qui lit un modèle ou une classe `@OnlyIn(CLIENT)` de Minecraft se joue **dans un client** : un lancement dédié pour l'écrire
+(`./gradlew genMannequin`), le banc de rendu pour le juger — pas un GameTest ni un JUnit. Se demander, avant d'écrire un test, de quel côté vivent les classes qu'il touche.
+
+## 2026-11-25 | Les joueurs factices d'un film sont invisibles ; ceux d'un `JoueurSimule` ne le sont pas
+
+**Observé.** Les conducteurs de `FilmDesParametres` sont des `FakePlayerFactory` : posés dans un véhicule, aucun client ne les voit (ils ne sont pas au monde).
+Pour montrer des occupants à l'écran (`FilmDesOccupants`), il a fallu des `JoueurSimule.rejoindre`, qui entrent en jeu comme un vrai joueur et se dessinent chez le client.
+
+**Règle.** Un film qui doit montrer un passager prend un joueur simulé (ou le joueur local), jamais un `FakePlayer` ; on regarde l'image extraite avant de l'annoncer.
+La caméra de côté regardant vers +Z a +X à sa gauche : numéroter les véhicules dans l'ordre de l'image, pas dans l'ordre des coordonnées.

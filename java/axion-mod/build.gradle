@@ -332,6 +332,17 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        genMannequin {
+            // ADR-177 D2 : le mannequin du joueur s'ecrit depuis le modele du jeu, qui ne se charge que dans un client
+            // (GenerationDuMannequin) ; le banc de rendu le juge ensuite (BancDeRendu).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-mannequin')
+            property 'axion.mannequin.update', 'true'
+            property 'axion.mannequin.dir', rootProject.file('content/examples/axion/models/mannequin').absolutePath
+            property 'axion.souris.libre', 'true'
+            jvmArgs '-Xmx2G'
+        }
+
         filmLimiteur {
             // ADR-167, sous-tranche 5c : le limiteur de vitesse de l'addon temoin, un controleur de vehicule attache
             // par l'API, et sa vitesse maximale, un parametre d'addon (FilmDesParametres).
@@ -615,6 +626,13 @@ tasks.matching { it.name == 'runEssaiRechargementDev' }.configureEach {
     }
 }
 
+// ADR-177 D2 : le mannequin du joueur s'écrit depuis le modele du jeu, par le GameTest qui le juge.
+tasks.register('genMannequin') {
+    group = 'axion'
+    description = 'Ecrit content/examples/axion/models/mannequin/*.glb depuis le modele du joueur de Minecraft (un client).'
+    dependsOn 'runGenMannequin'
+}
+
 // Un film se tourne dans un monde neuf.
 tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
     standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
@@ -670,7 +688,7 @@ tasks.matching { it.name == 'runFilmVues' }.configureEach {
 }
 
 ['runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur', 'runFilmMoteur': 'moteur',
-        'runFilmPneus': 'pneus', 'runFilmPluie': 'pluie', 'runFilmOccupants': 'occupants'].each { tache, scene ->
+        'runFilmPneus': 'pneus', 'runFilmPluie': 'pluie', 'runFilmOccupants': 'occupants', 'runGenMannequin': 'mannequin'].each { tache, scene ->
     tasks.matching { it.name == tache }.configureEach {
         standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
         doFirst {

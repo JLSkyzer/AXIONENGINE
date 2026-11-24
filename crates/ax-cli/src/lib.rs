@@ -25,6 +25,7 @@ mod compile_cmd;
 mod diff_cmd;
 mod inspect_cmd;
 mod lod_cmd;
+mod mannequin_cmd;
 mod options_cmd;
 mod paths;
 mod validate_cmd;
@@ -37,6 +38,7 @@ pub use compile_cmd::{
 pub use diff_cmd::diff;
 pub use inspect_cmd::{inspect, max_compiled_bytes};
 pub use lod_cmd::lod;
+pub use mannequin_cmd::{mannequin_files, mannequin_report};
 pub use options_cmd::{
     describe_options, is_options_file, read_options, sibling_options_path, validate_options,
     OPTIONS_SUFFIX,
@@ -65,6 +67,7 @@ USAGE :
                        [--static-body] [--options <fichier>]
     axion-cli lod <fichier.a3d> --ratios 1,0.5,0.25
     axion-cli bench-asset <source> [--static-body] [--options <fichier>]
+    axion-cli mannequin [<dossier>] [--force]
     axion-cli help
 
 COMMANDES :
@@ -81,6 +84,10 @@ COMMANDES :
     bench-asset
               Mesure la compilation d'une source par le harnais (B-09) :
               centiles sur plusieurs exécutions. Mesure locale, non publiable.
+    mannequin Écrit le mannequin du joueur de Minecraft, aux vraies cotes, en GLB :
+              joueur_large.glb et joueur_fin.glb, avec leurs poses debout,
+              accroupi et assis (ADR-177 D2). Dans <dossier> (« mannequin » par
+              défaut) ; refuse d'écraser sans --force.
     help      Affiche cette aide.
 
 OPTIONS DE COMPILATION (PARTIE 6.4) :

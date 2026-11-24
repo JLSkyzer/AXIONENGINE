@@ -10,9 +10,10 @@ use ax_asset::compile::CompileOptions;
 use ax_asset::import::SourceFormat;
 use ax_bench::MeasureConfig;
 use ax_cli::{
-    bench_asset, compile_source, diff, inspect, is_options_file, lod, max_compiled_bytes, options,
-    parse, read_options, sibling_options_path, sibling_path, summary, validate_container,
-    validate_options, validate_source, CliError, Command, SourceArgs, PROGRAM, USAGE,
+    bench_asset, compile_source, diff, inspect, is_options_file, lod, mannequin_files,
+    mannequin_report, max_compiled_bytes, options, parse, read_options, sibling_options_path,
+    sibling_path, summary, validate_container, validate_options, validate_source, CliError,
+    Command, SourceArgs, PROGRAM, USAGE,
 };
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -51,6 +52,9 @@ fn run(args: &[String]) -> Result<Vec<String>, CliError> {
         Command::Lod { file, ratios } => {
             lod(&read(&file)?, A3dLimits::new(max_compiled_bytes()), &ratios)
         }
+        Command::Mannequin { dir, force } => {
+            mannequin(dir.as_deref().unwrap_or("mannequin"), force)
+        }
         Command::BenchAsset { source } => {
             let source = Source::open(&source)?;
             let lines = bench_asset(
@@ -63,6 +67,36 @@ fn run(args: &[String]) -> Result<Vec<String>, CliError> {
             Ok(source.annotate(lines))
         }
     }
+}
+
+/// Écrit les fichiers du mannequin du joueur dans `dir` (ADR-177 D2) ; sans `force`, rien n'est écrit si l'un existe déjà.
+fn mannequin(dir: &str, force: bool) -> Result<Vec<String>, CliError> {
+    let directory = Path::new(dir);
+    if !force {
+        for (name, _) in mannequin_files() {
+            let path = directory.join(name);
+            if path.exists() {
+                return Err(CliError::Io {
+                    path: path.display().to_string(),
+                    detail: "existe déjà : --force l'écrase".to_owned(),
+                });
+            }
+        }
+    }
+    std::fs::create_dir_all(directory).map_err(|error| CliError::Io {
+        path: dir.to_owned(),
+        detail: error.to_string(),
+    })?;
+    let mut written = Vec::new();
+    for (name, bytes) in mannequin_files() {
+        let path = directory.join(name);
+        std::fs::write(&path, bytes).map_err(|error| CliError::Io {
+            path: path.display().to_string(),
+            detail: error.to_string(),
+        })?;
+        written.push((*name, bytes.len()));
+    }
+    Ok(mannequin_report(dir, &written))
 }
 
 /// Une source lue, avec ce qu'il faut pour la compiler comme le jeu.

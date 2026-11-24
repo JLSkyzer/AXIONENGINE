@@ -45,6 +45,33 @@ carrosserie, un autre mod) ; une échelle de siège évite de refaire un modèle
   assis).
 - L'API écrit ces champs comme les autres : `seat("conducteur", s -> s.occupant(o -> o.scale(0.67)))`.
 
+## Le mannequin du joueur
+
+Pour régler `scale` ou `eye` dans Blender sans lancer le jeu, AXION fournit le **mannequin du joueur** ([ADR-177](../../decisions/ADR-177.md) D2,
+CAP-56) : un joueur de Minecraft à ses vraies cotes, en GLB.
+
+```powershell
+axion-cli mannequin mannequin
+```
+
+écrit `joueur_large.glb` (bras de 4 pixels) et `joueur_fin.glb` (bras de 3) dans le dossier, et refuse d'écraser sans `--force`.
+
+- **Ses cotes ne sont écrites nulle part** : elles sont lues dans le modèle du joueur de Minecraft, cuit comme le fait le client
+  (`PlayerModel.createMesh`). Le modèle fait 1,875 m — l'échelle de 0,9375 que le rendu applique aux joueurs —, la boîte de collision
+  1,8 m. Douze parties, articulées aux pivots du jeu : `head`, `body`, les bras et les jambes, et la seconde couche de chacune
+  (`hat`, `jacket`, `right_sleeve`, `left_sleeve`, `right_pants`, `left_pants`).
+- **Trois poses**, un clip d'une image chacun : `stand` (debout), `sneak` (accroupi) et `sit` (assis, la pose de monture). Elles viennent du
+  `setupAnim` du jeu, pas d'un dessin.
+- **Posé sur un siège** : donne pour parent au nœud racine du mannequin le node `SEAT` de ton modèle, transformation nulle, et joue le
+  clip `sit`. L'origine de l'entité du joueur est alors **sous le node de 0,35 m** — le décalage de monture de Minecraft —, là où le
+  serveur le met. Il regarde vers `-Z`, l'avant d'AXION.
+- **Pour accorder le modèle et le joueur** : mets le mannequin sur le siège et agrandis le modèle (première convention), ou multiplie
+  l'échelle du mannequin par ton `scale` (seconde convention) et lis sur lui où tombent la tête et l'œil.
+- **Sa texture** est neutre, au format d'un skin (64 × 64), teintée par partie pour qu'on s'y repère : aucune texture de Mojang.
+- **Il ne diverge jamais du jeu** : `./gradlew genMannequin` l'écrit depuis le modèle du jeu, et le banc de rendu compare chaque sommet des
+  deux fichiers, aux trois poses, à celui que le jeu dessine (1 mm), puis le joueur assis à l'origine que le mannequin assis pose sous le
+  node. Si Minecraft change son modèle, le banc échoue et se règle par `./gradlew genMannequin`.
+
 ## Voir ce que le siège règle
 
 `/axion debug seats on` dessine, à chaque siège, en orange l'occupant à l'échelle réglée et une croix à son œil, et en gris la boîte de collision d'un

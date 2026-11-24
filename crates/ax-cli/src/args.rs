@@ -60,6 +60,13 @@ pub enum Command {
         /// Le fichier.
         file: SourceArgs,
     },
+    /// Écrire le mannequin du joueur (ADR-177 D2) dans un dossier.
+    Mannequin {
+        /// Le dossier, `mannequin` sans lui.
+        dir: Option<String>,
+        /// Écraser les fichiers déjà là.
+        force: bool,
+    },
     /// Afficher l'aide.
     Help,
 }
@@ -91,6 +98,7 @@ pub fn parse(args: &[String]) -> Result<Command, CliError> {
             Ok(Command::Validate { file })
         }
         "lod" => parse_lod(rest),
+        "mannequin" => parse_mannequin(rest),
         "bench-asset" => {
             let (source, _) = parse_source("bench-asset", rest, false)?;
             Ok(Command::BenchAsset { source })
@@ -176,6 +184,29 @@ fn parse_inspect(args: &[String]) -> Result<Command, CliError> {
             "inspect attend un seul fichier A3D".to_owned(),
         )),
     }
+}
+
+fn parse_mannequin(args: &[String]) -> Result<Command, CliError> {
+    let mut dir: Option<String> = None;
+    let mut force = false;
+    for arg in args {
+        match arg.as_str() {
+            "--force" => force = true,
+            other if other.starts_with('-') => {
+                return Err(CliError::Usage(format!(
+                    "option inconnue de mannequin : « {other} »"
+                )));
+            }
+            other => {
+                if dir.replace(other.to_owned()).is_some() {
+                    return Err(CliError::Usage(
+                        "mannequin écrit dans un seul dossier à la fois".to_owned(),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(Command::Mannequin { dir, force })
 }
 
 fn parse_diff(args: &[String]) -> Result<Command, CliError> {
@@ -403,6 +434,26 @@ mod tests {
         assert!(mesusage(&["validate"]));
         assert!(mesusage(&["validate", "a.a3d", "b.a3d"]));
         assert!(mesusage(&["validate", "a.a3d", "--strict"]));
+    }
+
+    #[test]
+    fn t580_mannequin_prend_un_dossier_facultatif_et_force() {
+        assert_eq!(
+            parse_of(&["mannequin"]).unwrap(),
+            Command::Mannequin {
+                dir: None,
+                force: false
+            }
+        );
+        assert_eq!(
+            parse_of(&["mannequin", "sortie", "--force"]).unwrap(),
+            Command::Mannequin {
+                dir: Some("sortie".to_owned()),
+                force: true
+            }
+        );
+        assert!(mesusage(&["mannequin", "a", "b"]), "un seul dossier");
+        assert!(mesusage(&["mannequin", "--inconnue"]));
     }
 
     #[test]

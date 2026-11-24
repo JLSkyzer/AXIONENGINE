@@ -45,6 +45,33 @@ The choice depends on what you want elsewhere. A model at its real size behaves 
   player).
 - The API writes these fields like the others: `seat("driver", s -> s.occupant(o -> o.scale(0.67)))`.
 
+## The player mannequin
+
+To tune `scale` or `eye` in Blender without launching the game, AXION provides the **player mannequin** ([ADR-177](../../decisions/ADR-177.md)
+D2, CAP-56): a Minecraft player at his true dimensions, as a GLB.
+
+```powershell
+axion-cli mannequin mannequin
+```
+
+writes `joueur_large.glb` (4-pixel arms) and `joueur_fin.glb` (3-pixel arms) into the folder, and refuses to overwrite without `--force`.
+
+- **Its dimensions are written nowhere**: they are read from Minecraft's player model, baked the way the client does
+  (`PlayerModel.createMesh`). The model is 1.875 m tall — the 0.9375 scale that the renderer applies to players —, the collision box
+  1.8 m. Twelve parts, articulated at the game's pivots: `head`, `body`, the arms and the legs, and the second layer of each
+  (`hat`, `jacket`, `right_sleeve`, `left_sleeve`, `right_pants`, `left_pants`).
+- **Three poses**, one single-frame clip each: `stand`, `sneak` and `sit` (the mount pose). They come from the game's `setupAnim`, not
+  from a drawing.
+- **Put on a seat**: parent the mannequin's root node to your model's `SEAT` node, with a null transform, and play the `sit` clip. The
+  origin of the player's entity is then **0.35 m below the node** — Minecraft's mount offset —, where the server puts it. It looks
+  towards `-Z`, AXION's front.
+- **To match the model and the player**: put the mannequin on the seat and scale the model (first convention), or multiply the
+  mannequin's scale by your `scale` (second convention) and read on it where the head and the eye fall.
+- **Its texture** is neutral, in a skin's layout (64 × 64), tinted by part so you can find your way: no Mojang texture.
+- **It never diverges from the game**: `./gradlew genMannequin` writes it from the game's model, and the render bench compares every
+  vertex of both files, in the three poses, with what the game draws (1 mm), then the seated player with the origin that the seated
+  mannequin puts below the node. If Minecraft changes its model, the bench fails and is fixed with `./gradlew genMannequin`.
+
 ## Seeing what the seat sets
 
 `/axion debug seats on` draws, at each seat, the occupant at the set scale and a cross at its eye in orange, and a player's collision box in grey,

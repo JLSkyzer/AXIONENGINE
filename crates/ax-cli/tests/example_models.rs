@@ -207,3 +207,43 @@ fn t634_winch_rope_compile_et_se_charge() {
         assert!(winch.visible(part), "{part} est rendu");
     }
 }
+
+/// ADR-177 D2 : le mannequin du joueur compile par la chaîne d'assets du jeu et se charge, comme n'importe quel modèle ;
+/// ses douze parties sont des nodes, aux noms que le jeu leur donne.
+#[test]
+fn t_mannequin_compile_et_se_charge() {
+    for (name, bytes) in ax_cli::mannequin_files() {
+        let options = options(name, bytes, false);
+        let compiled = compile_source(bytes, SourceFormat::Glb, |_| None, &options)
+            .unwrap_or_else(|error| panic!("{name} : compilation refusée — {error}"));
+        let limits = A3dLimits::new(max_compiled_bytes());
+        validate_container(&compiled.bytes, limits)
+            .unwrap_or_else(|error| panic!("{name} : le conteneur ne se chargerait pas — {error}"));
+        let file = A3dFile::open(&compiled.bytes, limits).expect("conteneur");
+        let section = file
+            .section(SectionTag::NODE)
+            .expect("section NODE lisible")
+            .expect("section NODE présente");
+        let table = decode_nodes(&section).expect("nodes");
+        for part in [
+            "head",
+            "hat",
+            "body",
+            "jacket",
+            "right_arm",
+            "right_sleeve",
+            "left_arm",
+            "left_sleeve",
+            "right_leg",
+            "right_pants",
+            "left_leg",
+            "left_pants",
+        ] {
+            assert!(
+                table.names.iter().any(|node| node == part),
+                "{name} : la partie « {part} » manque aux nodes {:?}",
+                table.names
+            );
+        }
+    }
+}
