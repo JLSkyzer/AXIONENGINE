@@ -37,6 +37,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 | [ADR-175](ADR-175.md) | Le contenu qui évolue sous les sauvegardes, et le rechargement à chaud (CAP-38, CAP-33) | 2026-11-18 | accepté |
 | [ADR-176](ADR-176.md) | Énergie, démarrage, usure des pneus et météo (CAP-12, CAP-20) | 2026-11-18 | accepté |
 | [ADR-177](ADR-177.md) | La pose et l'échelle des occupants, et le mannequin du joueur (CAP-13, CAP-56 ; la direction de CAP-14) | 2026-11-18 | accepté |
+| [ADR-178](ADR-178.md) | Un joueur debout sur une assembly : la collision, le support, le transport et la poussée (CAP-14) | 2026-11-25 | proposé |
 | [ADR-170](ADR-170.md) | La caméra de véhicule et le tableau de bord (CAP-10) | 2026-11-15 | accepté |
 | [ADR-168](ADR-168.md) | La prédiction du véhicule piloté : monde prédit, corrections, rejeu | 2026-11-12 | accepté |
 | [ADR-167](ADR-167.md) | Les paramètres d'une instance : réglage à chaud, causes composées, contrôleurs de véhicule | 2026-11-12 | accepté |
