@@ -319,6 +319,8 @@ class PersistedStateTest {
         modificateur.putString("parameter", "poids");
         params.add(modificateur);
         stored.put("axion:params", params);
+        // ADR-176 D4 : l'usure des pneus se nomme par roue, et une roue se nomme par son node.
+        AssemblyTags.putWheels(stored, java.util.Map.of("porte_g", 0.25, "autre", 0.5));
 
         dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(
                 com.google.gson.JsonParser.parseString("{\"schema\": 7, \"revision\": 3, \"migrations\": ["
@@ -338,6 +340,8 @@ class PersistedStateTest {
         assertTrue(stored.getCompound("axion:nodes").contains("porte_conducteur")
                 && !stored.getCompound("axion:nodes").contains("porte_g"));
         assertEquals("porte_conducteur", stored.getCompound("axion:nodes").getCompound("vitre").getString("swap"));
+        assertEquals(java.util.Map.of("porte_conducteur", 0.25, "autre", 0.5), AssemblyTags.wheels(stored),
+                "l'usure d'une roue renommée la suit");
         assertEquals("attelage", stored.getList("axion:atts", 10).getCompound(0).getString("socket"));
         assertEquals("mass", stored.getList("axion:params", 10).getCompound(0).getString("parameter"));
         assertEquals(99L, AssemblyTags.definition(stored).orElseThrow(), "liée à l'identifiant que la definition a pris");

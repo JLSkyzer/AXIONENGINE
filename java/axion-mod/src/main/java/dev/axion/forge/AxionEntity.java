@@ -133,6 +133,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Le carburant et la batterie (ADR-176 D3) ; {@code NaN} tant qu'on ne les a pas lus. */
     private double fuel = Double.NaN;
     private double battery = Double.NaN;
+    /** L'usure des pneus gardée par la sauvegarde, par nom de roue, dans l'ordre où elle l'a écrite (ADR-176 D4). */
+    private Map<String, Double> savedWheels = Map.of();
+    /** Vrai une fois que l'usure de chaque roue a été lue de la sauvegarde, la definition connue. */
+    private boolean wearInit;
+    /** Vrai tant que le natif n'a pas reçu l'usure que Java tient ({@code SET_WEAR}). */
+    private boolean wearPending;
     /** L'énergie gardée par la sauvegarde, ou {@code null}. */
     private double[] savedEnergy;
     /** Vrai tant que le natif n'a pas reçu l'énergie que Java tient ({@code SET_ENERGY}). */
@@ -2917,7 +2923,70 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         wheelGround[wheel] = grounded;
         wheelSlipLong[wheel] = slipLong;
         wheelSlipLat[wheel] = slipLat;
-        wheelWear[wheel] = wear;
+        // ADR-176 D4 : tant que l'usure relue ou posée n'est pas partie au natif, un rapport ne la remplace pas.
+        initWear();
+        if (!wearPending) {
+            wheelWear[wheel] = wear;
+        }
+    }
+
+    /**
+     * Donne à l'usure de chaque roue sa valeur de départ, la première fois qu'on la lit, la definition connue : celle que
+     * la sauvegarde gardait pour son nom, 0 pour une roue nouvelle (ADR-176 D4, CAP-38). Une roue que la sauvegarde nomme
+     * et que la definition n'a plus est gardée telle quelle à la sauvegarde suivante (R-1710), et dite une fois (E-7012).
+     */
+    private void initWear() {
+        List<String> names = wheelNodes();
+        if (wearInit || names.isEmpty()) {
+            return;
+        }
+        wearInit = true;
+        if (wheelWear.length < names.size()) {
+            wheelWear = Arrays.copyOf(wheelWear, names.size());
+        }
+        for (int rank = 0; rank < names.size(); rank++) {
+            Double saved = savedWheels.get(names.get(rank));
+            if (saved != null) {
+                wheelWear[rank] = saved.floatValue();
+            }
+        }
+        if (!savedWheels.isEmpty()) {
+            wearPending = true;
+            List<String> gone = savedWheels.keySet().stream().filter(name -> !names.contains(name)).toList();
+            if (!gone.isEmpty()) {
+                LOGGER.warn("AXION : E-7012 assembly {} — usure gardée pour des roues que {} ne déclare plus : {}",
+                        getUUID(), definitionId, gone);
+            }
+        }
+    }
+
+    /**
+     * Pose l'usure du pneu d'une roue (ADR-176 D4) ; le natif la reçoit par {@code SET_WEAR}, sans que le véhicule soit
+     * réveillé.
+     *
+     * @param wheel le rang de la roue dans la definition
+     * @param value l'usure, de 0 à 1
+     * @throws IllegalArgumentException si la roue n'existe pas, ou si l'usure n'est pas un nombre de 0 à 1
+     */
+    public void setWear(int wheel, double value) {
+        AuthoritativeThread.require();
+        initWear();
+        if (wheel < 0 || wheel >= wheelNodes().size()) {
+            throw new IllegalArgumentException("roue " + wheel + " : la definition en déclare " + wheelNodes().size());
+        }
+        if (!Double.isFinite(value) || value < 0.0 || value > 1.0) {
+            throw new IllegalArgumentException("usure : un nombre de 0 à 1, et non " + value);
+        }
+        wheelWear[wheel] = (float) value;
+        wearPending = true;
+    }
+
+    /** {@return vrai une seule fois, quand l'usure que Java tient doit partir au natif ({@code SET_WEAR})} */
+    boolean takeWearPush() {
+        initWear();
+        boolean push = wearPending;
+        wearPending = false;
+        return push;
     }
 
     /**
@@ -2926,6 +2995,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param wheel le rang de la roue dans la definition
      */
     public float wheelWear(int wheel) {
+        initWear();
         return wheel >= 0 && wheel < wheelWear.length ? wheelWear[wheel] : 0f;
     }
 
@@ -3149,6 +3219,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // Le prochain corps natif naît plein : l'énergie que Java tient lui est rendue.
         if (!Double.isNaN(fuel) && energySpec().declared()) {
             energyPending = true;
+        }
+        // De même l'usure des pneus : le corps neuf naît avec des pneus neufs.
+        if (wearInit) {
+            wearPending = true;
         }
     }
 
@@ -3540,6 +3614,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-153 D3 : l'état gardé, rendu à la création de l'assembly ; ses vitesses et ses corps
         // secondaires sont aussi ceux que la sauvegarde suivante réécrit, tant que l'assembly dort.
         // ADR-176 D3 : le carburant et la batterie gardés, bornés aux capacités de la definition quand elle est connue.
+        savedWheels = AssemblyTags.wheels(stored);
+        wheelWear = new float[0];
+        wearInit = false;
+        wearPending = false;
         savedEnergy = AssemblyTags.energy(stored);
         fuel = Double.NaN;
         battery = Double.NaN;
@@ -3663,6 +3741,23 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (!inert && energySpec().declared()) {
             initEnergy();
             AssemblyTags.putEnergy(stored, fuel, battery);
+        }
+        // ADR-176 D4 : l'usure des pneus, par nom de roue ; celle d'une roue que la definition ne déclare plus reste.
+        initWear();
+        if (!inert && wearInit) {
+            Map<String, Double> wear = new java.util.LinkedHashMap<>();
+            List<String> names = wheelNodes();
+            for (int rank = 0; rank < names.size(); rank++) {
+                if (wheelWear[rank] > 0f) {
+                    wear.put(names.get(rank), (double) wheelWear[rank]);
+                }
+            }
+            savedWheels.forEach((name, value) -> {
+                if (!names.contains(name) && value > 0.0) {
+                    wear.put(name, value);
+                }
+            });
+            AssemblyTags.putWheels(stored, wear);
         }
         // ADR-174 D3 : l'état des nodes, par nom, une fois relu ; sinon, celui que son NBT portait reste.
         if (!inert && nodesRestored) {

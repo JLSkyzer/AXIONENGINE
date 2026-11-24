@@ -65,6 +65,7 @@ class PublishedPersistenceSchemaTest {
         AssemblyTags.putControllers(stored, List.of("turbo:gestion"));
         AssemblyTags.putRevision(stored, 3, "0".repeat(64));
         AssemblyTags.putEnergy(stored, 12.5, 0.75);
+        AssemblyTags.putWheels(stored, java.util.Map.of("roue_arriere_gauche", 0.5));
 
         Set<String> publiees = new TreeSet<>();
         Matcher matcher = KEY_LINE.matcher(published());

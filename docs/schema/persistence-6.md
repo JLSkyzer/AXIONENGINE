@@ -35,6 +35,7 @@ axion:ctrls   list      contrôleurs de véhicule attachés par l'API, dans l'or
 axion:rev     int       révision de la definition à laquelle l'état a été écrit (ADR-175 D3), 1 si absente
 axion:sha     string    empreinte SHA-256 du contenu de cette definition, en hexadécimal
 axion:energy  compound  carburant et batterie d'un véhicule à énergie déclarée (ADR-176 D3), absente sans énergie
+axion:wheels  compound  usure de chaque pneu, par nom de roue (ADR-176 D4), absente si aucun pneu n'est usé
 ```
 
 - **`axion:bodies`**, pour chaque corps autre que le corps racine : `node u32` (node racine du corps dans
@@ -101,6 +102,18 @@ Le carburant et la charge de la batterie d'un véhicule dont la definition décl
 absente, non finie ou négative vaut zéro, et la capacité de la definition borne le reste : un NBT ne fait pas foi. Une
 assembly relue avec cette clé envoie son énergie au natif (`SET_ENERGY`) avant son premier pas ; sans elle, elle naît
 pleine. Le schéma NBT reste à 6 : la clé est optionnelle, et un build qui l'ignore la garde à la réécriture.
+
+### `axion:wheels`
+
+L'usure du pneu de chaque roue d'un véhicule (ADR-176 D4, CAP-38) : un compound qui associe le **nom de la roue** — le
+`node` de son entrée dans `wheels` — à un `double` de 0 à 1. Une roue dont le pneu est neuf n'y figure pas. Une valeur
+absente, non finie ou négative vaut zéro, et au-delà de 1 elle vaut 1 : un NBT ne fait pas foi.
+
+La lecture rapproche par **nom**, jamais par rang : une roue ajoutée, retirée ou réordonnée ne décale pas les autres. Une roue
+nouvelle naît à 0 ; une entrée dont la definition n'a plus la roue est gardée telle quelle à la sauvegarde suivante (R-1710)
+et dite une fois au journal (`E-7012`). Les migrations de renommage des `nodes` (ADR-175 D3) renomment ses clés. Une
+assembly relue avec cette clé envoie l'usure au natif (`SET_WEAR`) avant son premier pas ; sans elle, ses pneus sont neufs.
+Le schéma NBT reste à 6 : la clé est optionnelle, comme `axion:energy`.
 
 ### `axion:ctrls`
 

@@ -532,6 +532,52 @@ public final class PersistanceGameTests {
     }
 
     /**
+     * ADR-176 D4 : l'usure des pneus se sauve par nom de roue ({@code axion:wheels}) et se relit : une assembly relue repart
+     * du natif avec les pneus qu'elle avait, non neufs — {@code SET_WEAR} avant son premier pas.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 500)
+    public static void adr176_LUsureDesPneusSeSauveParNomEtSeRelit(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_pneus",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), DROIT);
+        AxionEntity[] relue = {null};
+        double[] sauve = {0.0};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.wheelNodes().size() == 4,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> vehicule.drive(new dev.axion.api.vehicle.DriverInput(1.0, 0, 0, 0, 0, 1)))
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.wheelWear(2) > 0.05f,
+                        "le pneu arrière gauche s'est usé : " + vehicule.wheelWear(2)))
+                .thenExecute(() -> {
+                    vehicule.drive(dev.axion.api.vehicle.DriverInput.NONE);
+                    CompoundTag sauvegarde = new CompoundTag();
+                    helper.assertTrue(vehicule.save(sauvegarde), "sauvegarde refusée");
+                    CompoundTag roues = sauvegarde.getCompound("axion:wheels");
+                    String nom = vehicule.wheelNodes().get(2);
+                    helper.assertTrue(roues.contains(nom), "l'usure se garde sous le nom de la roue : " + roues);
+                    sauve[0] = roues.getDouble(nom);
+                    helper.assertTrue(sauve[0] > 0.05, "l'usure sauvée : " + sauve[0]);
+                    vehicule.discard();
+                    relue[0] = rechargerSauvegarde(helper, sauvegarde);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].hasPhysicalBounds() && relue[0].wheelNodes().size() == 4,
+                        "l'assembly relue est simulée"))
+                .thenExecute(() -> {
+                    // L'assembly relue roule encore sur son élan : l'usure a pu monter de quelques millièmes depuis la
+                    // sauvegarde, jamais descendre ni repartir de zéro.
+                    helper.assertTrue(relue[0].wheelWear(2) >= sauve[0] - 1e-3 && relue[0].wheelWear(2) < sauve[0] + 0.05,
+                            "Java tient l'usure sauvée : " + relue[0].wheelWear(2) + " pour " + sauve[0]);
+                    // Un véhicule relu dort, et le natif ne rapporte pas un véhicule qui dort : on le roule.
+                    relue[0].drive(new dev.axion.api.vehicle.DriverInput(0.2, 0, 0, 0, 0, 1));
+                })
+                .thenExecuteFor(10, () -> { })
+                .thenExecute(() -> helper.assertTrue(relue[0].wheelWear(2) >= sauve[0] - 1e-3,
+                        "le natif repart de l'usure sauvée, non de pneus neufs : " + relue[0].wheelWear(2) + " pour "
+                                + sauve[0]))
+                .thenSucceed();
+    }
+
+    /**
      * ADR-176 D3 : le carburant et la batterie se sauvent ({@code axion:energy}) et se relisent : une assembly relue à
      * demi pleine repart du natif à demi pleine — {@code SET_ENERGY} avant son premier pas —, non pleine comme tout corps
      * neuf, et sa masse suit.

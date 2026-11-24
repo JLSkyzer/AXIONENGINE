@@ -492,6 +492,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         control(stream);
         drive(stream);
         energy(stream);
+        wear(stream);
         tune(stream, tick);
         export(stream);
         return stream;
@@ -585,6 +586,20 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         ledger.forEachBody((index, assembly) -> {
             if (assembly.takeEnergyPush()) {
                 stream.setEnergy(index, GENERATION, (float) assembly.fuel(), (float) assembly.battery());
+            }
+        });
+    }
+
+    /**
+     * Pousse au natif l'usure des pneus que Java tient d'une assembly relue d'une sauvegarde, ou dont le corps a été
+     * recréé (ADR-176 D4) : un {@code SET_WEAR} par roue, après la création, avant son premier pas ; il ne réveille pas.
+     */
+    private void wear(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            if (assembly.takeWearPush()) {
+                for (int wheel = 0; wheel < assembly.wheelNodes().size(); wheel++) {
+                    stream.setWear(index, GENERATION, wheel, assembly.wheelWear(wheel));
+                }
             }
         });
     }

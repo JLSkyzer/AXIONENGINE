@@ -62,6 +62,9 @@ final class AssemblyTags {
     /** Le carburant et la batterie (ADR-176 D3) : {@code {fuel, battery}}, en {@code double}. */
     static final String ENERGY = "axion:energy";
 
+    /** L'usure des pneus (ADR-176 D4) : un compound {@code <node de la roue> : double}, par nom de roue. */
+    static final String WHEELS = "axion:wheels";
+
     /**
      * Contrôleurs de véhicule attachés par l'API (ADR-167 D7, D9) : leurs identifiants, dans l'ordre de l'attache ;
      * absente sans eux.
@@ -336,6 +339,41 @@ final class AssemblyTags {
             list.add(net.minecraft.nbt.StringTag.valueOf(id));
         }
         stored.put(CONTROLLERS, list);
+    }
+
+    /**
+     * Écrit l'usure des pneus, par nom de roue (ADR-176 D4, CAP-38) ; sans aucune, la clé est retirée.
+     *
+     * @param stored les clés gardées
+     * @param wear l'usure de chaque roue, par le nom de son node, dans [0, 1]
+     */
+    static void putWheels(CompoundTag stored, Map<String, Double> wear) {
+        if (wear.isEmpty()) {
+            stored.remove(WHEELS);
+            return;
+        }
+        CompoundTag wheels = new CompoundTag();
+        wear.forEach(wheels::putDouble);
+        stored.put(WHEELS, wheels);
+    }
+
+    /**
+     * {@return l'usure gardée, par nom de roue, dans l'ordre de la sauvegarde ; vide sans {@code axion:wheels}} Une valeur
+     * absente, non finie ou négative vaut zéro, et au-delà de 1 elle vaut 1 : un NBT ne fait pas foi (obligation 3.13).
+     *
+     * @param stored les clés gardées
+     */
+    static Map<String, Double> wheels(CompoundTag stored) {
+        Map<String, Double> saved = new java.util.LinkedHashMap<>();
+        if (!stored.contains(WHEELS, Tag.TAG_COMPOUND)) {
+            return saved;
+        }
+        CompoundTag wheels = stored.getCompound(WHEELS);
+        for (String name : wheels.getAllKeys()) {
+            double value = wheels.contains(name, Tag.TAG_DOUBLE) ? wheels.getDouble(name) : 0.0;
+            saved.put(name, Double.isFinite(value) ? Math.max(0.0, Math.min(1.0, value)) : 0.0);
+        }
+        return saved;
     }
 
     /**
@@ -664,6 +702,9 @@ final class AssemblyTags {
                 }
             }
             count += renameKeys(variables, migration.of("variables"));
+        }
+        if (stored.contains(WHEELS, Tag.TAG_COMPOUND)) {
+            count += renameKeys(stored.getCompound(WHEELS), nodes);
         }
         count += renameField(stored, ATTACHMENTS, "socket", migration.of("sockets"));
         count += renameField(stored, PARAMETERS, "parameter", migration.of("parameters"));
