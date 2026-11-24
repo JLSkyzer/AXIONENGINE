@@ -91,7 +91,7 @@ public final class ProceduralTracks {
 
     /** Ce qu'une source lit. Celles d'une roue ou d'un siège portent un rang. */
     private enum Source {
-        WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND,
+        WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND, WHEEL_WEAR,
         SPEED, FORWARD_SPEED, THROTTLE, BRAKE, STEER, HANDBRAKE,
         RPM, LOAD, RUNNING,
         FUEL, FUEL_RATIO, BATTERY,
@@ -559,6 +559,7 @@ public final class ProceduralTracks {
                 case "steer_angle" -> Source.WHEEL_STEER;
                 case "compression" -> Source.WHEEL_COMPRESSION;
                 case "on_ground" -> Source.WHEEL_ON_GROUND;
+                case "wear" -> Source.WHEEL_WEAR;
                 default -> null;
             };
             case "seat" -> named && "occupied".equals(field) ? Source.SEAT_OCCUPIED : null;
@@ -616,7 +617,8 @@ public final class ProceduralTracks {
             Map<String, Integer> sockets, Map<String, Integer> sensors,
             Variables variables) {
         return switch (kind) {
-            case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheels.get(element(source));
+            case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND, WHEEL_WEAR ->
+                    wheels.get(element(source));
             case SEAT_OCCUPIED -> seats.get(element(source));
             case SENSOR_COUNT -> sensors.get(element(source));
             case ATTACH_LENGTH, ATTACH_TENSION, ATTACHED, SOCKET_MISALIGNMENT -> sockets.get(element(source));
@@ -750,7 +752,7 @@ public final class ProceduralTracks {
     private Double raw(Reading track, Frame frame) {
         Interpolation.VehiclePose vehicle = frame.vehicle();
         return switch (track.source()) {
-            case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND -> wheel(track, frame);
+            case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND, WHEEL_WEAR -> wheel(track, frame);
             case SEAT_OCCUPIED -> track.index() < frame.seats().length ? flag(frame.seats()[track.index()]) : null;
             case SENSOR_COUNT -> (double) frame.sensors().count(track.index());
             case ATTACHED -> socket(frame, track.index(), 0);
@@ -808,6 +810,7 @@ public final class ProceduralTracks {
             case WHEEL_SPIN -> track.index() < frame.spinAngles().length ? frame.spinAngles()[track.index()] : 0.0;
             case WHEEL_STEER -> (double) wheel.steer();
             case WHEEL_COMPRESSION -> (double) wheel.compression();
+            case WHEEL_WEAR -> (double) wheel.wear();
             default -> flag(wheel.onGround());
         };
     }

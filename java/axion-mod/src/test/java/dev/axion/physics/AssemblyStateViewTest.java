@@ -102,4 +102,27 @@ class AssemblyStateViewTest {
         assertEquals(0.0, AssemblyStateView.errors(blocDeVehicule(0, 0), blocDeVehicule(1e-12, 0)).energy(), 1e-8,
                 "sous le plancher, le bruit ne compte pas");
     }
+
+    /** Un bloc d'un corps et d'un véhicule à une roue, au format v3 d'{@code world::state} : l'usure de la roue. */
+    private static byte[] blocAUneRoue(double usure) {
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 72 + 40).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 3).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 1);
+        b.position(16 + 64 + 72 + 32);
+        b.putDouble(usure);
+        return b.array();
+    }
+
+    @Test
+    @DisplayName("ADR-176 D4 : le bloc porte l'usure de chaque pneu ; l'écart est le plus grand écart absolu")
+    void usure() {
+        AssemblyStateView.Vehicle v = AssemblyStateView.vehicle(blocAUneRoue(0.375));
+        assertEquals(1, v.wheels().size());
+        assertEquals(0.375, v.wheels().get(0).wear());
+        AssemblyStateView.Errors e = AssemblyStateView.errors(blocAUneRoue(0.1), blocAUneRoue(0.4));
+        assertEquals(0.3, e.wear(), 1e-12);
+        assertFalse(e.within(1, 1, 1, 1, 0.01), "une usure posée par le serveur force une correction");
+        assertTrue(e.within(1, 1, 1, 1, 0.5));
+        assertTrue(AssemblyStateView.errors(blocAUneRoue(0.1), blocAUneRoue(0.1 + 0.003)).within(1, 1, 1, 1, 0.01),
+                "un cran d'écart ne corrige pas");
+    }
 }

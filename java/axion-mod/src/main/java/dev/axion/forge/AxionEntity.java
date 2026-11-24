@@ -3151,7 +3151,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private AssemblyState.Wheels wheelStates() {
         return wheelCompression.length == 0
                 ? AssemblyState.Wheels.NONE
-                : AssemblyState.Wheels.of(wheelCompression, wheelSpin, wheelSteer, wheelGround);
+                : AssemblyState.Wheels.of(wheelCompression, wheelSpin, wheelSteer, wheelGround, wheelWear);
     }
 
     /** {@return l'état des pistes lissées de l'assembly (client, thread de rendu, ADR-163 D3)} */

@@ -109,6 +109,7 @@ public final class PredictedStates {
         float[] spin = new float[count];
         float[] steer = new float[count];
         boolean[] ground = new boolean[count];
+        float[] wear = new float[count];
         for (WheelReport wheel : reports) {
             if (wheel.handleIndex() == handle && wheel.handleGeneration() == generation && wheel.index() >= 0
                     && wheel.index() < count) {
@@ -116,9 +117,10 @@ public final class PredictedStates {
                 spin[wheel.index()] = wheel.spinSpeed();
                 steer[wheel.index()] = wheel.steerAngle();
                 ground[wheel.index()] = wheel.onGround();
+                wear[wheel.index()] = wheel.wear();
             }
         }
-        return AssemblyState.Wheels.of(compression, spin, steer, ground);
+        return AssemblyState.Wheels.of(compression, spin, steer, ground, wear);
     }
 
     private static AssemblyState.Vehicle vehicle(List<VehicleReport> reports, int handle, int generation,

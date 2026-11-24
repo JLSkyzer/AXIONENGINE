@@ -397,9 +397,9 @@ final class DefinitionChecker {
             }
             String rest = value.substring(head.length());
             if (!family.named()) {
-                if (!family.fields().contains(rest)) {
+                if (!family.fieldsAt(version).contains(rest)) {
                     invalid(path, "« " + rest + " » inconnu pour " + family.prefix()
-                            + " ; admis : " + String.join(", ", family.fields()));
+                            + " ; admis : " + String.join(", ", family.fieldsAt(version)));
                 }
                 return;
             }
@@ -421,9 +421,9 @@ final class DefinitionChecker {
             }
             String name = rest.substring(0, dot);
             String field = rest.substring(dot + 1);
-            if (!family.fields().contains(field)) {
+            if (!family.fieldsAt(version).contains(field)) {
                 invalid(path, "« " + field + " » inconnu pour " + family.prefix()
-                        + " ; admis : " + String.join(", ", family.fields()));
+                        + " ; admis : " + String.join(", ", family.fieldsAt(version)));
                 return;
             }
             if (validName(name, path) && family.category() != null) {

@@ -29,7 +29,7 @@ class ProceduralTracksTest {
     }
 
     private static final List<WheelPose> ROUES =
-            List.of(new WheelPose(0.5f, 10f, 0.25f, true), new WheelPose(-0.5f, 0f, 0f, false));
+            List.of(new WheelPose(0.5f, 10f, 0.25f, true, 0.25f), new WheelPose(-0.5f, 0f, 0f, false, 0.75f));
 
     private static ProceduralTracks.Frame roues(List<WheelPose> roues, double[] angles) {
         return ProceduralTracks.Frame.ofWheels(roues, angles);
@@ -141,6 +141,7 @@ class ProceduralTracksTest {
             {"transmission.gear", "-1"}, {"transmission.shifting", "0"},
             {"seat.conducteur.occupied", "1"}, {"seat.passager.occupied", "0"},
             {"wheel.roue_g.on_ground", "1"}, {"wheel.roue_d.on_ground", "0"},
+            {"wheel.roue_g.wear", "0.25"}, {"wheel.roue_d.wear", "0.75"},
             {"time.seconds", "4.5"}, {"world.time", "0.75"}, {"world.sky_light", "11"}, {"world.rain", "0.25"},
         };
         for (String[] attendu : attendus) {

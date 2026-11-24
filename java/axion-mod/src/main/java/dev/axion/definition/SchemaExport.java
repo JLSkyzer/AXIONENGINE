@@ -259,7 +259,7 @@ public final class SchemaExport {
             if (family.since() > version) {
                 continue;
             }
-            String fields = "(?:" + String.join("|", family.fields()) + ")";
+            String fields = "(?:" + String.join("|", family.fieldsAt(version)) + ")";
             if (!family.named()) {
                 alternatives.add(family.prefix() + "\\." + fields);
             } else if (family.fields().isEmpty()) {

@@ -230,7 +230,9 @@ class SnapshotCodecTest {
                 "descripteur 11, antérieur au compte des capteurs (ADR-174 D5)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(12).varUInt(0).toByteArray(),
                 "descripteur 12, antérieur à l'énergie du véhicule (ADR-176 D3)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(14).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(13).varUInt(0).toByteArray(),
+                "descripteur 13, antérieur à l'usure des pneus (ADR-176 D4)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(15).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -573,12 +575,12 @@ class SnapshotCodecTest {
     void adr159RouesMalFormees() {
         byte[] sain = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION,
                 List.of(SnapshotMessage.Entry.full(5, avecRoues(roues(0.5f, 10f))))).encode();
-        // Les roues terminent le message : n = 2, puis 2 × 4 octets, puis un octet de bits.
+        // Les roues terminent le message : n = 2, puis 2 × 5 octets (l'usure du pneu comprise), puis un octet de bits.
         byte[] trop = sain.clone();
-        trop[trop.length - 10] = (byte) (AssemblyState.Wheels.MAX_WHEELS + 1);
+        trop[trop.length - 12] = (byte) (AssemblyState.Wheels.MAX_WHEELS + 1);
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(trop), "trop de roues");
         byte[] horsBorne = sain.clone();
-        horsBorne[horsBorne.length - 9] = Byte.MIN_VALUE;
+        horsBorne[horsBorne.length - 11] = Byte.MIN_VALUE;
         assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(horsBorne), "compression -128");
         byte[] remplissage = sain.clone();
         remplissage[remplissage.length - 1] = (byte) 0xFF;
@@ -870,5 +872,25 @@ class SnapshotCodecTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new Modifier("a:" + "b".repeat(Modifier.MAX_LENGTH), "mass", Modifier.Operation.ADD, 1),
                 "cause trop longue refusée dès l'API");
+    }
+
+    @Test
+    @DisplayName("ADR-176 D4 : l'usure du pneu de chaque roue se quantifie au 1/255, part avec les roues et ne change le bloc qu'à un cran")
+    void adr176UsureDesPneus() throws MalformedPacketException {
+        AssemblyState.Wheels roues = AssemblyState.Wheels.of(new float[] {0.5f, 0f}, new float[] {10f, 0f},
+                new float[] {0.5f, 0f}, new boolean[] {true, false}, new float[] {0.4f, 1f});
+        assertEquals(0.4f, roues.wear(0), 1.0f / 255f);
+        assertEquals(1f, roues.wear(1));
+        assertEquals(0f, roues(0.5f, 10f).wear(0), "sans usure donnée, des pneus neufs");
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.full(5, avecRoues(roues)))).encode();
+        assertEquals(roues, SnapshotMessage.decode(octets).entries().get(0).wheels(), "l'usure fait le voyage");
+        // Un cran de moins que le plus proche : le même octet, le même bloc.
+        AssemblyState.Wheels memeCran = AssemblyState.Wheels.of(new float[] {0.5f, 0f}, new float[] {10f, 0f},
+                new float[] {0.5f, 0f}, new boolean[] {true, false}, new float[] {0.4f + 0.001f, 1f});
+        assertEquals(roues, memeCran, "en deçà d'un cran, rien ne change");
+        AssemblyState.Wheels autreCran = AssemblyState.Wheels.of(new float[] {0.5f, 0f}, new float[] {10f, 0f},
+                new float[] {0.5f, 0f}, new boolean[] {true, false}, new float[] {0.4f + 0.01f, 1f});
+        assertFalse(roues.equals(autreCran), "au franchissement d'un cran, il change");
     }
 }

@@ -983,4 +983,24 @@ class DefinitionSchemaTest {
                 + " \"actions\": [{\"refuel\": {\"litres\": 0}}]}]"));
         assertThrows(DefinitionException.class, () -> read(nul), "des litres strictement positifs");
     }
+
+    @Test
+    @DisplayName("ADR-176 D4 : la source wheel.<n>.wear n'existe qu'au schéma 7 ; une roue inconnue est refusée")
+    void laSourceDUsureDUneRoue() {
+        String piste = "{\"node\": \"roue_avant_gauche\", \"channel\": \"rotation\", \"axis\": \"x\", \"source\": \"%s\"}";
+        JsonObject bon = avecDemarreur();
+        bon.getAsJsonArray("procedural").add(JsonParser.parseString(String.format(piste, "wheel.roue_avant_gauche.wear")));
+        assertDoesNotThrow(() -> read(bon));
+
+        JsonObject inconnue = avecDemarreur();
+        inconnue.getAsJsonArray("procedural").add(JsonParser.parseString(String.format(piste, "wheel.roue_fantome.wear")));
+        assertThrows(DefinitionException.class, () -> read(inconnue), "une roue que la definition n'a pas");
+
+        JsonObject six = avecDemarreur();
+        at(six, "powertrain", "engine").remove("starter");
+        six.addProperty("schema", 6);
+        six.getAsJsonArray("procedural").add(JsonParser.parseString(String.format(piste, "wheel.roue_avant_gauche.wear")));
+        DefinitionException refus = assertThrows(DefinitionException.class, () -> read(six));
+        assertTrue(refus.path().startsWith("$.procedural["), refus.path());
+    }
 }

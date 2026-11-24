@@ -42,16 +42,38 @@ final class SchemaOne {
      *     vérifiable à la lecture (attache runtime, variable)
      * @param fields champs admis ; vide pour {@code var.<n>}, dont le nom est tout
      * @param since le premier schéma qui la connaît (R-2410)
+     * @param lateFields ceux de {@code fields} que seul le schéma 7 connaît (un champ ajouté à une famille ancienne :
+     *     les schémas publiés avant lui ne changent pas)
      */
-    record SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields, int since) {
+    record SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields, int since,
+            Set<String> lateFields) {
 
         SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields) {
-            this(prefix, named, category, fields, 1);
+            this(prefix, named, category, fields, 1, Set.of());
+        }
+
+        SourceFamily(String prefix, boolean named, NameCategory category, Set<String> fields, int since) {
+            this(prefix, named, category, fields, since, Set.of());
         }
 
         /** {@return cette famille, connue à partir de ce schéma} */
         SourceFamily since(int version) {
-            return new SourceFamily(prefix, named, category, fields, version);
+            return new SourceFamily(prefix, named, category, fields, version, lateFields);
+        }
+
+        /** {@return cette famille, dont ces champs ne sont connus qu'au schéma 7} */
+        SourceFamily late(String... names) {
+            return new SourceFamily(prefix, named, category, fields, since, ordered(names));
+        }
+
+        /** {@return les champs que le schéma {@code version} connaît} */
+        Set<String> fieldsAt(int version) {
+            if (version >= 7 || lateFields.isEmpty()) {
+                return fields;
+            }
+            Set<String> known = new java.util.LinkedHashSet<>(fields);
+            known.removeAll(lateFields);
+            return known;
         }
     }
 
@@ -66,7 +88,7 @@ final class SchemaOne {
             fixed("energy", "fuel", "fuel_ratio", "battery").since(7),
             fixed("transmission", "gear", "shifting"),
             named("wheel", NameCategory.WHEEL, "spin_angle", "steer_angle", "compression",
-                    "slip_long", "slip_lat", "on_ground", "damage"),
+                    "slip_long", "slip_lat", "on_ground", "damage", "wear").late("wear"),
             fixed("body", "linear_speed", "angular_speed", "pitch", "roll", "yaw",
                     "on_ground", "in_fluid"),
             named("part", NameCategory.PART, "health", "integrity", "stage", "absorbed",

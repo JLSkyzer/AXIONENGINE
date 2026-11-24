@@ -387,6 +387,10 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Velocity gap, in metres per second, below which the predicted state counts as the server's."),
     // ADR-176 D3 : un plein fait par le serveur ne passe pas par le flux d'entrées ; sans cet écart, le client garderait un
     // réservoir périmé tant qu'aucune autre dérive ne l'oblige à se corriger.
+    // ADR-176 D4 : une usure posée par le serveur (un pneu changé) ne passe pas non plus par le flux d'entrées. Un cran de
+    // l'octet du snapshot vaut 0,0039 : le seuil le dépasse, un pneu qui s'use de lui-même ne force aucune correction.
+    fp("net.prediction_tolerance_wear", 0.01, "Écart d'usure d'un pneu, de 0 à 1, en deçà duquel l'état prédit vaut celui du serveur.")
+        .en("Tyre wear gap, from 0 to 1, below which the predicted state counts as the server's."),
     fp("net.prediction_tolerance_energy", 0.01, "Écart de carburant ou de batterie, en fraction de la plus grande des deux valeurs, en deçà duquel l'état prédit vaut celui du serveur.")
         .en("Fuel or battery gap, as a fraction of the larger of the two values, below which the predicted state counts as the server's."),
     // ADR-168, précision 6c-C2 : autour du véhicule prédit, la distance jusqu'à laquelle les autres assemblies et les

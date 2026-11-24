@@ -327,7 +327,9 @@ public record AssemblyState(
         /** Aucune roue. */
         public static final Wheels NONE = new Wheels(0, new byte[0]);
 
-        private static final int RECORD_BYTES = 4;
+        /** Octets d'une roue : compression, rotation sur deux, braquage, puis l'usure du pneu (ADR-176 D4). */
+        private static final int RECORD_BYTES = 5;
+        private static final float WEAR_STEPS = 255f;
         private static final float COMPRESSION_STEPS = 127f / 2f;
         private static final float SPIN_STEPS = 8f;
         private static final float STEER_STEPS = (float) (127.0 / (Math.PI / 2.0));
@@ -371,6 +373,21 @@ public record AssemblyState(
          * @return leur état
          */
         public static Wheels of(float[] compression, float[] spin, float[] steer, boolean[] onGround) {
+            return of(compression, spin, steer, onGround, new float[compression.length]);
+        }
+
+        /**
+         * Quantifie l'état des roues, l'usure des pneus comprise (ADR-176 D4) : un octet par roue, au 1/255. Le bloc
+         * ne change qu'au franchissement d'un cran d'usure.
+         *
+         * @param compression compression de chaque roue, en fraction du débattement
+         * @param spin vitesse de rotation de chaque roue, en rad/s
+         * @param steer braquage de chaque roue, en radians
+         * @param onGround la roue touche le sol
+         * @param wear usure du pneu de chaque roue, dans [0, 1]
+         * @return leur état
+         */
+        public static Wheels of(float[] compression, float[] spin, float[] steer, boolean[] onGround, float[] wear) {
             int count = compression.length;
             byte[] packed = new byte[packedLength(count)];
             int grounds = count * RECORD_BYTES;
@@ -381,6 +398,8 @@ public record AssemblyState(
                 packed[at + 1] = (byte) (speed >> 8);
                 packed[at + 2] = (byte) speed;
                 packed[at + 3] = (byte) bounded(steer[wheel] * STEER_STEPS, Byte.MAX_VALUE);
+                packed[at + 4] = (byte) Math.max(0, Math.min(255, wheel < wear.length && Float.isFinite(wear[wheel])
+                        ? Math.round(wear[wheel] * WEAR_STEPS) : 0));
                 if (onGround[wheel]) {
                     packed[grounds + wheel / 8] |= (byte) (1 << (wheel % 8));
                 }
@@ -418,6 +437,14 @@ public record AssemblyState(
          */
         public float steer(int wheel) {
             return packed[at(wheel) + 3] / STEER_STEPS;
+        }
+
+        /**
+         * @param wheel rang de la roue
+         * @return l'usure de son pneu, dans [0, 1]
+         */
+        public float wear(int wheel) {
+            return (packed[at(wheel) + 4] & 0xFF) / WEAR_STEPS;
         }
 
         /**

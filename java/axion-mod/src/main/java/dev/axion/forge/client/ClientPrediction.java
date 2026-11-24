@@ -595,13 +595,14 @@ public final class ClientPrediction {
             double rotation = config.getFloat("net.prediction_tolerance_rotation_rad");
             double velocity = config.getFloat("net.prediction_tolerance_velocity_ms");
             double energy = config.getFloat("net.prediction_tolerance_energy");
+            double wear = config.getFloat("net.prediction_tolerance_wear");
             // D5 : deux mondes natifs ne calculent pas au bit près ; un bloc d'état illisible ne vaut jamais l'autre.
             // ADR-171 D7 : l'état comparé est celui de l'ensemble, membre à membre ; l'observateur des essais voit le
             // véhicule seul, comme avant.
             loop = new Prediction(System::nanoTime, config.getInt("net.prediction_replay_budget_ns"),
                     EnsembleState.tolerance((predicted, server) -> {
                         AssemblyStateView.Errors errors = AssemblyStateView.errors(predicted, server);
-                        return errors != null && errors.within(position, rotation, velocity, energy);
+                        return errors != null && errors.within(position, rotation, velocity, energy, wear);
                     }));
             loop.observe((predicted, server) -> observer.accept(vehicleOf(predicted), vehicleOf(server)));
         }
@@ -947,9 +948,14 @@ public final class ClientPrediction {
     private static dev.axion.render.ProceduralTracks.Frame predictedFrame(dev.axion.entity.VehicleSnapshot view,
             double[] values, VehicleInput input) {
         List<dev.axion.net.Interpolation.WheelPose> wheels = new java.util.ArrayList<>(view.wheels().size());
+        // ADR-176 D4 : l'usure du pneu est celle que le serveur a envoyée, comme la charge et les drapeaux du moteur.
+        java.util.List<dev.axion.net.Interpolation.WheelPose> shownWheels = vehicle.renderPose(1f).wheels();
+        int rank = 0;
         for (dev.axion.api.vehicle.WheelView wheel : view.wheels()) {
+            float wear = rank < shownWheels.size() ? shownWheels.get(rank).wear() : 0f;
+            rank++;
             wheels.add(new dev.axion.net.Interpolation.WheelPose((float) wheel.compression(), (float) wheel.spin(),
-                    (float) wheel.steer(), wheel.grounded()));
+                    (float) wheel.steer(), wheel.grounded(), wear));
         }
         dev.axion.net.Interpolation.VehiclePose shown = vehicle.renderPose(1f).vehicle();
         dev.axion.net.Interpolation.VehiclePose pose = new dev.axion.net.Interpolation.VehiclePose((float) view.rpm(),

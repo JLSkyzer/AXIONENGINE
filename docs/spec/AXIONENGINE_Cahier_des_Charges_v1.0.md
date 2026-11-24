@@ -5158,6 +5158,8 @@ Entrée d'assembly dans un snapshot :
                   compte chacun ; 16 au plus
   énergie (descripteur 13, protocole 14, amendement A27) : l'état du véhicule passe de 9 à 11
                   octets, le carburant puis la batterie en rapport de leur capacité, u8 au 1/255
+  usure des pneus (descripteur 14, protocole 15, amendement A27) : chaque roue passe de 4 à 5
+                  octets, l'usure de son pneu en dernier, u8 au 1/255 ; le bloc ne change qu'à un cran
 ```
 
 - R-1660 : la quantification est **déclarée par champ**, jamais implicite.
@@ -7981,7 +7983,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A24 | 2026-11-18 | ADR-173, accepté par Killian (tenu le 2026-11-18) | les sources procédurales de l'ANNEXE A.4 se lisent par l'API, des deux côtés (`source(String)` sur `VehicleView` et `Assembly`, CAP-43) ; la phase d'enregistrement du client naît avec son premier registre (CAP-45) ; ANNEXE A.4 : la lecture par l'API ; A.7 : CAP-43 et CAP-45 tenues |
 | A25 | 2026-11-18 | ADR-174, accepté par Killian (en cours, tranche par tranche ; 9a1, 9a2, 9c, 9b et 9d1 le 2026-11-18, 9d2, 9e, 9f, 9g1 et 9g2 le 2026-11-19, close ce jour : C-71 `/axion events`, `/axion defs info` dit événements et capteurs, 31.4 l'overlay `sensors`, A.7 CAP-02, CAP-04, CAP-05 et CAP-16 tenues ; `registerAction`, `registerInteraction`, `open_container` délégué, `sensorOccupants` au 23.3, R-1782 étendue ; `sensors` au schéma 7, `SET_SENSOR` et ABI 29, descripteur 12 au 21.5, `sensor.<n>.count` en A.4 ; variables `scope: "seat"`, descripteur 11 au 21.5, `axion:vars` au 22.2, `var.<n>.<siège>` en A.4 ; R-1440, la grammaire de `trigger`, `weight_source` et `mask`, descripteur 10 au 21.5, `SET_WEIGHT` et ABI 28 ; schéma 7 et ses `events`, R-1782 avec `swap_mesh` par node et `emit_event`, R-1783, descripteur 9 au 21.5, `S2C_Event` et protocole 13 au 21.4, `axion:nodes` au 22.2 ; 23.3 : les écouteurs des sièges, des interactions et des événements, `Assembly.emit`, `E-1012` ; A.3 : `content.listener_strikes`, `net.events_per_player_tick`) | événements de contenu déclarés, message `EVENT` (protocole 13), écouteurs typés et refusables, état des nodes sauvegardé et répliqué, `trigger` à grammaire fermée, poids et masque d'une couche, capteurs déclarables, registres des actions et des interactions (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) |
 | A26 | 2026-11-18 | ADR-175, accepté par Killian (en cours, tranche par tranche ; 10b et 10c le 2026-11-19 : 22.2 `axion:rev` et `axion:sha`, schéma de definition 7 `revision`, `migrations` et `replaces`, R-1783 ; 22.2 `axion:v` 6, `axion:body_names` et `axion:joint_names` ; A.1 `E-7012` ; 10e le 2026-11-20 : A.3 `content.rebind_per_tick`) | corps et joints sauvegardés par nom (NBT 6), restauration partielle nommée (`E-7012`), `revision`, `migrations` et `replaces`, une instance tient sa definition, reliure à chaud après une recompilation (CAP-38, CAP-33) |
-| A27 | 2026-11-18 | ADR-176, accepté par Killian (en cours, tranche par tranche ; 11a le 2026-11-20 : 12.5 R-1088, 12.8 R-1110 et `native_flags`, schéma 7 `starter`, ABI 30 ; 11b1 le 2026-11-20 : 12.5 R-1089, schéma 7 `energy`, `SET_ENERGY`, rapport à 32 octets, bloc d'état v2, ABI 31 ; 11b2 le 2026-11-20 : 22.2 `axion:energy`, cause `axion:energy` sur `mass` ; 11b3 le 2026-11-20 : descripteur 13, protocole 14, A.3 `prediction_tolerance_energy`, A.4 `energy.*` ; 11b4 le 2026-11-20 : `Assembly.energy()`, `/axion energy`, action `refuel`, buggy d'exemple à contact et réservoir ; 11c1 le 2026-11-20 : 12.4 R-1072, profil de pneu `wear`, `SET_WEAR`, rapport de roue à 40 octets, bloc d'état v3, ABI 32 ; 11c2 le 2026-11-24 : 22.2 `axion:wheels`) | état natif du moteur et démarreur (`IGNITION`), énergie déclarée et simulée, usure des pneus par roue, mouillé par véhicule et facteur par matériau et par pneu, causes `axion` du moteur ouvertes (CAP-12, CAP-20) |
+| A27 | 2026-11-18 | ADR-176, accepté par Killian (en cours, tranche par tranche ; 11a le 2026-11-20 : 12.5 R-1088, 12.8 R-1110 et `native_flags`, schéma 7 `starter`, ABI 30 ; 11b1 le 2026-11-20 : 12.5 R-1089, schéma 7 `energy`, `SET_ENERGY`, rapport à 32 octets, bloc d'état v2, ABI 31 ; 11b2 le 2026-11-20 : 22.2 `axion:energy`, cause `axion:energy` sur `mass` ; 11b3 le 2026-11-20 : descripteur 13, protocole 14, A.3 `prediction_tolerance_energy`, A.4 `energy.*` ; 11b4 le 2026-11-20 : `Assembly.energy()`, `/axion energy`, action `refuel`, buggy d'exemple à contact et réservoir ; 11c1 le 2026-11-20 : 12.4 R-1072, profil de pneu `wear`, `SET_WEAR`, rapport de roue à 40 octets, bloc d'état v3, ABI 32 ; 11c2 le 2026-11-24 : 22.2 `axion:wheels` ; 11c3 le 2026-11-24 : descripteur 14, protocole 15, A.3 `prediction_tolerance_wear`, A.4 `wheel.<n>.wear`) | état natif du moteur et démarreur (`IGNITION`), énergie déclarée et simulée, usure des pneus par roue, mouillé par véhicule et facteur par matériau et par pneu, causes `axion` du moteur ouvertes (CAP-12, CAP-20) |
 | A28 | 2026-11-18 | ADR-177, accepté par Killian (en cours, tranche par tranche) | `seats[].occupant` (pose, échelle, œil), mannequin du joueur généré et vérifié, `axion.mixins.json` non obligatoire (R-1921) ; 26.2 : la cible `Entity.collide`, acceptée pour CAP-14 (ADR-177 D4), son injection exacte décidée par l'ADR de CAP-14 (CAP-13, CAP-56, CAP-14) |
 
 ---
@@ -8198,6 +8200,7 @@ prediction_tolerance_position_m = 0.01
 prediction_tolerance_rotation_rad = 0.005
 prediction_tolerance_velocity_ms = 0.2
 prediction_tolerance_energy = 0.01
+prediction_tolerance_wear = 0.01
 prediction_proxy_radius = 32.0
 max_bytes_per_second_per_player = 32768
 max_packets_per_second = 40
@@ -8312,7 +8315,7 @@ VÉHICULE      vehicle.speed | forward_speed | throttle | brake | steer | handbr
               engine.rpm | load | running | transmission.gear | shifting
               energy.fuel | fuel_ratio | battery   (schéma 7, ADR-176 D3 : litres, puis rapports de 0 à 1)
               wheel.<n>.spin_angle | steer_angle | compression | slip_long |
-              slip_lat | on_ground | damage
+              slip_lat | on_ground | damage | wear   (wear : schéma 7, ADR-176 D4, de 0 à 1)
 CORPS         body.linear_speed | angular_speed | pitch | roll | yaw |
               on_ground | in_fluid
 PART          part.<n>.health | integrity | stage | absorbed | jammed | revealed

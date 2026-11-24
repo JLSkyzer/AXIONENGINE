@@ -107,8 +107,15 @@ public final class Interpolation {
      * @param spin vitesse de rotation, en rad/s
      * @param steer braquage, en radians
      * @param onGround elle touche le sol
+     * @param wear usure du pneu, dans [0, 1] (ADR-176 D4)
      */
-    public record WheelPose(float compression, float spin, float steer, boolean onGround) {}
+    public record WheelPose(float compression, float spin, float steer, boolean onGround, float wear) {
+
+        /** Une roue au pneu neuf. */
+        public WheelPose(float compression, float spin, float steer, boolean onGround) {
+            this(compression, spin, steer, onGround, 0f);
+        }
+    }
 
     /**
      * L'état affiché d'un véhicule (ADR-163 D1), et la vitesse de son corps racine.
@@ -536,7 +543,7 @@ public final class Interpolation {
         List<WheelPose> poses = new ArrayList<>(wheels.count());
         for (int wheel = 0; wheel < wheels.count(); wheel++) {
             poses.add(new WheelPose(wheels.compression(wheel), state.sleeping() ? 0f : wheels.spin(wheel),
-                    wheels.steer(wheel), wheels.onGround(wheel)));
+                    wheels.steer(wheel), wheels.onGround(wheel), wheels.wear(wheel)));
         }
         return List.copyOf(poses);
     }
@@ -554,7 +561,8 @@ public final class Interpolation {
                     (float) (from.compression() + (to.compression() - from.compression()) * s),
                     (float) (from.spin() + (to.spin() - from.spin()) * s),
                     (float) (from.steer() + (to.steer() - from.steer()) * s),
-                    to.onGround()));
+                    to.onGround(),
+                    (float) (from.wear() + (to.wear() - from.wear()) * s)));
         }
         return List.copyOf(wheels);
     }
@@ -571,7 +579,7 @@ public final class Interpolation {
     private static List<WheelPose> stopped(List<WheelPose> wheels) {
         List<WheelPose> still = new ArrayList<>(wheels.size());
         for (WheelPose wheel : wheels) {
-            still.add(new WheelPose(wheel.compression(), 0f, wheel.steer(), wheel.onGround()));
+            still.add(new WheelPose(wheel.compression(), 0f, wheel.steer(), wheel.onGround(), wheel.wear()));
         }
         return List.copyOf(still);
     }

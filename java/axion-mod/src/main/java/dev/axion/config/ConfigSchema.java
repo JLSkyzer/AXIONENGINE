@@ -922,6 +922,14 @@ public final class ConfigSchema {
                     false,
                     "Écart de vitesse, en mètres par seconde, en deçà duquel l'état prédit vaut celui du serveur."),
             new Option(
+                    "net.prediction_tolerance_wear",
+                    Kind.FLOAT,
+                    0.01,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
+                    false,
+                    false,
+                    "Écart d'usure d'un pneu, de 0 à 1, en deçà duquel l'état prédit vaut celui du serveur."),
+            new Option(
                     "net.prediction_tolerance_energy",
                     Kind.FLOAT,
                     0.01,
