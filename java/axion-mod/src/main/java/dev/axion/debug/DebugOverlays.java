@@ -55,6 +55,12 @@ public final class DebugOverlays {
          * bout du §31.4. En Java seul, comme les sockets : la definition déclare la forme, le client connaît la pose.
          */
         SENSORS("sensors", 1L << 35, Source.JAVA),
+        /**
+         * L'occupant de chaque siège, à la pose dessinée de son assembly : sa boîte mise à l'échelle, sa boîte de collision, qui
+         * ne change pas, et son œil (ADR-177, axe Diagnostic). Rang 36, au bout du §31.4. En Java seul : la definition
+         * déclare l'occupant, le client connaît la pose.
+         */
+        SEATS("seats", 1L << 36, Source.JAVA),
         /** Les tuiles de collision du monde (C-38, A1). Rang 30. */
         WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES, Source.PHYSICS),
         /** Le centre de masse de chaque corps (A1). Rang 31. */

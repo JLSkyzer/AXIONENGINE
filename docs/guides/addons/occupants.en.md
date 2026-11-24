@@ -25,8 +25,8 @@ All three keys are optional; a seat without `occupant` keeps Minecraft's pose, s
 
 AXION allows both, your choice:
 
-1. **Scale the model up or down** and keep `scale` at 1. The test repository's Charger, scaled ×1.5, is the example.
-2. **Keep the model at its real size** and set `scale`: the same Charger at 1, with `scale` at 0.67 (1 ÷ 1.5) on every seat.
+1. **Scale the model up or down** and keep `scale` at 1: a model scaled ×1.5 in Blender, for instance, around a Minecraft player who keeps their size.
+2. **Keep the model at its real size** and set `scale`: the same model at 1, with `scale` at 0.67 (1 ÷ 1.5) on every seat.
 
 The choice depends on what you want elsewhere. A model at its real size behaves like it does in the game wherever it is used
 (another body, another mod); a seat scale spares you from redoing a model you do not control.
@@ -44,6 +44,11 @@ The choice depends on what you want elsewhere. A model at its real size behaves 
 - Seated or standing, the server places the player at the same node; only the height differs (the mount offset, 0.35 m for a seated
   player).
 - The API writes these fields like the others: `seat("driver", s -> s.occupant(o -> o.scale(0.67)))`.
+
+## Seeing what the seat sets
+
+`/axion debug seats on` draws, at each seat, the occupant at the set scale and a cross at its eye in orange, and a player's collision box in grey,
+which the scale does not touch.
 
 The test definition `axion:test/siege_occupant` (in `content/test`) sets both seats; the GameTest
 `lOccupantReglePoseEchelleEtOeilEtSaBoiteResteCelleDuJoueur` checks its pose, scale, eye and box.

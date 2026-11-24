@@ -321,6 +321,17 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmOccupants {
+            // ADR-177, tranche 12a : l'occupant d'un siege regle (echelle, pose, oeil), quatre buggys d'essai
+            // (FilmDesOccupants).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-occupants')
+            property 'axion.film', 'occupants'
+            property 'axion.souris.libre', 'true'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmLimiteur {
             // ADR-167, sous-tranche 5c : le limiteur de vitesse de l'addon temoin, un controleur de vehicule attache
             // par l'API, et sa vitesse maximale, un parametre d'addon (FilmDesParametres).
@@ -659,7 +670,7 @@ tasks.matching { it.name == 'runFilmVues' }.configureEach {
 }
 
 ['runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur', 'runFilmMoteur': 'moteur',
-        'runFilmPneus': 'pneus', 'runFilmPluie': 'pluie'].each { tache, scene ->
+        'runFilmPneus': 'pneus', 'runFilmPluie': 'pluie', 'runFilmOccupants': 'occupants'].each { tache, scene ->
     tasks.matching { it.name == tache }.configureEach {
         standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
         doFirst {

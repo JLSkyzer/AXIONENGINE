@@ -25,8 +25,8 @@ Les trois clés sont facultatives ; un siège sans `occupant` garde la pose, l'�
 
 AXION laisse les deux, à toi de choisir :
 
-1. **Agrandir ou rapetisser le modèle**, et garder `scale` à 1. La Charger du dépôt de test, agrandie ×1,5, en est l'exemple.
-2. **Garder le modèle à sa taille réelle** et régler `scale` : la même Charger à 1, avec `scale` à 0,67 (1 ÷ 1,5) à chaque siège.
+1. **Agrandir ou rapetisser le modèle**, et garder `scale` à 1 : un modèle agrandi ×1,5 dans Blender, par exemple, dont le joueur de Minecraft garde la taille.
+2. **Garder le modèle à sa taille réelle** et régler `scale` : le même modèle à 1, avec `scale` à 0,67 (1 ÷ 1,5) à chaque siège.
 
 Le choix tient à ce que tu veux ailleurs. Un modèle à sa taille réelle se comporte comme dans le jeu partout où il sert (une autre
 carrosserie, un autre mod) ; une échelle de siège évite de refaire un modèle que tu ne contrôles pas.
@@ -44,6 +44,11 @@ carrosserie, un autre mod) ; une échelle de siège évite de refaire un modèle
 - Assis ou debout, le serveur pose le joueur au même node ; seule la hauteur diffère (le décalage de monture, 0,35 m pour un joueur
   assis).
 - L'API écrit ces champs comme les autres : `seat("conducteur", s -> s.occupant(o -> o.scale(0.67)))`.
+
+## Voir ce que le siège règle
+
+`/axion debug seats on` dessine, à chaque siège, en orange l'occupant à l'échelle réglée et une croix à son œil, et en gris la boîte de collision d'un
+joueur, que l'échelle ne touche pas.
 
 La definition de test `axion:test/siege_occupant` (dans `content/test`) règle les deux sièges ; le GameTest
 `lOccupantReglePoseEchelleEtOeilEtSaBoiteResteCelleDuJoueur` en vérifie la pose, l'échelle, l'œil et la boîte.

@@ -652,6 +652,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return ce que chaque siège règle de son occupant, dans l'ordre de la definition : l'overlay {@code seats}} Vide sans
+     * siège, ou avant que la definition ne soit compilée.
+     */
+    public List<Seating.Occupant> seatOccupants() {
+        Seating seating = seating();
+        return seating == null ? List.of() : seating.seats().stream().map(Seating.Seat::occupant).toList();
+    }
+
+    /**
      * {@return ce que son siège règle d'un passager (ADR-177 D1) : sa pose, son échelle, son œil} Sans siège connu, ou
      * avant que la definition ne soit compilée, c'est l'occupant que rien ne règle.
      *

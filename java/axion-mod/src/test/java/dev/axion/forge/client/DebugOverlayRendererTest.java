@@ -267,7 +267,7 @@ class DebugOverlayRendererTest {
                 couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
             }
         }
-        assertEquals(13, couleurs.size(), "treize overlays sans corps ni axes à colorer, treize couleurs");
+        assertEquals(14, couleurs.size(), "quatorze couleurs distinctes, seats comprise (ADR-177)");
         assertEquals(
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));
@@ -369,6 +369,52 @@ class DebugOverlayRendererTest {
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f, -l}, axes[0], 1e-5f);
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f + l, 0f}, axes[1], 1e-5f);
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, l, 4f, 0f}, axes[2], 1e-5f);
+    }
+
+    @Test
+    @DisplayName("ADR-177 D1 : l'overlay seats dessine la boîte mise à l'échelle autour du point du siège, la boîte de collision qui ne change pas, et l'œil")
+    void lesSieges() {
+        dev.axion.seat.SeatPlacement.Pose siege = new dev.axion.seat.SeatPlacement.Pose(10.0, 64.0, -3.0,
+                new float[] {0f, 0f, 0f, 1f});
+        // Assis, à l'échelle 0,5 : les pieds se rapprochent du siège avec le reste du corps.
+        float[][] petit = DebugOverlayRenderer.seatSegments(siege, new dev.axion.definition.Seating.Occupant(
+                dev.axion.definition.Seating.Pose.SIT, 0.5f, null), 10.0, 60.0, -3.0);
+        assertEquals(12 * DebugGeometry.FLOATS_PER_SEGMENT, petit[0].length, "douze arêtes à l'échelle");
+        assertEquals(12 * DebugGeometry.FLOATS_PER_SEGMENT, petit[1].length, "douze arêtes de collision");
+        assertEquals(3 * DebugGeometry.FLOATS_PER_SEGMENT, petit[2].length, "trois traits à l'œil");
+        assertEquals(4f - 0.175f, min(petit[0], 1), 1e-5f, "pieds : 4 au-dessus de la caméra, moins 0,35 × 0,5");
+        assertEquals(4f - 0.175f + 0.9f, max(petit[0], 1), 1e-5f, "tête : 1,8 × 0,5 plus haut");
+        assertEquals(0.15f, max(petit[0], 0), 1e-5f, "demi-largeur 0,3 × 0,5");
+        assertEquals(4f - 0.35f, min(petit[1], 1), 1e-5f, "collision : pieds à 0,35 sous le siège, sans échelle");
+        assertEquals(4f - 0.35f + 1.8f, max(petit[1], 1), 1e-5f);
+        assertEquals(4f + (1.62f - 0.35f) * 0.5f, petit[2][1], 1e-5f, "l'œil de Minecraft, multiplié par l'échelle");
+        // Debout : les pieds au siège ; un œil déclaré se lit dans le repère du siège, tourné comme lui.
+        float c = (float) Math.sqrt(0.5);
+        dev.axion.seat.SeatPlacement.Pose tourne = new dev.axion.seat.SeatPlacement.Pose(0, 0, 0, new float[] {0f, c, 0f, c});
+        float[][] debout = DebugOverlayRenderer.seatSegments(tourne, new dev.axion.definition.Seating.Occupant(
+                dev.axion.definition.Seating.Pose.STAND, 2f, new float[] {1f, 0.75f, 0f}), 0, 0, 0);
+        assertEquals(0f, min(debout[0], 1), 1e-5f, "debout : les pieds au point du siège");
+        assertEquals(3.6f, max(debout[0], 1), 1e-5f);
+        assertEquals(0f, debout[2][0] + DebugOverlayRenderer.EYE_MARK, 1e-4f, "x : un quart de tour envoie x sur -z, la croix est centrée");
+        assertEquals(0.75f, debout[2][1], 1e-5f);
+        assertEquals(-1f, debout[2][2], 1e-4f);
+        assertEquals(DebugOverlayRenderer.SEAT_COLOR, DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.SEATS, 0));
+    }
+
+    private static float min(float[] segments, int axis) {
+        float lowest = Float.POSITIVE_INFINITY;
+        for (int i = axis; i < segments.length; i += 3) {
+            lowest = Math.min(lowest, segments[i]);
+        }
+        return lowest;
+    }
+
+    private static float max(float[] segments, int axis) {
+        float highest = Float.NEGATIVE_INFINITY;
+        for (int i = axis; i < segments.length; i += 3) {
+            highest = Math.max(highest, segments[i]);
+        }
+        return highest;
     }
 
     @Test

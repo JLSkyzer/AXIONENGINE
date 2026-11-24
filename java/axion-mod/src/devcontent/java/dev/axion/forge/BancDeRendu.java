@@ -2334,9 +2334,29 @@ public final class BancDeRendu {
     private static void jugerSortieClient(Minecraft minecraft) {
         double horizontal = Math.hypot(minecraft.player.getX() - sortieAttendue.x, minecraft.player.getZ() - sortieAttendue.z);
         boolean vert = passagerAssis && horizontal < 0.05;
+        // Un écart qu'on ne reproduit pas en local (0,068 à 0,093 sur GitHub, 0,001 ici) se diagnostique par ses positions :
+        // le joueur, la sortie attendue, le siège au serveur et chez le client, le joueur au serveur.
+        String positions = "";
+        if (!vert) {
+            AxionEntity.RenderPose auClient = minecraft.level.getEntity(siege.getId()) instanceof AxionEntity assembly
+                    ? assembly.renderPose(1f) : null;
+            dev.axion.seat.SeatPlacement.Pose siegeServeur = siege.seatPose(1);
+            net.minecraft.server.level.ServerPlayer auServeur = minecraft.getSingleplayerServer() == null ? null
+                    : minecraft.getSingleplayerServer().getPlayerList().getPlayers().get(0);
+            positions = String.format(Locale.ROOT, " — client (%.3f, %.3f, %.3f), attendu (%.3f, %.3f, %.3f), siège au"
+                            + " serveur %s, assembly chez le client %s, joueur au serveur %s",
+                    minecraft.player.getX(), minecraft.player.getY(), minecraft.player.getZ(), sortieAttendue.x,
+                    sortieAttendue.y, sortieAttendue.z,
+                    siegeServeur == null ? "?" : String.format(Locale.ROOT, "(%.3f, %.3f, %.3f)", siegeServeur.x(),
+                            siegeServeur.y(), siegeServeur.z()),
+                    auClient == null ? "?" : String.format(Locale.ROOT, "(%.3f, %.3f, %.3f)", auClient.x(), auClient.y(),
+                            auClient.z()),
+                    auServeur == null ? "?" : String.format(Locale.ROOT, "(%.3f, %.3f, %.3f)", auServeur.getX(),
+                            auServeur.getY(), auServeur.getZ()));
+        }
         RAPPORT.noter("ADR-158 D5", vert, String.format(Locale.ROOT,
                 "joueur assis : %s ; descendu au sneak, son client est à %.3f bloc, à l'horizontale, de la sortie que le"
-                        + " serveur a choisie (au plus 0,05)", passagerAssis, horizontal));
+                        + " serveur a choisie (au plus 0,05)%s", passagerAssis, horizontal, positions));
     }
 
     private static void jugerSiegeClient(Minecraft minecraft) {

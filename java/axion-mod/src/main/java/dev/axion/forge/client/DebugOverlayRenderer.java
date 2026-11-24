@@ -123,6 +123,22 @@ final class DebugOverlayRenderer {
     /** Couleur de l'overlay {@code sensors} : le volume d'un capteur déclaré (ADR-174 D5). */
     static final int SENSOR_COLOR = 0x9966FF;
 
+    /** Couleur de l'overlay {@code seats} : l'occupant mis à l'échelle et son œil (ADR-177 D1). */
+    static final int SEAT_COLOR = 0xFFAA33;
+
+    /** Largeur et hauteur de la boîte d'un joueur debout, en blocs : celle que l'échelle d'un occupant ne touche pas. */
+    static final float PLAYER_WIDTH = 0.6f;
+
+    static final float PLAYER_HEIGHT = 1.8f;
+
+    /** La hauteur des yeux d'un joueur debout, et son décalage de monture assis, de Minecraft. */
+    static final float PLAYER_EYE = 1.62f;
+
+    static final float PLAYER_RIDING_OFFSET = -0.35f;
+
+    /** Demi-longueur des trois traits qui marquent l'œil, en blocs. */
+    static final float EYE_MARK = 0.12f;
+
     /** Segments d'un cercle de capteur sphérique. */
     static final int SENSOR_CIRCLE_SEGMENTS = 24;
 
@@ -153,6 +169,7 @@ final class DebugOverlayRenderer {
     /** Sockets que {@code sockets} a dessinés à la dernière image. */
     private int socketsDrawn;
     private int sensorsDrawn;
+    private int seatsDrawn;
 
     /** Couleur de l'emprise d'une assembly retenue, dans {@code culling} (RGB). */
     static final int CULLING_KEPT = 0x40E040;
@@ -275,13 +292,15 @@ final class DebugOverlayRenderer {
         cullingDrawn = 0;
         socketsDrawn = 0;
         sensorsDrawn = 0;
+        seatsDrawn = 0;
+        boolean seats = overlays.isOn(DebugOverlays.Overlay.SEATS);
         boolean sensors = overlays.isOn(DebugOverlays.Overlay.SENSORS);
         boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
         boolean lod = overlays.isOn(DebugOverlays.Overlay.LOD);
         boolean culled = overlays.isOn(DebugOverlays.Overlay.CULLING);
         boolean sockets = overlays.isOn(DebugOverlays.Overlay.SOCKETS);
         if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && animation.ranges().isEmpty() && !network && !lod
-                && !culled && !sockets && !sensors)) {
+                && !culled && !sockets && !sensors && !seats)) {
             return;
         }
         RenderType type = RenderType.lines();
@@ -332,6 +351,9 @@ final class DebugOverlayRenderer {
         }
         if (sensors) {
             out = drawSensors(frame, out, type, scratch);
+        }
+        if (seats) {
+            out = drawSeats(frame, out, type, scratch);
         }
         if (out != null) {
             frame.buffers().endBatch(type);
@@ -413,6 +435,98 @@ final class DebugOverlayRenderer {
             }
         }
         return out;
+    }
+
+    /**
+     * L'overlay {@code seats} : pour chaque siège, l'occupant tel que la definition le règle — sa boîte mise à l'échelle et son
+     * œil — et, en gris, la boîte de collision qui ne change pas (ADR-177 D1, axe Diagnostic).
+     */
+    private VertexConsumer drawSeats(RenderBackend.Frame frame, VertexConsumer out, RenderType type, Vector3f scratch) {
+        Vec3 eye = frame.camera();
+        PoseStack.Pose last = frame.pose().last();
+        for (RenderBackend.Assembly assembly : frame.assemblies()) {
+            AxionEntity entity = assembly.entity();
+            List<dev.axion.definition.Seating.Occupant> occupants = entity.seatOccupants();
+            if (occupants.isEmpty()) {
+                continue;
+            }
+            AxionEntity.RenderPose shown = entity.renderPose(frame.partialTick());
+            for (int rank = 0; rank < occupants.size(); rank++) {
+                dev.axion.seat.SeatPlacement.Pose at = entity.seatPoseAt(rank, shown);
+                if (at == null) {
+                    continue;
+                }
+                if (out == null) {
+                    out = frame.buffers().getBuffer(type);
+                }
+                float[][] marks = seatSegments(at, occupants.get(rank), eye.x, eye.y, eye.z);
+                emit(out, last.pose(), last.normal(), scratch, marks[0], SEAT_COLOR);
+                emit(out, last.pose(), last.normal(), scratch, marks[1], TILE_COLOR);
+                emit(out, last.pose(), last.normal(), scratch, marks[2], SEAT_COLOR);
+                seatsDrawn++;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * {@return les segments de {@code seats} pour un siège, relatifs à la caméra : la boîte de l'occupant mise à l'échelle
+     * autour du point du siège, la boîte de collision d'un joueur, qui ne change pas, et trois traits en croix à son œil}
+     * Les deux boîtes, comme celle d'un joueur, restent alignées sur le monde ; ses pieds sont au point du siège, plus ou
+     * moins le décalage de monture assis, avant l'échelle.
+     *
+     * @param at la pose monde du node du siège
+     * @param occupant ce que le siège règle de son occupant
+     * @param cameraX position de la caméra
+     * @param cameraY position de la caméra
+     * @param cameraZ position de la caméra
+     */
+    static float[][] seatSegments(dev.axion.seat.SeatPlacement.Pose at, dev.axion.definition.Seating.Occupant occupant,
+            double cameraX, double cameraY, double cameraZ) {
+        float ox = (float) (at.x() - cameraX);
+        float oy = (float) (at.y() - cameraY);
+        float oz = (float) (at.z() - cameraZ);
+        float offset = occupant.pose() == dev.axion.definition.Seating.Pose.STAND ? 0f : PLAYER_RIDING_OFFSET;
+        float scale = occupant.scale();
+        float half = PLAYER_WIDTH / 2f;
+        float[] scaled = columnSegments(ox, oy + offset * scale, oz, half * scale, PLAYER_HEIGHT * scale);
+        float[] collision = columnSegments(ox, oy + offset, oz, half, PLAYER_HEIGHT);
+        float ex;
+        float ey;
+        float ez;
+        float[] declared = occupant.eye();
+        if (declared != null) {
+            float[] q = at.rotation();
+            Vector3f turned = new org.joml.Quaternionf(q[0], q[1], q[2], q[3])
+                    .transform(new Vector3f(declared[0], declared[1], declared[2]));
+            ex = ox + turned.x;
+            ey = oy + turned.y;
+            ez = oz + turned.z;
+        } else {
+            ex = ox;
+            ey = oy + (PLAYER_EYE + offset) * scale;
+            ez = oz;
+        }
+        float[] cross = {
+            ex - EYE_MARK, ey, ez, ex + EYE_MARK, ey, ez,
+            ex, ey - EYE_MARK, ez, ex, ey + EYE_MARK, ez,
+            ex, ey, ez - EYE_MARK, ex, ey, ez + EYE_MARK,
+        };
+        return new float[][] {scaled, collision, cross};
+    }
+
+    /** {@return les douze arêtes d'une colonne, ses pieds au centre {@code (x, y, z)}, de demi-largeur et de hauteur données} */
+    private static float[] columnSegments(float x, float y, float z, float half, float height) {
+        float x0 = x - half;
+        float x1 = x + half;
+        float z0 = z - half;
+        float z1 = z + half;
+        float y1 = y + height;
+        return new float[] {
+            x0, y, z0, x1, y, z0, x1, y, z0, x1, y, z1, x1, y, z1, x0, y, z1, x0, y, z1, x0, y, z0,
+            x0, y1, z0, x1, y1, z0, x1, y1, z0, x1, y1, z1, x1, y1, z1, x0, y1, z1, x0, y1, z1, x0, y1, z0,
+            x0, y, z0, x0, y1, z0, x1, y, z0, x1, y1, z0, x1, y, z1, x1, y1, z1, x0, y, z1, x0, y1, z1,
+        };
     }
 
     /** L'overlay {@code sensors} : le volume de chaque capteur déclaré, à la pose dessinée de son node (ADR-174 D5). */
@@ -650,6 +764,10 @@ final class DebugOverlayRenderer {
     }
 
     /** {@return les capteurs dessinés à la dernière frame (ADR-174, axe Diagnostic)} */
+    int seatsDrawn() {
+        return seatsDrawn;
+    }
+
     int sensorsDrawn() {
         return sensorsDrawn;
     }
@@ -707,6 +825,7 @@ final class DebugOverlayRenderer {
             case PIVOTS -> PIVOT_COLOR;
             case SOCKETS -> AXIS_COLORS[0];
             case SENSORS -> SENSOR_COLOR;
+            case SEATS -> SEAT_COLOR;
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
             case NETWORK -> NETWORK_RECEIVED;
@@ -753,6 +872,8 @@ final class DebugOverlayRenderer {
             case PIVOTS -> "rose : l'origine de chaque node animé, autour de laquelle il tourne";
             case SOCKETS -> "axes de chaque socket, là où une attache se prend : rouge x, vert y, bleu z";
             case SENSORS -> "violet : le volume de chaque capteur déclaré, boîte ou sphère, à son node";
+            case SEATS -> "orange : l'occupant de chaque siège mis à l'échelle, et sa croix à l'œil ; gris : la boîte de"
+                    + " collision d'un joueur, que l'échelle ne touche pas";
             case WORLD_TILES -> "gris : les colliders des tuiles du monde";
             case CENTER_OF_MASS -> "blanc : le centre de masse de chaque corps";
             case NETWORK -> "violet : l'emprise à la pose dessinée, interpolée ; orange : au dernier état reçu du"
