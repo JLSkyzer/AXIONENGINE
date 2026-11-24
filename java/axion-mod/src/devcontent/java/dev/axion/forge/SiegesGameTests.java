@@ -53,6 +53,9 @@ public final class SiegesGameTests {
     /** Hauteur des yeux d'un joueur debout. */
     private static final double YEUX = 1.62;
 
+    /** La hauteur de la boîte d'un joueur debout de Minecraft, que l'échelle d'un occupant ne touche pas. */
+    private static final float HAUTEUR_JOUEUR = 1.8f;
+
     private SiegesGameTests() {}
 
     /**
@@ -208,6 +211,63 @@ public final class SiegesGameTests {
                     simule[0].quitter();
                 })
                 .thenSucceed();
+    }
+
+    /**
+     * ADR-177 D1 : ce que le siège règle de son occupant. Le conducteur est assis, à l'échelle 0,5 et à l'œil que le
+     * siège déclare ; le passager est debout, à l'échelle 2. Assis, le joueur est posé au node avec le décalage de monture
+     * de Minecraft ; debout, ses pieds sont au node. Sa boîte de collision reste celle d'un joueur : l'échelle ne
+     * touche que le dessin. Un siège que rien ne règle (la definition {@code test/siege}) garde la pose vanilla.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void lOccupantReglePoseEchelleEtOeilEtSaBoiteResteCelleDuJoueur(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege_occupant", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        AxionEntity vanilla = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(8.5, DESSUS_DALLE, 4.5), QUART);
+        ServerPlayer conducteur = joueur(helper, "occupant_conducteur");
+        ServerPlayer passager = joueur(helper, "occupant_passager");
+        ServerPlayer temoin = joueur(helper, "occupant_temoin");
+        boolean[] fait = {false};
+        helper.succeedWhen(() -> {
+            helper.assertTrue(assembly.hasPhysicalBounds() && vanilla.hasPhysicalBounds(), "les assemblies sont simulées");
+            if (!fait[0]) {
+                fait[0] = true;
+                helper.assertTrue(assembly.sit(conducteur, 0), "le conducteur s'assoit");
+                helper.assertTrue(assembly.sit(passager, 1), "le passager s'assoit");
+                helper.assertTrue(vanilla.sit(temoin, 0), "le témoin s'assoit à un siège que rien ne règle");
+            }
+            Seating.Occupant a = assembly.occupantOf(conducteur);
+            helper.assertTrue(a.pose() == Seating.Pose.SIT && a.scale() == 0.5f
+                    && java.util.Arrays.equals(a.eye(), new float[] {0f, 0.75f, 0.05f}), "l'occupant du conducteur : " + a);
+            Seating.Occupant b = assembly.occupantOf(passager);
+            helper.assertTrue(b.pose() == Seating.Pose.STAND && b.scale() == 2f && b.eye() == null,
+                    "l'occupant du passager : " + b);
+            helper.assertTrue(vanilla.occupantOf(temoin).isDefault(), "le siège sans occupant : assis, à l'échelle, œil vanilla");
+
+            assembly.positionRider(conducteur);
+            assembly.positionRider(passager);
+            proche(helper, duModele(assembly, -2f, 0f, 0f).add(0, conducteur.getMyRidingOffset(), 0), conducteur,
+                    "assis : au node, décalage de monture compris");
+            proche(helper, duModele(assembly, 2f, 1.1f, 0f), passager, "debout : les pieds au node, sans décalage");
+            helper.assertTrue(assembly.riderOffset(passager) == 0.0 && assembly.riderOffset(conducteur) == conducteur.getMyRidingOffset(),
+                    "le décalage vertical suit la pose");
+            helper.assertTrue(Math.abs(conducteur.getBbHeight() - HAUTEUR_JOUEUR) < 1e-6
+                            && Math.abs(passager.getBbHeight() - HAUTEUR_JOUEUR) < 1e-6,
+                    "la boîte reste celle d'un joueur : " + conducteur.getBbHeight() + ", " + passager.getBbHeight());
+
+            helper.assertTrue(assembly.shouldRiderSit(), "hors dessin, Minecraft assoit ses passagers");
+            OccupantStance.standing(true);
+            try {
+                helper.assertFalse(assembly.shouldRiderSit(), "pendant le dessin d'un occupant debout, il ne s'assoit pas");
+            } finally {
+                OccupantStance.standing(false);
+            }
+            conducteur.stopRiding();
+            passager.stopRiding();
+            temoin.stopRiding();
+        });
     }
 
     /** T-444 : à son retour, son siège pris, le joueur reçoit le premier libre. */

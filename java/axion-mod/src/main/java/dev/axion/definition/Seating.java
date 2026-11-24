@@ -154,14 +154,31 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
      * @param exits les positions de sortie, dans le repère du siège, dans l'ordre déclaré
      * @param controls les contrôles qu'il autorise, en bits de {@link Control}
      * @param bindings les commandes génériques qu'il lie à des variables (ADR-163 D2)
+     * @param occupant la pose, l'échelle et l'œil de son occupant (ADR-177 D1)
      */
     public record Seat(String name, int node, boolean driver, List<float[]> exits, int controls,
-            List<Binding> bindings) {
+            List<Binding> bindings, Occupant occupant) {
 
         /** Copie les positions de sortie et les commandes. */
         public Seat {
             exits = exits.stream().map(float[]::clone).toList();
             bindings = List.copyOf(bindings);
+            occupant = occupant == null ? Occupant.DEFAULT : occupant;
+        }
+
+        /**
+         * Un siège dont l'occupant n'est pas réglé.
+         *
+         * @param name son nom
+         * @param node l'index de son node
+         * @param driver vrai pour le siège conducteur
+         * @param exits ses positions de sortie
+         * @param controls ses contrôles
+         * @param bindings ses commandes liées
+         */
+        public Seat(String name, int node, boolean driver, List<float[]> exits, int controls,
+                List<Binding> bindings) {
+            this(name, node, driver, exits, controls, bindings, Occupant.DEFAULT);
         }
 
         /**
@@ -204,6 +221,86 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
          */
         public boolean allows(Control control) {
             return (controls & control.bit()) != 0;
+        }
+    }
+
+    /** La pose d'un occupant (ADR-177 D1) : {@code lie} et {@code legs_out} attendent un contenu qui les demande. */
+    public enum Pose {
+        /** Assis, la pose vanilla. */
+        SIT("sit"),
+        /** Debout, pour une plateforme de tir ou un poste debout. */
+        STAND("stand");
+
+        private final String key;
+
+        Pose(String key) {
+            this.key = key;
+        }
+
+        /** {@return le nom de la pose dans une definition} */
+        public String key() {
+            return key;
+        }
+
+        /**
+         * {@return la pose de ce nom, assis sans nom ou nom inconnu}
+         *
+         * @param key nom dans une definition
+         */
+        public static Pose of(String key) {
+            for (Pose pose : values()) {
+                if (pose.key.equals(key)) {
+                    return pose;
+                }
+            }
+            return SIT;
+        }
+    }
+
+    /**
+     * Ce qu'un siège règle de son occupant (ADR-177 D1).
+     *
+     * @param pose sa pose
+     * @param scale l'échelle de son rendu, de 0,25 à 4 : sa boîte de collision ne change pas
+     * @param eye son œil dans le repère du siège ; {@code null} : l'œil vanilla multiplié par {@code scale}
+     */
+    public record Occupant(Pose pose, float scale, float[] eye) {
+
+        /** Un occupant que rien ne règle : assis, à l'échelle, à l'œil de Minecraft. */
+        public static final Occupant DEFAULT = new Occupant(Pose.SIT, 1f, null);
+
+        /** Copie l'œil. */
+        public Occupant {
+            java.util.Objects.requireNonNull(pose, "pose");
+            eye = eye == null ? null : eye.clone();
+        }
+
+        /** {@return une copie de l'œil, {@code null} sans} */
+        @Override
+        public float[] eye() {
+            return eye == null ? null : eye.clone();
+        }
+
+        /** {@return vrai si le siège ne règle rien de son occupant} */
+        public boolean isDefault() {
+            return pose == Pose.SIT && scale == 1f && eye == null;
+        }
+
+        /**
+         * {@return l'occupant que décrit le champ {@code occupant} d'un siège, {@link #DEFAULT} sans lui}
+         *
+         * @param declared l'objet {@code seats[].occupant}, {@code null} sans
+         */
+        static Occupant of(JsonObject declared) {
+            if (declared == null) {
+                return DEFAULT;
+            }
+            float[] eye = null;
+            if (declared.get("eye") instanceof JsonArray xyz) {
+                eye = new float[] {xyz.get(0).getAsFloat(), xyz.get(1).getAsFloat(), xyz.get(2).getAsFloat()};
+            }
+            return new Occupant(Pose.of(text(declared, "pose")),
+                    declared.has("scale") ? declared.get("scale").getAsFloat() : 1f, eye);
         }
     }
 
@@ -767,7 +864,8 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
             }
             seatRanks.putIfAbsent(name, seats.size());
             seats.add(new Seat(name, node(byPath, path + ".node"),
-                    "driver".equals(text(seat, "role")), exits, controls, bindings));
+                    "driver".equals(text(seat, "role")), exits, controls, bindings,
+                    Occupant.of(seat.get("occupant") instanceof JsonObject occupant ? occupant : null)));
         }
         List<Interaction> interactions = new ArrayList<>();
         List<String> warnings = new ArrayList<>();

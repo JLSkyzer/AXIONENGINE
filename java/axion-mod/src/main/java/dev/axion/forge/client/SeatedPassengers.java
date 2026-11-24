@@ -56,7 +56,7 @@ final class SeatedPassengers {
             for (Entity passenger : assembly.getPassengers()) {
                 SeatPlacement.Pose seat = assembly.seatPoseAt(assembly.seatOf(passenger), shown);
                 if (seat != null) {
-                    place(passenger, seat.x(), seat.y() + passenger.getMyRidingOffset(), seat.z());
+                    place(passenger, seat.x(), seat.y() + assembly.riderOffset(passenger), seat.z());
                 }
             }
             if (player != null && player.getVehicle() == assembly) {

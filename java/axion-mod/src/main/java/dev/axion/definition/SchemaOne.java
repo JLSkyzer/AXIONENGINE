@@ -633,7 +633,22 @@ final class SchemaOne {
         if (version >= 3) {
             seat.opt("bindings", cap(binding(), 8));
         }
+        if (version >= 7) {
+            seat.opt("occupant", occupant());
+        }
         return seat.build();
+    }
+
+    /**
+     * ADR-177 D1, schéma 7 : ce que le siège règle de son occupant. {@code scale} de 0,25 à 4 ; {@code eye} dans le
+     * repère du siège, à huit mètres au plus de son point.
+     */
+    private static SchemaNode occupant() {
+        return obj()
+                .opt("pose", oneOf("sit", "stand"))
+                .opt("scale", new Num(0.25, 4.0, false, false))
+                .opt("eye", new Arr(new Num(-8.0, 8.0, false, false), 3, 3, false))
+                .build();
     }
 
     /**

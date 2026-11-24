@@ -118,12 +118,17 @@ public final class VehicleCamera {
         VehicleViews.View view = active;
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
-        if (view == null || player == null || event.getCamera().getEntity() != player
+        if (player == null || event.getCamera().getEntity() != player
                 || !(player.getVehicle() instanceof AxionEntity assembly)) {
             return;
         }
         float partialTick = (float) event.getPartialTick();
         AxionEntity.RenderPose shown = assembly.renderPose(partialTick);
+        if (view == null) {
+            // ADR-177 D1 : sans vue déclarée, le joueur garde son regard ; son œil est celui que son siège règle.
+            occupantEye(event, assembly, player, shown);
+            return;
+        }
         float vehicleYaw = SeatedPassengers.yaw(shown);
         float relativeYaw = Mth.wrapDegrees(player.getViewYRot(partialTick) - vehicleYaw);
         float playerPitch = player.getViewXRot(partialTick);
@@ -162,9 +167,12 @@ public final class VehicleCamera {
                         view.lookPitch());
                 SeatPlacement.Pose pose = view.eye() == null ? null : assembly.seatPoseAt(seat, shown);
                 if (pose == null || positionUnavailable) {
-                    // L'œil du joueur, celui de Minecraft : seul le regard se borne.
+                    // L'œil du joueur, celui de Minecraft ou celui que son siège règle : seul le regard se borne.
                     event.setYaw(look[0]);
                     event.setPitch(look[1]);
+                    if (view.eye() == null) {
+                        occupantEye(event, assembly, player, shown);
+                    }
                     return;
                 }
                 double[] eye = ViewRig.transform(new double[] {pose.x(), pose.y(), pose.z()}, pose.rotation(),
@@ -182,6 +190,36 @@ public final class VehicleCamera {
                         - vehicleYaw), playerPitch, view.lookYaw(), view.lookPitch());
                 place(event, pose.x(), pose.y(), pose.z(), look[0], look[1]);
             }
+        }
+    }
+
+    /**
+     * L'œil de l'occupant tel que son siège le règle (ADR-177 D1) : celui que le siège déclare, dans son repère ; sinon
+     * l'œil de Minecraft, dont l'écart au point du siège est multiplié par l'échelle. Rien ne change sans l'un ni
+     * l'autre, ni en troisième personne : la caméra y recule de l'œil que Minecraft a posé.
+     */
+    private static void occupantEye(ViewportEvent.ComputeCameraAngles event, AxionEntity assembly, LocalPlayer player,
+            AxionEntity.RenderPose shown) {
+        Seating.Occupant occupant = assembly.occupantOf(player);
+        float[] declared = occupant.eye();
+        if (positionUnavailable || event.getCamera().isDetached() || (declared == null && occupant.scale() == 1f)) {
+            return;
+        }
+        SeatPlacement.Pose pose = assembly.seatPoseAt(assembly.seatOf(player), shown);
+        if (pose == null) {
+            return;
+        }
+        double[] eye;
+        if (declared != null) {
+            eye = ViewRig.transform(new double[] {pose.x(), pose.y(), pose.z()}, pose.rotation(), declared);
+        } else {
+            Vec3 vanilla = event.getCamera().getPosition();
+            double scale = occupant.scale();
+            eye = new double[] {pose.x() + (vanilla.x - pose.x()) * scale, pose.y() + (vanilla.y - pose.y()) * scale,
+                    pose.z() + (vanilla.z - pose.z()) * scale};
+        }
+        if (position(event.getCamera(), eye[0], eye[1], eye[2])) {
+            placed = new Vec3(eye[0], eye[1], eye[2]);
         }
     }
 

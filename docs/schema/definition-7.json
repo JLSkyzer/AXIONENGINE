@@ -1190,6 +1190,34 @@
             },
             "maxItems": 8,
             "x-axion-code": "E-3050"
+          },
+          "occupant": {
+            "type": "object",
+            "properties": {
+              "pose": {
+                "type": "string",
+                "enum": [
+                  "sit",
+                  "stand"
+                ]
+              },
+              "scale": {
+                "type": "number",
+                "minimum": 0.25,
+                "maximum": 4
+              },
+              "eye": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -8,
+                  "maximum": 8
+                },
+                "minItems": 3,
+                "maxItems": 3
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [

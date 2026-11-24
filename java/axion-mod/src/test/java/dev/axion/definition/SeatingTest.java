@@ -216,6 +216,66 @@ class SeatingTest {
         assertSame(Seating.NONE, Seating.of(root, List.of(), new int[0]));
     }
 
+    /** Un siège dont l'occupant est réglé, au schéma 7, et un siège que rien ne règle. */
+    private static JsonObject avecOccupant(String occupant, int schema) {
+        return JsonParser.parseString("""
+                { "schema": %d, "asset": "mymod:models/voiture.glb", "kind": "rigid_object",
+                  "seats": [
+                    { "name": "conducteur", "node": "siege_g", "role": "driver", "occupant": %s },
+                    { "name": "passager", "node": "siege_d" } ] }
+                """.formatted(schema, occupant)).getAsJsonObject();
+    }
+
+    @Test
+    @DisplayName("ADR-177 D1 : seats[].occupant (pose, scale, eye) est accepté au schéma 7 et compilé")
+    void occupantRegle() {
+        JsonObject root = avecOccupant("{ \"pose\": \"stand\", \"scale\": 0.67, \"eye\": [0, 0.75, 0.05] }", 7);
+        assertEquals(List.of(), DefinitionChecker.check(root));
+        List<DefinitionChecker.AssetReference> references = DefinitionChecker.assetReferences(root);
+        Seating seating = Seating.of(root, references, resolus(references));
+
+        Seating.Occupant conducteur = seating.seats().get(0).occupant();
+        assertEquals(Seating.Pose.STAND, conducteur.pose());
+        assertEquals(0.67f, conducteur.scale(), 1e-6f);
+        assertArrayEquals(new float[] {0f, 0.75f, 0.05f}, conducteur.eye());
+        assertFalse(conducteur.isDefault());
+
+        assertSame(Seating.Occupant.DEFAULT, seating.seats().get(1).occupant(),
+                "un siège sans occupant reste comme avant : assis, à l'échelle, à l'œil de Minecraft");
+        assertTrue(seating.seats().get(1).occupant().isDefault());
+        assertEquals(null, seating.seats().get(1).occupant().eye());
+    }
+
+    @Test
+    @DisplayName("ADR-177 D1 : un occupant à demi réglé garde le défaut du reste")
+    void occupantParDefaut() {
+        JsonObject root = avecOccupant("{ \"scale\": 2 }", 7);
+        assertEquals(List.of(), DefinitionChecker.check(root));
+        List<DefinitionChecker.AssetReference> references = DefinitionChecker.assetReferences(root);
+        Seating.Occupant occupant = Seating.of(root, references, resolus(references)).seats().get(0).occupant();
+        assertEquals(Seating.Pose.SIT, occupant.pose());
+        assertEquals(2f, occupant.scale(), 1e-6f);
+        assertEquals(null, occupant.eye());
+    }
+
+    @Test
+    @DisplayName("ADR-177 D1 : scale hors de 0,25 à 4, une pose inconnue, un œil mal formé ou hors du siège sont refusés")
+    void occupantRefuse() {
+        for (String occupant : new String[] {
+                "{ \"scale\": 0.2 }", "{ \"scale\": 4.5 }", "{ \"pose\": \"lie\" }", "{ \"eye\": [0, 1] }",
+                "{ \"eye\": [0, 9, 0] }", "{ \"taille\": 1 }"}) {
+            assertEquals(1, fautes(avecOccupant(occupant, 7), "$.seats[0].occupant").size(), occupant);
+        }
+        assertEquals(List.of(), fautes(avecOccupant("{ \"scale\": 0.25 }", 7), "$.seats"), "0,25 inclus");
+        assertEquals(List.of(), fautes(avecOccupant("{ \"scale\": 4 }", 7), "$.seats"), "4 inclus");
+    }
+
+    @Test
+    @DisplayName("ADR-177 D1 : avant le schéma 7, occupant n'existe pas")
+    void occupantAvantLeSchemaSept() {
+        assertEquals(1, fautes(avecOccupant("{ \"scale\": 1 }", 6), "$.seats[0]").size());
+    }
+
     @Test
     @DisplayName("ADR-158 D1 : un node que le natif n'a pas résolu est un défaut de la frontière")
     void nonResolu() {

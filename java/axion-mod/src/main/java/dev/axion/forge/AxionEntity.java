@@ -652,6 +652,40 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return ce que son siège règle d'un passager (ADR-177 D1) : sa pose, son échelle, son œil} Sans siège connu, ou
+     * avant que la definition ne soit compilée, c'est l'occupant que rien ne règle.
+     *
+     * @param passenger l'entité
+     */
+    public Seating.Occupant occupantOf(Entity passenger) {
+        Seating seating = seating();
+        int seat = seating == null ? SeatOccupancy.FREE : occupancy(seating).seatOf(passenger.getId());
+        return seating != null && seat >= 0 && seat < seating.seats().size()
+                ? seating.seats().get(seat).occupant()
+                : Seating.Occupant.DEFAULT;
+    }
+
+    /**
+     * {@return de combien le passager est posé au-dessus du point de son siège} Assis, le décalage de monture de
+     * Minecraft ; debout (ADR-177 D1), ses pieds sont au point du siège.
+     *
+     * @param passenger l'entité
+     */
+    public double riderOffset(Entity passenger) {
+        return occupantOf(passenger).pose() == Seating.Pose.STAND ? 0.0 : passenger.getMyRidingOffset();
+    }
+
+    /**
+     * Assis, ou debout : le client le règle, passager par passager, le temps de son dessin (ADR-177 D1).
+     *
+     * @return faux pendant le dessin d'un occupant que son siège met debout
+     */
+    @Override
+    public boolean shouldRiderSit() {
+        return !OccupantStance.standing();
+    }
+
+    /**
      * {@return l'occupation de chaque siège, dans l'ordre de la definition : la source {@code seat.<n>.occupied}
      * (ADR-163 D1)} Un siège dont l'occupant est perdu est libre. Vide sans sièges.
      */
@@ -2531,7 +2565,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             super.positionRider(passenger, move);
             return;
         }
-        move.accept(passenger, pose.x(), pose.y() + passenger.getMyRidingOffset(), pose.z());
+        move.accept(passenger, pose.x(), pose.y() + riderOffset(passenger), pose.z());
     }
 
     /**

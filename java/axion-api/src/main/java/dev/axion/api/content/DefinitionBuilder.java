@@ -5072,6 +5072,50 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code seats[].occupant}. */
+    @Experimental
+    public static final class SeatOccupant {
+
+        private final Map<String, Object> values;
+
+        private SeatOccupant(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code seats[].occupant.eye} : 3 éléments.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public SeatOccupant eye(double... items) {
+            values.put("eye", doubles(items));
+            return this;
+        }
+
+        /**
+         * {@code seats[].occupant.pose} : parmi {@code sit}, {@code stand}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SeatOccupant pose(String value) {
+            values.put("pose", Objects.requireNonNull(value, "pose"));
+            return this;
+        }
+
+        /**
+         * {@code seats[].occupant.scale} : au moins 0.25 ; au plus 4.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public SeatOccupant scale(double value) {
+            values.put("scale", value);
+            return this;
+        }
+    }
+
     /** {@code seats[]}. */
     @Experimental
     public static final class Seat {
@@ -5154,6 +5198,18 @@ public final class DefinitionBuilder {
          */
         public Seat node(String value) {
             values.put("node", Objects.requireNonNull(value, "node"));
+            return this;
+        }
+
+        /**
+         * {@code seats[].occupant}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public Seat occupant(Consumer<SeatOccupant> config) {
+            Map<String, Object> nested = object(values, "occupant");
+            Objects.requireNonNull(config, "config").accept(new SeatOccupant(nested));
             return this;
         }
 

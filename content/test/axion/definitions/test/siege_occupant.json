@@ -1,0 +1,24 @@
+{
+  "schema": 7,
+  "asset": "axion:models/test/siege.gltf",
+  "kind": "rigid_object",
+  "seats": [
+    {
+      "name": "conducteur",
+      "node": "siege_g",
+      "role": "driver",
+      "exit_offsets": [[2.0, 0.0, 0.0], [-1.0, 0.0, 0.0]],
+      "controls": ["throttle", "steer"],
+      "occupant": { "pose": "sit", "scale": 0.5, "eye": [0.0, 0.75, 0.05] }
+    },
+    {
+      "name": "passager",
+      "node": "siege_d",
+      "exit_offsets": [[0.0, 0.0, 1.5], [0.0, 0.0, -1.5]],
+      "occupant": { "pose": "stand", "scale": 2.0 }
+    }
+  ],
+  "interaction": [
+    { "node": "porte_d", "action": "sit", "seat": "passager" }
+  ]
+}
