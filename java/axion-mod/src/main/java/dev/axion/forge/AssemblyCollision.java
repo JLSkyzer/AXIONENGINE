@@ -89,27 +89,38 @@ public final class AssemblyCollision {
             CarrySupports.clear(entity);
             return null;
         }
+        // ADR-178 D4 : un joueur du serveur se juge, son support compris, à la pose que son client dessine ; ses supports
+        // sont l'affaire de ServerCarry.
+        boolean serverPlayer = entity instanceof net.minecraft.server.level.ServerPlayer;
+        CarrySupports.Support support = serverPlayer ? CarrySupports.of(entity) : null;
         List<Placed> placed = new ArrayList<>(near.size());
         for (AxionEntity assembly : near) {
             long key = assembly.collisionKey();
-            double[] poses = key == 0L ? null : assembly.collisionPoses();
+            double[] poses = key == 0L ? null
+                    : support != null && support.assembly() == assembly && support.lag() >= 0
+                            ? assembly.carryPoses(support.lag()) : assembly.collisionPoses();
             if (poses != null) {
                 placed.add(new Placed(assembly, key, poses, poses.length / NativeBridge.COLLIDE_POSE));
             }
         }
         if (placed.isEmpty()) {
-            CarrySupports.clear(entity);
+            if (!serverPlayer) {
+                CarrySupports.clear(entity);
+            }
             return null;
         }
         Landing landing = new Landing();
         BoxSlide.Sweeper sweeper = (at, mx, my, mz) -> sweep(placed, at, mx, my, mz, landing);
         double[] slid = BoxSlide.slide(new double[] {box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ},
                 new double[] {motion.x, motion.y, motion.z}, sweeper, entity.maxUpStep(), entity.onGround());
-        // ADR-178 D2 : le support naît d'une chute arrêtée par une surface qu'on marche ; sinon, il meurt.
-        if (motion.y < 0.0 && slid[1] > motion.y + 1.0e-9 && landing.assembly != null) {
-            CarrySupports.land(entity, landing.assembly, landing.body);
-        } else {
-            CarrySupports.clear(entity);
+        // ADR-178 D2 : le support naît d'une chute arrêtée par une surface qu'on marche ; sinon, il meurt. Celui d'un
+        // joueur au serveur se cherche à la fin du tick (D4) : ses déplacements annoncés n'y disent rien.
+        if (!serverPlayer) {
+            if (motion.y < 0.0 && slid[1] > motion.y + 1.0e-9 && landing.assembly != null) {
+                CarrySupports.land(entity, landing.assembly, landing.body);
+            } else {
+                CarrySupports.clear(entity);
+            }
         }
         if (Math.abs(slid[0] - motion.x) < 1.0e-9 && Math.abs(slid[1] - motion.y) < 1.0e-9
                 && Math.abs(slid[2] - motion.z) < 1.0e-9) {

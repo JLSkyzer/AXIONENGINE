@@ -35,10 +35,19 @@ public final class CarrySupports {
         private final int body;
         private double[] local;
         private double[] previousLocal;
+        private int lag = -1;
 
         private Support(AxionEntity assembly, int body) {
             this.assembly = assembly;
             this.body = body;
+        }
+
+        /**
+         * {@return au serveur, le retard en ticks de la pose à laquelle le joueur est porté ({@code -1} sans) : celle que son
+         * client dessine}
+         */
+        public int lag() {
+            return lag;
         }
 
         /** {@return l'assembly porteuse} */
@@ -86,6 +95,29 @@ public final class CarrySupports {
             if (held == null || held.assembly != assembly || held.body != body) {
                 side.put(entity, new Support(assembly, body));
             }
+        }
+    }
+
+    /**
+     * Au serveur : le joueur repose sur ce corps, tel qu'il était il y a {@code lag} ticks.
+     *
+     * @param entity le joueur
+     * @param assembly l'assembly porteuse
+     * @param body le rang du corps
+     * @param lag le retard en ticks de la pose
+     */
+    static void landAt(Entity entity, AxionEntity assembly, int body, int lag) {
+        land(entity, assembly, body);
+        Support held = of(entity.level().isClientSide()).get(entity);
+        if (held != null) {
+            held.lag = lag;
+        }
+    }
+
+    /** {@return une copie des supports du serveur, pour les porter} */
+    static java.util.List<Map.Entry<Entity, Support>> serverEntries() {
+        synchronized (SERVER) {
+            return new java.util.ArrayList<>(SERVER.entrySet());
         }
     }
 

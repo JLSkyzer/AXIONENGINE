@@ -21,6 +21,7 @@ entity_damage = true
 wet_rise_seconds = 2.0            # 0.1..60.0
 wet_dry_seconds = 30.0            # 0.1..600.0
 player_carry = true
+carry_max_entities = 64          # 0..1024
 
 [damage]
 enabled = true
@@ -135,6 +136,7 @@ prediction_tolerance_energy = 0.01# 0.0..
 prediction_proxy_radius = 32.0    # 0.0..
 max_bytes_per_second_per_player = 32768# 0..
 max_packets_per_second = 40       # 0..
+carry_tolerance = 0.25            # 0.05..1.0
 max_impacts_per_packet = 64       # 0..
 digest_interval_ticks = 40        # 0..
 max_deform_snapshots_per_second = 4# 0..

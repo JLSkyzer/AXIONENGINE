@@ -182,6 +182,8 @@ pub const COMMON: &[ConfigOption] = &[
     // ADR-178 D7 : un joueur, ou toute entité, ne traverse plus une assembly (CAP-14) ; faux rend le jeu d'avant.
     srv(b("physics.player_carry", true, "Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté."))
         .en("Entities and players are stopped by an assembly's colliders, and a player standing on one is carried."),
+    srv(i("physics.carry_max_entities", 64, 0, 1024, "Nombre maximal d'entités, hors joueurs, qu'une assembly porte."))
+        .en("Maximum number of entities, players excepted, that one assembly carries."),
 
     // [damage]
     b("damage.enabled", true, "Active la chaîne de dommage : impacts, déformation, rupture, usure.")
@@ -417,6 +419,9 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Cap on AXION bandwidth per player, in bytes per second."),
     ip("net.max_packets_per_second", 40, "Plafond de paquets AXION par seconde et par joueur.")
         .en("Cap on AXION packets per second per player."),
+    // ADR-178 D4 : la sonde du serveur sous les pieds d'un joueur porté, à la pose que son client dessine.
+    srv(f("net.carry_tolerance", 0.25, 0.05, 1.0, "Écart, en blocs, jusqu'auquel un joueur porté par une assembly est reconnu sur elle par le serveur."))
+        .en("Gap, in blocks, up to which the server recognises a player carried by an assembly as standing on it."),
     ip("net.max_impacts_per_packet", 64, "Nombre maximal d'impacts groupés dans un paquet.")
         .en("Maximum number of impacts grouped in one packet."),
     ip("net.digest_interval_ticks", 40, "Intervalle, en ticks, entre deux empreintes de vérification d'état.")

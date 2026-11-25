@@ -2773,6 +2773,41 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return summary == null ? null : flatten(bodyPoses(summary));
     }
 
+    /** Le nombre de ticks de poses que le serveur garde pour porter un joueur à la pose que son client dessine (ADR-178 D4). */
+    static final int CARRY_HISTORY = 21;
+
+    /** Les poses des derniers ticks, la plus récente d'abord (serveur). */
+    private final java.util.ArrayDeque<double[]> carryHistory = new java.util.ArrayDeque<>(CARRY_HISTORY);
+
+    /** Retient les poses du tick (serveur, fin de tick). */
+    void rememberCarryPoses() {
+        double[] poses = collisionPoses();
+        if (poses == null) {
+            carryHistory.clear();
+            return;
+        }
+        if (carryHistory.size() == CARRY_HISTORY) {
+            carryHistory.removeLast();
+        }
+        carryHistory.addFirst(poses);
+    }
+
+    /**
+     * {@return les poses d'il y a {@code lag} ticks, ou {@code null} si elles ne sont pas gardées}
+     *
+     * @param lag 0 pour le dernier tick
+     */
+    double[] carryPoses(int lag) {
+        if (lag < 0 || lag >= carryHistory.size()) {
+            return null;
+        }
+        java.util.Iterator<double[]> poses = carryHistory.iterator();
+        for (int i = 0; i < lag; i++) {
+            poses.next();
+        }
+        return poses.next();
+    }
+
     /**
      * {@return les poses de chaque corps telles qu'une image les dessine (client), à la queue leu leu comme
      * {@link #collisionPoses}, ou {@code null} si elles ne sont pas connues} Ce qu'un joueur porté suit d'image en image

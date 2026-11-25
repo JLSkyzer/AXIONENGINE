@@ -100,6 +100,11 @@ public final class AxionEntities {
     /** Les entités sont-elles arrêtées par les assemblies (ADR-178 D7) ? Faux sans runtime. */
     private static volatile java.util.function.BooleanSupplier carry = () -> false;
 
+    /** {@code net.carry_tolerance}, {@code physics.carry_max_entities} et {@code net.interpolation_delay_ms} (ADR-178 D4). */
+    private static volatile java.util.function.DoubleSupplier carryTolerance = () -> 0.25;
+    private static volatile LongSupplier carryMaxEntities = () -> 0L;
+    private static volatile LongSupplier interpolationDelayMillis = () -> 0L;
+
     /** Le balayage d'une boîte contre les colliders d'une definition posée, vu de l'entité. */
     @FunctionalInterface
     interface Collider {
@@ -161,6 +166,9 @@ public final class AxionEntities {
         boxes = runtime::boxTouchesAssembly;
         collider = runtime::collideBox;
         carry = runtime::playerCarry;
+        carryTolerance = runtime::carryTolerance;
+        carryMaxEntities = runtime::carryMaxEntities;
+        interpolationDelayMillis = runtime::interpolationDelayMillis;
         inputTimeoutMillis = runtime::inputTimeoutMillis;
     }
 
@@ -267,6 +275,21 @@ public final class AxionEntities {
     /** {@return vrai si les entités sont arrêtées par les assemblies, {@code physics.player_carry}} */
     static boolean carry() {
         return carry.getAsBoolean();
+    }
+
+    /** {@return la tolérance de la sonde sous les pieds d'un joueur porté, en blocs} */
+    static double carryTolerance() {
+        return carryTolerance.getAsDouble();
+    }
+
+    /** {@return le plafond d'entités portées par assembly} */
+    static long carryMaxEntities() {
+        return carryMaxEntities.getAsLong();
+    }
+
+    /** {@return le délai d'interpolation d'un client, en millisecondes} */
+    static long interpolationDelayMillis() {
+        return interpolationDelayMillis.getAsLong();
     }
 
     /** {@return le rayon contre les colliders d'une assembly} */

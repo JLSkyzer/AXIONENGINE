@@ -1,0 +1,177 @@
+package dev.axion.forge;
+
+import dev.axion.AxionMod;
+import dev.axion.bridge.NativeBridge;
+import dev.axion.physics.BodyFrame;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.AABB;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+
+/**
+ * Le transport au serveur (ADR-178 D4, CAP-14) : à la fin de chaque tick, chaque entité posée sur une assembly est déplacée de ce
+ * que son support a bougé.
+ *
+ * <p><b>Les joueurs.</b> Un joueur envoie ses positions : le serveur ne les calcule pas, il les <b>juge</b>. Son client le porte à la
+ * pose qu'il <b>dessine</b>, en retard de son aller-retour et du délai d'interpolation ; le serveur cherche donc le support dans les
+ * poses qu'il a gardées (la dernière seconde), à partir du retard estimé, par une sonde sous ses pieds de
+ * {@code net.carry_tolerance}. Trouvé, le déplacement du support à ce retard entre dans la position du joueur <b>et</b> dans les
+ * références de vanilla ({@code firstGood}, {@code lastGood}), si bien que le mouvement que le joueur annonce ensuite se lit comme le
+ * sien ; sa collision se juge contre l'assembly à la même pose ; et il n'est pas compté comme volant. Sans support, rien ne change :
+ * la détection de vol de vanilla reste entière.
+ *
+ * <p><b>Les autres entités</b>, que le serveur déplace lui-même : leur support vient de leur collision (D2), et leur déplacement
+ * suit la pose du tick, au plus {@code physics.carry_max_entities} par assembly.
+ */
+@Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
+public final class ServerCarry {
+
+    /** Combien de retards autour de l'estimation on essaie, de part et d'autre. */
+    private static final int LAG_SEARCH = 4;
+
+    /** La portée de la sonde, au-delà de la tolérance : le tremblement d'un corps posé. */
+    private static final double PROBE_SLACK = 0.1;
+
+    /** Millisecondes d'un tick. */
+    private static final double TICK_MILLIS = 50.0;
+
+    private ServerCarry() {}
+
+    /** @param event la fin d'un tick du serveur */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || AssemblyIndex.total() == 0) {
+            return;
+        }
+        AuthoritativeThread.require();
+        for (ServerLevel level : event.getServer().getAllLevels()) {
+            List<AxionEntity> assemblies = AssemblyIndex.all(level);
+            if (assemblies.isEmpty()) {
+                continue;
+            }
+            for (AxionEntity assembly : assemblies) {
+                assembly.rememberCarryPoses();
+            }
+            if (!AxionEntities.carry()) {
+                continue;
+            }
+            for (ServerPlayer player : level.players()) {
+                carryPlayer(player, assemblies);
+            }
+            carryOthers(level);
+        }
+    }
+
+    /** Un joueur : son support se cherche dans les poses gardées, puis il est porté et ses références suivent. */
+    private static void carryPlayer(ServerPlayer player, List<AxionEntity> assemblies) {
+        if (player.isSpectator() || player.isPassenger() || player.noPhysics || !player.isAlive() || !player.onGround()
+                || player.connection == null) {
+            CarrySupports.clear(player);
+            return;
+        }
+        double tolerance = AxionEntities.carryTolerance();
+        int estimate = (int) Math.round((player.latency + AxionEntities.interpolationDelayMillis()) / TICK_MILLIS);
+        CarrySupports.Support held = CarrySupports.of(player);
+        if (held != null && held.lag() >= 0) {
+            estimate = held.lag();
+        }
+        AABB box = player.getBoundingBox();
+        List<AxionEntity> near = new ArrayList<>(assemblies.size());
+        for (AxionEntity assembly : assemblies) {
+            // L'emprise, élargie de ce qu'une assembly parcourt en une seconde à 40 m/s : sa pose d'il y a une seconde compte.
+            if (assembly.getBoundingBox().inflate(40.0).intersects(box)) {
+                near.add(assembly);
+            }
+        }
+        for (int step = 0; step <= 2 * LAG_SEARCH; step++) {
+            // L'estimation d'abord, puis de part et d'autre : 0, +1, -1, +2, -2…
+            int lag = estimate + (step % 2 == 1 ? (step + 1) / 2 : -(step / 2));
+            if (lag < 0 || lag >= AxionEntity.CARRY_HISTORY - 1) {
+                continue;
+            }
+            for (AxionEntity assembly : near) {
+                int body = probe(assembly, assembly.carryPoses(lag), box, tolerance + PROBE_SLACK);
+                if (body >= 0) {
+                    CarrySupports.landAt(player, assembly, body, lag);
+                    shift(player, assembly, body, lag);
+                    return;
+                }
+            }
+        }
+        CarrySupports.clear(player);
+    }
+
+    /** Déplace le joueur, et les références de position de vanilla, de ce que le corps a bougé à ce retard. */
+    private static void shift(ServerPlayer player, AxionEntity assembly, int body, int lag) {
+        int after = Math.max(lag - 1, 0);
+        double[] before = assembly.carryPoses(after + 1);
+        double[] now = assembly.carryPoses(after);
+        if (before == null || now == null) {
+            return;
+        }
+        double[] local = BodyFrame.toLocal(before, body, player.getX(), player.getY(), player.getZ());
+        double[] world = BodyFrame.toWorld(now, body, local);
+        double dx = world[0] - player.getX();
+        double dy = world[1] - player.getY();
+        double dz = world[2] - player.getZ();
+        player.setPos(world[0], world[1], world[2]);
+        player.connection.firstGoodX += dx;
+        player.connection.firstGoodY += dy;
+        player.connection.firstGoodZ += dz;
+        player.connection.lastGoodX += dx;
+        player.connection.lastGoodY += dy;
+        player.connection.lastGoodZ += dz;
+        player.connection.clientIsFloating = false;
+        player.connection.aboveGroundTickCount = 0;
+    }
+
+    /** Les entités que le serveur déplace lui-même : portées à la pose du tick, dans la limite par assembly. */
+    private static void carryOthers(ServerLevel level) {
+        long cap = AxionEntities.carryMaxEntities();
+        Map<AxionEntity, Integer> carried = new HashMap<>();
+        for (Map.Entry<Entity, CarrySupports.Support> entry : CarrySupports.serverEntries()) {
+            Entity entity = entry.getKey();
+            CarrySupports.Support support = entry.getValue();
+            if (entity instanceof Player || entity.level() != level) {
+                continue;
+            }
+            if (entity.isRemoved() || entity.isPassenger() || support.assembly().isRemoved()) {
+                CarrySupports.clear(entity);
+                continue;
+            }
+            if (carried.merge(support.assembly(), 1, Integer::sum) > cap) {
+                continue;
+            }
+            double[] before = support.assembly().carryPoses(1);
+            double[] now = support.assembly().carryPoses(0);
+            if (before == null || now == null) {
+                continue;
+            }
+            double[] local = BodyFrame.toLocal(before, support.body(), entity.getX(), entity.getY(), entity.getZ());
+            double[] world = BodyFrame.toWorld(now, support.body(), local);
+            entity.setPos(world[0], world[1], world[2]);
+        }
+    }
+
+    /** {@return le corps que la sonde rencontre sous la boîte, sur une surface qui se marche, ou {@code -1}} */
+    private static int probe(AxionEntity assembly, double[] poses, AABB box, double reach) {
+        long key = assembly.collisionKey();
+        if (poses == null || key == 0L) {
+            return -1;
+        }
+        double[] input = {box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, 0.0, -reach, 0.0};
+        double[] out = new double[NativeBridge.COLLIDE_OUTPUT];
+        int code = AxionEntities.collider().collide(key, NativeBridge.COLLIDE_SWEEP, poses,
+                poses.length / NativeBridge.COLLIDE_POSE, input, out);
+        return code == NativeBridge.OK && out[0] > 0.5 && out[4] >= AssemblyCollision.WALKABLE ? (int) out[1] : -1;
+    }
+}

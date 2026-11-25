@@ -87,6 +87,28 @@ public final class AssemblyIndex {
         return found;
     }
 
+    /**
+     * {@return les assemblies vivantes de ce monde} Une copie.
+     *
+     * @param level le monde
+     */
+    static List<AxionEntity> all(Level level) {
+        Set<AxionEntity> here;
+        synchronized (BY_LEVEL) {
+            here = BY_LEVEL.get(level);
+        }
+        if (here == null) {
+            return List.of();
+        }
+        List<AxionEntity> alive = new ArrayList<>(here.size());
+        for (AxionEntity assembly : here) {
+            if (!assembly.isRemoved()) {
+                alive.add(assembly);
+            }
+        }
+        return alive;
+    }
+
     /** {@return vrai si cette entité est une assembly : elle n'est jamais arrêtée par ses semblables} */
     static boolean isAssembly(Entity entity) {
         return entity instanceof AxionEntity;

@@ -43,6 +43,7 @@ ignored (R-1830).
 | `wet_rise_seconds` | float | `2.0` | `0.1..60.0` | no | yes | Seconds a vehicle in the rain takes to become fully wet. |
 | `wet_dry_seconds` | float | `30.0` | `0.1..600.0` | no | yes | Seconds a wet vehicle, no longer in the rain, takes to dry out completely. |
 | `player_carry` | boolean | `true` | `true \| false` | no | yes | Entities and players are stopped by an assembly's colliders, and a player standing on one is carried. |
+| `carry_max_entities` | integer | `64` | `0..1024` | no | yes | Maximum number of entities, players excepted, that one assembly carries. |
 
 ### `[damage]`
 
@@ -190,6 +191,7 @@ ignored (R-1830).
 | `prediction_proxy_radius` | float | `32.0` | `0.0..` | no | no | Distance, in blocks, around the predicted vehicle, up to which other assemblies and entities are placed as proxies in the predicted world. |
 | `max_bytes_per_second_per_player` | integer | `32768` | `0..` | no | no | Cap on AXION bandwidth per player, in bytes per second. |
 | `max_packets_per_second` | integer | `40` | `0..` | no | no | Cap on AXION packets per second per player. |
+| `carry_tolerance` | float | `0.25` | `0.05..1.0` | no | yes | Gap, in blocks, up to which the server recognises a player carried by an assembly as standing on it. |
 | `max_impacts_per_packet` | integer | `64` | `0..` | no | no | Maximum number of impacts grouped in one packet. |
 | `digest_interval_ticks` | integer | `40` | `0..` | no | no | Interval, in ticks, between two state verification digests. |
 | `max_deform_snapshots_per_second` | integer | `4` | `0..` | no | no | Cap on deformation snapshots per second in event-based replication. |

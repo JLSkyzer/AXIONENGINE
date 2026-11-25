@@ -258,6 +258,14 @@ public final class ConfigSchema {
                     true,
                     "Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté."),
             new Option(
+                    "physics.carry_max_entities",
+                    Kind.INTEGER,
+                    64L,
+                    new Domain(DomainKind.INT_RANGE, 0.0, 1024.0, List.of()),
+                    false,
+                    true,
+                    "Nombre maximal d'entités, hors joueurs, qu'une assembly porte."),
+            new Option(
                     "damage.enabled",
                     Kind.BOOLEAN,
                     true,
@@ -993,6 +1001,14 @@ public final class ConfigSchema {
                     false,
                     false,
                     "Plafond de paquets AXION par seconde et par joueur."),
+            new Option(
+                    "net.carry_tolerance",
+                    Kind.FLOAT,
+                    0.25,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.05, 1.0, List.of()),
+                    false,
+                    true,
+                    "Écart, en blocs, jusqu'auquel un joueur porté par une assembly est reconnu sur elle par le serveur."),
             new Option(
                     "net.max_impacts_per_packet",
                     Kind.INTEGER,

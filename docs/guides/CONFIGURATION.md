@@ -43,6 +43,7 @@ alors ignorée (R-1830).
 | `wet_rise_seconds` | flottant | `2.0` | `0.1..60.0` | non | oui | Secondes qu'un véhicule sous la pluie met à devenir tout à fait mouillé. |
 | `wet_dry_seconds` | flottant | `30.0` | `0.1..600.0` | non | oui | Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait. |
 | `player_carry` | booléen | `true` | `true \| false` | non | oui | Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté. |
+| `carry_max_entities` | entier | `64` | `0..1024` | non | oui | Nombre maximal d'entités, hors joueurs, qu'une assembly porte. |
 
 ### `[damage]`
 
@@ -190,6 +191,7 @@ alors ignorée (R-1830).
 | `prediction_proxy_radius` | flottant | `32.0` | `0.0..` | non | non | Distance, en blocs, autour du véhicule prédit, jusqu'à laquelle les autres assemblies et les entités sont posées en proxies dans le monde prédit. |
 | `max_bytes_per_second_per_player` | entier | `32768` | `0..` | non | non | Plafond de bande passante AXION par joueur, en octets par seconde. |
 | `max_packets_per_second` | entier | `40` | `0..` | non | non | Plafond de paquets AXION par seconde et par joueur. |
+| `carry_tolerance` | flottant | `0.25` | `0.05..1.0` | non | oui | Écart, en blocs, jusqu'auquel un joueur porté par une assembly est reconnu sur elle par le serveur. |
 | `max_impacts_per_packet` | entier | `64` | `0..` | non | non | Nombre maximal d'impacts groupés dans un paquet. |
 | `digest_interval_ticks` | entier | `40` | `0..` | non | non | Intervalle, en ticks, entre deux empreintes de vérification d'état. |
 | `max_deform_snapshots_per_second` | entier | `4` | `0..` | non | non | Plafond de snapshots de déformation par seconde en réplication par événements. |

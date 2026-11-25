@@ -1409,6 +1409,21 @@ public final class AxionRuntime {
                 : -1;
     }
 
+    /** {@return {@code net.carry_tolerance}, en blocs (ADR-178 D4) ; 0,25 sans runtime natif} */
+    public double carryTolerance() {
+        return hasNativeRuntime() ? outcome.config().getFloat("net.carry_tolerance") : 0.25;
+    }
+
+    /** {@return {@code physics.carry_max_entities} (ADR-178 D2) ; 0 sans runtime natif} */
+    public long carryMaxEntities() {
+        return hasNativeRuntime() ? outcome.config().getInt("physics.carry_max_entities") : 0L;
+    }
+
+    /** {@return {@code net.interpolation_delay_ms}, ce que le client ajoute au retard des poses qu'il dessine} */
+    public long interpolationDelayMillis() {
+        return hasNativeRuntime() ? outcome.config().getInt("net.interpolation_delay_ms") : 0L;
+    }
+
     /** {@return vrai si les entités sont arrêtées par les assemblies : {@code physics.player_carry} (ADR-178 D7)} */
     public boolean playerCarry() {
         return hasNativeRuntime() && outcome.config().getBoolean("physics.player_carry");

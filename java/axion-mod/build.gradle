@@ -51,6 +51,9 @@ def python = windows ? 'python' : 'python3'
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
 
+    // ADR-178 D4 : les références de position du serveur, ouvertes pour porter un joueur debout sur une assembly.
+    accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
+
     // Requis par ce template : fait tourner processResources sur les sorties de
     // l'IDE avant le lancement du jeu.
     copyIdeResources = true
