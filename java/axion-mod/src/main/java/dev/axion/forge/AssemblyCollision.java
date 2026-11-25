@@ -37,8 +37,17 @@ public final class AssemblyCollision {
 
     private AssemblyCollision() {}
 
+    /** La normale à partir de laquelle une surface se marche : plus raide que 45°, l'entité n'y tient pas. */
+    static final double WALKABLE = 0.7;
+
     /** Une assembly posée, prête à être balayée. */
-    private record Placed(long key, double[] poses, int count) {}
+    private record Placed(AxionEntity assembly, long key, double[] poses, int count) {}
+
+    /** Ce qui a arrêté l'entité vers le bas, le temps d'un déplacement : l'assembly et le corps. */
+    private static final class Landing {
+        private AxionEntity assembly;
+        private int body;
+    }
 
     /**
      * Le déplacement qu'une entité peut faire, une fois les assemblies prises en compte.
@@ -67,13 +76,17 @@ public final class AssemblyCollision {
     }
 
     private static Vec3 compute(Entity entity, Vec3 motion) {
-        if (AssemblyIndex.isAssembly(entity) || entity.noPhysics || entity.isSpectator() || entity.isPassenger()
-                || motion.lengthSqr() < 1.0e-12 || !AxionEntities.carry()) {
+        if (AssemblyIndex.isAssembly(entity) || motion.lengthSqr() < 1.0e-12) {
+            return null;
+        }
+        if (entity.noPhysics || entity.isSpectator() || entity.isPassenger() || !AxionEntities.carry()) {
+            CarrySupports.clear(entity);
             return null;
         }
         AABB box = entity.getBoundingBox();
         List<AxionEntity> near = AssemblyIndex.near(entity.level(), box.expandTowards(motion).inflate(0.25));
         if (near.isEmpty()) {
+            CarrySupports.clear(entity);
             return null;
         }
         List<Placed> placed = new ArrayList<>(near.size());
@@ -81,15 +94,23 @@ public final class AssemblyCollision {
             long key = assembly.collisionKey();
             double[] poses = key == 0L ? null : assembly.collisionPoses();
             if (poses != null) {
-                placed.add(new Placed(key, poses, poses.length / NativeBridge.COLLIDE_POSE));
+                placed.add(new Placed(assembly, key, poses, poses.length / NativeBridge.COLLIDE_POSE));
             }
         }
         if (placed.isEmpty()) {
+            CarrySupports.clear(entity);
             return null;
         }
-        BoxSlide.Sweeper sweeper = (at, mx, my, mz) -> sweep(placed, at, mx, my, mz);
+        Landing landing = new Landing();
+        BoxSlide.Sweeper sweeper = (at, mx, my, mz) -> sweep(placed, at, mx, my, mz, landing);
         double[] slid = BoxSlide.slide(new double[] {box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ},
                 new double[] {motion.x, motion.y, motion.z}, sweeper, entity.maxUpStep(), entity.onGround());
+        // ADR-178 D2 : le support naît d'une chute arrêtée par une surface qu'on marche ; sinon, il meurt.
+        if (motion.y < 0.0 && slid[1] > motion.y + 1.0e-9 && landing.assembly != null) {
+            CarrySupports.land(entity, landing.assembly, landing.body);
+        } else {
+            CarrySupports.clear(entity);
+        }
         if (Math.abs(slid[0] - motion.x) < 1.0e-9 && Math.abs(slid[1] - motion.y) < 1.0e-9
                 && Math.abs(slid[2] - motion.z) < 1.0e-9) {
             return null;
@@ -98,7 +119,8 @@ public final class AssemblyCollision {
     }
 
     /** Le premier contact de la boîte avec n'importe laquelle des assemblies posées. */
-    private static BoxSlide.Hit sweep(List<Placed> placed, double[] box, double mx, double my, double mz) {
+    private static BoxSlide.Hit sweep(List<Placed> placed, double[] box, double mx, double my, double mz,
+            Landing landing) {
         double[][] buffers = BUFFERS.get();
         double[] input = buffers[0];
         double[] out = buffers[1];
@@ -107,6 +129,8 @@ public final class AssemblyCollision {
         input[7] = my;
         input[8] = mz;
         BoxSlide.Hit best = null;
+        Placed bestOf = null;
+        int bestBody = 0;
         for (Placed assembly : placed) {
             int code = AxionEntities.collider().collide(assembly.key(), NativeBridge.COLLIDE_SWEEP, assembly.poses(),
                     assembly.count(), input, out);
@@ -116,7 +140,13 @@ public final class AssemblyCollision {
             }
             if (out[0] > 0.5 && (best == null || out[2] < best.fraction())) {
                 best = new BoxSlide.Hit(out[2], out[3], out[4], out[5]);
+                bestOf = assembly;
+                bestBody = (int) out[1];
             }
+        }
+        if (best != null && my < 0.0 && best.ny() >= WALKABLE) {
+            landing.assembly = bestOf.assembly();
+            landing.body = bestBody;
         }
         return best;
     }

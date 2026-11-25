@@ -2768,12 +2768,26 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * Au serveur, les états du dernier tick ; au client, la pose que le tick a prise de l'interpolation : celle que le
      * joueur voit.
      */
-    double[] collisionPoses() {
+    public double[] collisionPoses() {
         DefinitionCompiler.Summary summary = summaryHeld();
-        if (summary == null) {
-            return null;
-        }
-        List<SeatPlacement.BodyPose> bodies = bodyPoses(summary);
+        return summary == null ? null : flatten(bodyPoses(summary));
+    }
+
+    /**
+     * {@return les poses de chaque corps telles qu'une image les dessine (client), à la queue leu leu comme
+     * {@link #collisionPoses}, ou {@code null} si elles ne sont pas connues} Ce qu'un joueur porté suit d'image en image
+     * (ADR-178 D3).
+     *
+     * @param shown la pose dessinée à cette image ({@link #renderPose})
+     */
+    public double[] framePoses(RenderPose shown) {
+        DefinitionCompiler.Summary summary = summaryHeld();
+        return summary == null ? null : flatten(relativePoses(summary, shown.x(), shown.y(), shown.z(), shown.rotation(),
+                shown.bodies()));
+    }
+
+    /** Les poses à la queue leu leu, 7 valeurs chacune ; {@code null} si l'une d'elles manque. */
+    private static double[] flatten(List<SeatPlacement.BodyPose> bodies) {
         double[] poses = new double[bodies.size() * 7];
         for (int rank = 0; rank < bodies.size(); rank++) {
             SeatPlacement.BodyPose body = bodies.get(rank);

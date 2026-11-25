@@ -2641,3 +2641,12 @@ Pour montrer des occupants à l'écran (`FilmDesOccupants`), il a fallu des `Jou
 
 **Règle.** Un film qui doit montrer un passager prend un joueur simulé (ou le joueur local), jamais un `FakePlayer` ; on regarde l'image extraite avant de l'annoncer.
 La caméra de côté regardant vers +Z a +X à sa gauche : numéroter les véhicules dans l'ordre de l'image, pas dans l'ordre des coordonnées.
+
+## 2026-11-25 | Le support d'un joueur porté effacé par le serveur : en solo, `Entity.equals` confond le client et le serveur
+
+**Observé.** Le banc `ADR-178 D3` : le support du joueur du banc disparaissait aussitôt après être né. Le registre des supports était un
+`WeakHashMap<Entity, …>` unique. `Entity.equals` et `hashCode` comparent l'identifiant : en solo, le `LocalPlayer` du client et le
+`ServerPlayer` du serveur sont **la même clé**, et la collision du serveur (déplacement à `y` nul) effaçait le support du client.
+
+**Règle.** Un état rangé par entité se range **par côté** (une table pour le client, une pour le serveur), ou par identité. Se demander,
+devant toute `Map<Entity, …>`, ce qu'un monde solo y met deux fois — les GameTests (serveur seul) ne le voient pas, un banc client oui.

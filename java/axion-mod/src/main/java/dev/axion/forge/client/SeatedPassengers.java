@@ -69,7 +69,8 @@ final class SeatedPassengers {
         }
     }
 
-    private static void place(Entity passenger, double x, double y, double z) {
+    /** Pose une entité à sa place dessinée, positions ancienne et courante confondues : quel que soit le partialTick, elle y est. */
+    static void place(Entity passenger, double x, double y, double z) {
         passenger.setPos(x, y, z);
         passenger.xo = x;
         passenger.yo = y;
@@ -88,6 +89,11 @@ final class SeatedPassengers {
         }
         float delta = Mth.wrapDegrees(yaw - lastYaw);
         lastYaw = yaw;
+        turn(player, delta);
+    }
+
+    /** Tourne le joueur, sa tête et son corps, de {@code delta} degrés, comme le fait la souris. */
+    static void turn(LocalPlayer player, float delta) {
         if (delta == 0f) {
             return;
         }

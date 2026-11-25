@@ -397,6 +397,12 @@ public final class BancDeRendu {
 
     /** ADR-158 D3 : le siège, derrière la caméra, son passager, et la position du passager au serveur. */
     private static AxionEntity siege;
+
+    // ADR-178 D3 : le plateau en mouvement et le joueur debout dessus.
+    private static AxionEntity plateau;
+    private static volatile boolean plateauLance;
+    private static double[] porteAvant;
+    private static double[] plateauAvant;
     private static Entity passager;
     private static boolean passagerAssis;
     private static Vec3 passagerServeur;
@@ -867,6 +873,35 @@ public final class BancDeRendu {
                     String.format(Locale.ROOT, "au volant, la touche avant du vrai client donne au serveur un accélérateur de %.2f",
                             siege.seatInput(0).throttle())));
             une("relâcher l'avant", mc -> mc.options.keyUp.setDown(false));
+            // ADR-178 D3 : le joueur, debout sur une assembly qui tombe et glisse, y garde sa place. Haut au-dessus de
+            // tout, hors de vue : la caisse n'a rien à heurter avant la fin de la mesure.
+            serveur("poser le plateau", s -> {
+                Vec3 ou = new Vec3(1.5 + 2 * DERRIERE.size(), surface + 40.0, 26.5);
+                ObservateursDeTest.declarer(s.overworld(), ou);
+                plateau = AssembliesDeTest.poser(s.overworld(), SIEGE, ou, IDENTITE);
+            });
+            jusqua("le plateau simulé", 60, mc -> plateau.hasPhysicalBounds()
+                    && mc.level.getEntity(plateau.getId()) instanceof AxionEntity auClient
+                    && auClient.collisionPoses() != null);
+            serveur("poser le joueur sur le plateau", s -> {
+                net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
+                joueur.stopRiding();
+                joueur.setGameMode(GameType.CREATIVE);
+                joueur.getAbilities().flying = false;
+                joueur.onUpdateAbilities();
+                joueur.teleportTo(s.overworld(), plateau.getX(), plateau.getY() + 1.1, plateau.getZ(), 0f, 0f);
+            });
+            jusqua("le joueur porté chez le client", 30, mc -> dev.axion.forge.CarrySupports.of(mc.player) != null
+                    && dev.axion.forge.CarrySupports.of(mc.player).local() != null);
+            serveur("lancer le plateau de côté", s -> {
+                plateauLance = false;
+                RuntimeAccess.get().addCommandProvider(BancDeRendu::lancerLePlateau);
+            });
+            pendant("le plateau parti", 4);
+            une("relever la place du joueur sur le plateau", mc -> releverPorte(mc, false));
+            pendant("le plateau en mouvement", 12);
+            une("juger ADR-178 D3", mc -> releverPorte(mc, true));
+            serveur("retirer le plateau", s -> plateau.discard());
             serveur("rendre le joueur du banc à sa place", s -> {
                 net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
                 joueur.stopRiding();
@@ -2340,6 +2375,40 @@ public final class BancDeRendu {
     private static int passagerChezLeClient(Minecraft minecraft) {
         Entity auClient = minecraft.level.getEntity(passager.getId());
         return auClient != null && auClient.getVehicle() instanceof AxionEntity vehicule ? vehicule.seatOf(auClient) : -1;
+    }
+
+    /** Une impulsion de côté sur le plateau, une seule fois, par la file de commandes de la simulation. */
+    private static dev.axion.physics.SimCommandStream lancerLePlateau(long tick) {
+        dev.axion.physics.SimCommandStream commandes = new dev.axion.physics.SimCommandStream();
+        if (!plateauLance && plateau != null && !plateau.isRemoved()) {
+            plateauLance = true;
+            commandes.applyImpulse(AssemblyRuntime.handleIndexOf(plateau), AssemblyRuntime.GENERATION, 9000f, 0f, 0f);
+        }
+        return commandes;
+    }
+
+    /**
+     * ADR-178 D3 (CAP-14) : la place du joueur dans le repère du plateau, relevée deux fois à 12 ticks d'écart, ne bouge pas
+     * quand le plateau s'est déplacé d'au moins 0,8 bloc à l'horizontale.
+     */
+    private static void releverPorte(Minecraft minecraft, boolean juger) {
+        dev.axion.forge.CarrySupports.Support support = dev.axion.forge.CarrySupports.of(minecraft.player);
+        AxionEntity auClient = minecraft.level.getEntity(plateau.getId()) instanceof AxionEntity a ? a : null;
+        double[] poses = auClient == null ? null : auClient.collisionPoses();
+        if (!juger) {
+            porteAvant = support == null ? null : support.local();
+            plateauAvant = poses == null ? null : new double[] {poses[0], poses[1], poses[2]};
+            return;
+        }
+        boolean porte = support != null && support.local() != null && porteAvant != null && poses != null
+                && plateauAvant != null;
+        double parcouru = porte ? Math.hypot(poses[0] - plateauAvant[0], poses[2] - plateauAvant[2]) : Double.NaN;
+        double derive = porte ? Math.hypot(support.local()[0] - porteAvant[0], support.local()[2] - porteAvant[2])
+                : Double.NaN;
+        boolean vert = porte && parcouru >= 0.8 && derive <= 0.15;
+        RAPPORT.noter("ADR-178 D3", vert, String.format(Locale.ROOT,
+                "joueur debout sur la caisse lancée de côté : porté au début et à la fin : %s ; la caisse a avancé de %.2f bloc,"
+                        + " sa place sur elle a dérivé de %.3f bloc (au moins 0,8 et au plus 0,15)", porte, parcouru, derive));
     }
 
     /** ADR-177 D1 : l'overlay {@code seats} a tracé le siège du joueur assis. */

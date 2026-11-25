@@ -100,6 +100,7 @@ public final class ClientNetworkEvents {
             Minecraft minecraft = Minecraft.getInstance();
             ClientSnapshots.onFrame(System.nanoTime(), minecraft.isPaused());
             SeatedPassengers.onFrame(minecraft, event.renderTickTime);
+            CarriedPlayer.onFrame(minecraft, event.renderTickTime);
         }
     }
 }
