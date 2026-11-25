@@ -99,7 +99,8 @@ class ProceduralTracksTest {
 
     private static ProceduralTracks pistesDuVehicule(String pistes, List<String> journal) {
         JsonObject racine = JsonParser.parseString("{\"wheels\":[{\"node\":\"roue_g\"},{\"node\":\"roue_d\"}],"
-                + "\"seats\":[{\"name\":\"conducteur\"},{\"name\":\"passager\"}],\"procedural\":[" + pistes + "]}")
+                + "\"seats\":[{\"name\":\"conducteur\"},{\"name\":\"passager\"}],\"energy\":{\"fuel\":{\"capacity\":40}},"
+                + "\"procedural\":[" + pistes + "]}")
                 .getAsJsonObject();
         return ProceduralTracks.of(racine, NOMS, journal::add);
     }
@@ -137,7 +138,7 @@ class ProceduralTracksTest {
             {"vehicle.speed", "12"}, {"vehicle.forward_speed", "-11"}, {"vehicle.throttle", "0.6"},
             {"vehicle.brake", "0.2"}, {"vehicle.steer", "-0.5"}, {"vehicle.handbrake", "1"},
             {"engine.rpm", "3000"}, {"engine.load", "0.4"}, {"engine.running", "1"},
-            {"energy.fuel_ratio", "0.5"}, {"energy.battery", "0.25"}, {"vehicle.wet", "0.625"},
+            {"energy.fuel", "20"}, {"energy.fuel_ratio", "0.5"}, {"energy.battery", "0.25"}, {"vehicle.wet", "0.625"},
             {"transmission.gear", "-1"}, {"transmission.shifting", "0"},
             {"seat.conducteur.occupied", "1"}, {"seat.passager.occupied", "0"},
             {"wheel.roue_g.on_ground", "1"}, {"wheel.roue_d.on_ground", "0"},

@@ -358,6 +358,33 @@ public final class VehiculesGameTests {
                 .thenSucceed();
     }
 
+    /** ADR-176 D3 : {@code /axion energy} voit l'énergie, verse sans dépasser la capacité, et pose la batterie. */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr176_LaCommandeEnergyVoitVerseEtPose(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_reservoir",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), new float[] {0f, 0f, 0f, 1f});
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.ignitionVariable() >= 0,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    net.minecraft.server.MinecraftServer serveur = helper.getLevel().getServer();
+                    String cible = "axion energy " + vehicule.getUUID();
+                    String vu = String.join(" | ", ParametresGameTests.commande(serveur, cible));
+                    helper.assertTrue(vu.contains("carburant : 40.000 / 40.000 l (100.0 %)")
+                            && vu.contains("masse du carburant : 30.00 kg") && vu.contains("batterie : 1.000 / 1.000"),
+                            "ce que la commande voit : " + vu);
+                    String pose = String.join(" | ", ParametresGameTests.commande(serveur, cible + " battery 0.25"));
+                    helper.assertTrue(vehicule.battery() == 0.25 && pose.contains("batterie : 0.250 / 1.000"),
+                            "la batterie posée : " + vehicule.battery() + " ; " + pose);
+                    String verse = String.join(" | ", ParametresGameTests.commande(serveur, cible + " refuel 100"));
+                    helper.assertTrue(vehicule.fuel() == 40.0 && verse.contains("40.000 / 40.000 l"),
+                            "jamais plus que la capacité : " + vehicule.fuel() + " ; " + verse);
+                    vehicule.discard();
+                })
+                .thenSucceed();
+    }
+
     /**
      * ADR-176 D4 : le profil de pneu d'une roue arrive au natif ({@code wear.rate} de {@code axion:tire/test/usable}) : plein
      * gaz de l'arrêt, les roues motrices patinent et s'usent, plus que les roues avant, qui roulent ; le rapport du natif

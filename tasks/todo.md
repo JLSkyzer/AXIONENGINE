@@ -3897,11 +3897,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              - [x] après `replaces`, le client suit le remplacement (`DefinitionRegistry.current`) ; à jouer au banc client ;
              - [ ] prédiction et proxies non remis à zéro quand la definition change (`ClientPrediction.tick`) ;
              - [ ] un changement du seul asset ne relie pas les assemblies.
-           - Restes de CAP-12 et CAP-20 (cœur livré) : paragraphe périmé du guide moteur (FR, EN), précision d'ADR-176,
-             annexe A.7 et A27 ; `energy.fuel` dans `ProceduralTracksTest.sourcesDuVehicule` ; GameTests de
-             `Assembly.energy()`, de `/axion energy`, du contact et de la masse prédits, des réservoirs de remorque ; API ou
-             commande d'humidité ; essai à deux clients ou report ; neige (décision de Killian) ; film du plein et jauge ;
-             grille D7 d'ADR-176.
+           - Restes de CAP-12 et CAP-20 (cœur livré). Faits le 2026-11-25 : guide moteur (FR, EN), usure visible actée
+             dans ADR-176, `energy.fuel` testé, GameTest de `/axion energy` (celui d'`Assembly.energy()` existait). Restent :
+             annexe A.7 et A27 ; GameTests du contact et de la masse prédits, des réservoirs de remorque ; API ou commande
+             d'humidité ; essai à deux clients ou report ; neige (décision de Killian) ; film du plein et jauge ; grille D7
+             d'ADR-176.
            - CAP-11 et CAP-34 non livrées : GameTest d'`AttachmentListener` et isolement des écouteurs ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,

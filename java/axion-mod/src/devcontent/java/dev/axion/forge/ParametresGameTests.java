@@ -333,7 +333,7 @@ public final class ParametresGameTests {
     }
 
     /** {@return les réponses d'une commande tapée avec les droits du serveur} */
-    private static List<String> commande(MinecraftServer serveur, String ligne) {
+    static List<String> commande(MinecraftServer serveur, String ligne) {
         List<String> sortie = new ArrayList<>();
         CommandSource recueil = new CommandSource() {
             @Override
