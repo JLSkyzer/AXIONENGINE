@@ -62,6 +62,19 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
     }
 
     /**
+     * {@return les sièges tels que l'API les dit (ADR-177), dans l'ordre de la definition : le nom, la pose et l'échelle
+     * de l'occupant}
+     */
+    public java.util.List<dev.axion.api.assembly.Seat> apiSeats() {
+        return seats.stream()
+                .map(seat -> new dev.axion.api.assembly.Seat(seat.name(),
+                        seat.occupant().pose() == Pose.STAND ? dev.axion.api.assembly.Seat.Pose.STAND
+                                : dev.axion.api.assembly.Seat.Pose.SIT,
+                        seat.occupant().scale()))
+                .toList();
+    }
+
+    /**
      * Une table sans variable.
      *
      * @param seats les sièges

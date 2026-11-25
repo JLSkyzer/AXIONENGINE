@@ -76,6 +76,21 @@ writes `joueur_large.glb` (4-pixel arms) and `joueur_fin.glb` (3-pixel arms) int
   vertex of both files, in the three poses, with what the game draws (1 mm), then the seated player with the origin that the seated
   mannequin puts below the node. If Minecraft changes its model, the bench fails and is fixed with `./gradlew genMannequin`.
 
+## Reading seats from an addon
+
+`assembly.seats()` returns an assembly's seats, in the definition's order: their name, their occupant's pose and scale. Call
+it on the server, like the rest of the API.
+
+```java
+for (Seat seat : assembly.seats()) {
+    if (seat.pose() == Seat.Pose.STAND) {
+        // a standing post: seat.name(), seat.scale()
+    }
+}
+```
+
+The list is empty for an assembly without seats, or until its definition is ready.
+
 ## Seeing what the seat sets
 
 `/axion debug seats on` draws, at each seat, the occupant at the set scale and a cross at its eye in orange, and a player's collision box in grey,

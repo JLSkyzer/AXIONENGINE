@@ -245,6 +245,11 @@ public final class SiegesGameTests {
             helper.assertTrue(b.pose() == Seating.Pose.STAND && b.scale() == 2f && b.eye() == null,
                     "l'occupant du passager : " + b);
             helper.assertTrue(vanilla.occupantOf(temoin).isDefault(), "le siège sans occupant : assis, à l'échelle, œil vanilla");
+            java.util.List<dev.axion.api.assembly.Seat> vus = ForgeAxionApi.view(assembly).seats();
+            helper.assertTrue(vus.equals(java.util.List.of(
+                            new dev.axion.api.assembly.Seat("conducteur", dev.axion.api.assembly.Seat.Pose.SIT, 0.5),
+                            new dev.axion.api.assembly.Seat("passager", dev.axion.api.assembly.Seat.Pose.STAND, 2.0))),
+                    "les sièges que dit l'API : " + vus);
 
             assembly.positionRider(conducteur);
             assembly.positionRider(passager);

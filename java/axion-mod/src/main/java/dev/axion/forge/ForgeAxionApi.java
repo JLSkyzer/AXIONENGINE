@@ -507,6 +507,13 @@ public final class ForgeAxionApi implements AxionApi {
         }
 
         @Override
+        public java.util.List<dev.axion.api.assembly.Seat> seats() {
+            AuthoritativeThread.require();
+            dev.axion.definition.Seating seating = entity.declaredSeating();
+            return seating == null ? java.util.List.of() : seating.apiSeats();
+        }
+
+        @Override
         public dev.axion.api.assembly.Energy energy() {
             return new dev.axion.api.assembly.Energy() {
                 @Override

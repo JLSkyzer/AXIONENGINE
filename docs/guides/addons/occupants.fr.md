@@ -77,6 +77,21 @@ axion-cli mannequin mannequin
   deux fichiers, aux trois poses, à celui que le jeu dessine (1 mm), puis le joueur assis à l'origine que le mannequin assis pose sous le
   node. Si Minecraft change son modèle, le banc échoue et se règle par `./gradlew genMannequin`.
 
+## Lire les sièges depuis un addon
+
+`assembly.seats()` rend les sièges d'une assembly, dans l'ordre de la definition : leur nom, la pose et l'échelle de leur
+occupant. À appeler sur le serveur, comme le reste de l'API.
+
+```java
+for (Seat siege : assembly.seats()) {
+    if (siege.pose() == Seat.Pose.STAND) {
+        // un poste debout : siege.name(), siege.scale()
+    }
+}
+```
+
+La liste est vide pour une assembly sans siège, ou tant que sa definition n'est pas prête.
+
 ## Voir ce que le siège règle
 
 `/axion debug seats on` dessine, à chaque siège, en orange l'occupant à l'échelle réglée et une croix à son œil, et en gris la boîte de collision d'un

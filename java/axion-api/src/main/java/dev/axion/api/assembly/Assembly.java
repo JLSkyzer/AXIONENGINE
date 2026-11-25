@@ -68,6 +68,14 @@ public interface Assembly {
     java.util.Optional<dev.axion.api.vehicle.VehicleControl> vehicle();
 
     /**
+     * {@return ses sièges, dans l'ordre de sa definition, chacun avec la pose et l'échelle de son occupant (ADR-177) ;
+     * vide sans siège, ou avant que sa definition ne soit prête} Thread : autoritatif uniquement (R-1755).
+     */
+    default java.util.List<Seat> seats() {
+        return java.util.List.of();
+    }
+
+    /**
      * {@return son énergie (ADR-176 D3) : le carburant de son réservoir et la charge de sa batterie ; zéro partout si sa
      * definition n'en déclare pas} Thread : autoritatif uniquement (R-1755).
      */

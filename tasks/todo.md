@@ -3910,7 +3910,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              par instance ; joints à engrenages et crémaillère ; texte du CDC 23.2 et A.7. Ce qui touche un contrat, l'ABI
              ou le protocole demande un ADR accepté.
            - CAP-13, 33, 38, 56 : au-delà des défauts ci-dessus, banc client de l'échelle, de la pose debout et de l'œil ;
-             API de siège promise par la grille d'ADR-177 ; grilles D7 d'ADR-175 (ouverte) et d'ADR-177 (jamais vérifiée).
+             grille D7 d'ADR-175 (ouverte). Faits le 2026-11-25 : l'API des sièges (`Assembly.seats()`) et la grille D7
+             d'ADR-177 vérifiée — restent le coût du rendu à l'échelle (non mesuré) et l'essai à deux clients.
      - [ ] **ADR-180, le matériau sous chaque roue** (accepté le 2026-11-25, A31).
            - [x] 14a (2026-11-25) — natif, ABI 36 : palette dans les deux commandes de tuile, boîtes groupées par matériau,
                  matériau par cellule du champ de hauteurs lu par la roue.

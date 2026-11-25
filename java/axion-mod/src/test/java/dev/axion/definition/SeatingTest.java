@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import dev.axion.api.assembly.Seat;
 import dev.axion.asset.AnimClips;
 import dev.axion.asset.AssetSource;
 import dev.axion.asset.DefinitionCompiler;
@@ -244,6 +245,18 @@ class SeatingTest {
                 "un siège sans occupant reste comme avant : assis, à l'échelle, à l'œil de Minecraft");
         assertTrue(seating.seats().get(1).occupant().isDefault());
         assertEquals(null, seating.seats().get(1).occupant().eye());
+    }
+
+    @Test
+    @DisplayName("ADR-177 : l'API dit chaque siège dans l'ordre, sa pose et son échelle")
+    void siegesVusParLApi() {
+        JsonObject root = avecOccupant("{ \"pose\": \"stand\", \"scale\": 2 }", 7);
+        List<DefinitionChecker.AssetReference> references = DefinitionChecker.assetReferences(root);
+        Seating seating = Seating.of(root, references, resolus(references));
+
+        assertEquals(List.of(new Seat("conducteur", Seat.Pose.STAND, 2.0), new Seat("passager", Seat.Pose.SIT, 1.0)),
+                seating.apiSeats());
+        assertEquals(List.of(), Seating.NONE.apiSeats());
     }
 
     @Test
