@@ -3917,8 +3917,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] 14b (2026-11-25) — Java : palette et fusion par matériau, replis, champ de hauteurs par colonne ; R-643
                  amendé ; GameTest d'une bande de glace sur de la pierre.
            - [x] 14c (2026-11-25) — `cover` (correspondances au schéma 2), la première couche de neige.
-           - [ ] 14d — impacts sur champ de hauteurs ; mesure avant (commit `76250c51`) et après : construction des tuiles,
-                 nombre de boîtes, pas, mémoire.
+           - [x] 14d1 (2026-11-25) — mesure de D5 avant (`76250c51`) et après (`tools/campagne/mesure_sol.py`, banc de
+                 CAP-53) : `docs/mesures/ADR-180-sol-2026-11-25.md`. Tuiles +45 à +64 %, pas natif +20 % sur monde plat,
+                 inchangé sur terrain naturel, 20 TPS.
+           - [ ] 14d2 — les impacts d'un corps sur un champ de hauteurs prennent le matériau de la cellule (D2).
+           - [ ] Coût du sol : profiler la construction des tuiles et le surplus de colliders du monde plat, puis réduire
+                 (question posée à Killian le 2026-11-25).
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
            `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
            (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Restent : la mesure du

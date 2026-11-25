@@ -117,6 +117,11 @@ minecraft {
                 // Le défaut ouvert de sa connexion (précision 6c-B) : chaque lecture et écriture de socket du serveur.
                 jvmArg "-XX:StartFlightRecording=filename=${rootProject.file('.runs/server/essai-reseau.jfr')},settings=${rootProject.file('tools/ci/essai_reseau.jfc')},dumponexit=true"
             }
+            // ADR-180 D5, mesure du sol (tools/campagne/mesure_sol.py) : son propre monde, les exemples chargés.
+            if (System.getenv('AXION_MESURE_SOL') != null) {
+                args '--world', 'mesure-sol-monde'
+                property 'axion.content.examples', 'true'
+            }
             // CAP-53, mesure du serveur (tools/campagne/mesure.py) : son propre monde, neuf à chaque campagne.
             if (System.getenv('AXION_MESURE') != null) {
                 args '--world', 'mesure-monde'
