@@ -126,6 +126,28 @@ public record Revisions(int revision, List<Migration> migrations, List<String> r
     }
 
     /**
+     * {@return le nom que porte à cette révision un nom écrit à la révision {@code saved}, ou vide si une migration l'a
+     * donné à un autre} La règle de {@link #successors}, pour un nom seul : un nom resté tel que la migration attribue
+     * à un autre disparaît (ADR-179 D2).
+     *
+     * @param kind une catégorie de {@link #KINDS}
+     * @param saved la révision que le nom avait
+     * @param name le nom écrit
+     */
+    public java.util.Optional<String> follow(String kind, int saved, String name) {
+        String current = name;
+        for (Migration step : chain(saved)) {
+            Map<String, String> table = step.of(kind);
+            if (table.containsKey(current)) {
+                current = table.get(current);
+            } else if (table.containsValue(current)) {
+                return java.util.Optional.empty();
+            }
+        }
+        return java.util.Optional.of(current);
+    }
+
+    /**
      * {@return pour chaque nom d'une catégorie tenu à la révision {@code saved}, le nom qu'il porte à celle-ci} Les
      * migrations s'enchaînent ; dans l'une, les renommages valent tous à la fois, et un nom resté tel qu'un autre vient
      * prendre disparaît : il n'a pas d'entrée. C'est ce qu'une migration fait aux clés d'un état sauvegardé.

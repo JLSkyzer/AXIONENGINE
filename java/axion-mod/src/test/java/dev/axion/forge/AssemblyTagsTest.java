@@ -25,9 +25,9 @@ class AssemblyTagsTest {
     void attachesGardees() {
         java.util.UUID autre = new java.util.UUID(7, 9);
         java.util.List<dev.axion.attach.AttachmentRecord> posees = java.util.List.of(
-                new dev.axion.attach.AttachmentRecord("attelage", autre, "timon", null, "hitch", Double.NaN, "axion"),
+                new dev.axion.attach.AttachmentRecord("attelage", autre, "timon", null, "hitch", Double.NaN, "axion", 3),
                 new dev.axion.attach.AttachmentRecord("treuil", null, null, new int[] {12, 64, -3}, "winch", 4.5,
-                        "monaddon"));
+                        "monaddon", 0));
         CompoundTag stored = new CompoundTag();
         AssemblyTags.putAttachments(stored, posees);
         java.util.List<dev.axion.attach.AttachmentRecord> relues = AssemblyTags.attachments(stored);
@@ -40,6 +40,12 @@ class AssemblyTagsTest {
         assertEquals(java.util.List.of(12, 64, -3), java.util.Arrays.stream(relues.get(1).anchor()).boxed().toList());
         assertEquals(4.5, relues.get(1).length());
         assertEquals("monaddon", relues.get(1).owner());
+        // ADR-179 : la révision de l'autre se garde avec son socket ; absente, elle est inconnue et le reste se lit.
+        assertEquals(3, relues.get(0).otherRevision());
+        CompoundTag davant = stored.copy();
+        davant.getList(AssemblyTags.ATTACHMENTS, Tag.TAG_COMPOUND).getCompound(0).remove("other_rev");
+        assertEquals(0, AssemblyTags.attachments(davant).get(0).otherRevision());
+        assertEquals("timon", AssemblyTags.attachments(davant).get(0).otherSocket());
 
         // Une entrée sans autre extrémité ni bloc, ou au socket vide, est ignorée ; sans attache, la clé part.
         ListTag liste = stored.getList(AssemblyTags.ATTACHMENTS, Tag.TAG_COMPOUND);

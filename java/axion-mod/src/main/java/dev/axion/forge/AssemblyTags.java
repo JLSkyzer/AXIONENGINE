@@ -281,12 +281,15 @@ final class AssemblyTags {
             if (entry.hasUUID("other")) {
                 String otherSocket = entry.getString("other_socket");
                 if (ATTACHMENT_NAME.matcher(otherSocket).matches()) {
+                    // ADR-179 : absente ou mal formée, la révision est inconnue et le nom se lit tel quel.
+                    int revision = entry.contains("other_rev", Tag.TAG_INT)
+                            ? Math.max(0, entry.getInt("other_rev")) : 0;
                     saved.add(new dev.axion.attach.AttachmentRecord(socket, entry.getUUID("other"), otherSocket, null,
-                            kind, length, owner));
+                            kind, length, owner, revision));
                 }
             } else if (entry.contains("anchor", Tag.TAG_INT_ARRAY) && entry.getIntArray("anchor").length == 3) {
                 saved.add(new dev.axion.attach.AttachmentRecord(socket, null, null, entry.getIntArray("anchor"), kind,
-                        length, owner));
+                        length, owner, 0));
             }
         }
         return saved;
@@ -312,6 +315,9 @@ final class AssemblyTags {
             } else {
                 entry.putUUID("other", record.other());
                 entry.putString("other_socket", record.otherSocket());
+                if (record.otherRevision() > 0) {
+                    entry.putInt("other_rev", record.otherRevision());
+                }
             }
             entry.putString("kind", record.kind());
             if (Double.isFinite(record.length())) {

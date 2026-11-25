@@ -3893,7 +3893,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                    connaît pas : protocole, donc ADR) ;
              - [x] reliure : variables et modificateurs vivants non migrés (`AxionEntity.rebind`, `AssemblyVariables`) ;
              - [x] reliure : variables et nodes non repris journalisés (`E-7012`) ;
-             - [ ] `other_socket` d'une attache non renommé par une migration ;
+             - [x] `other_socket` d'une attache suit les migrations de l'autre (ADR-179, A30) ;
              - [x] après `replaces`, le client suit le remplacement (`DefinitionRegistry.current`), joué à deux processus ;
              - [x] prédiction et proxies au changement de definition : pas de défaut, joué à deux processus
                    (`prediction.py --recharge`) ;

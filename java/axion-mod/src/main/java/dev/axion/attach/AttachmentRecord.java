@@ -13,9 +13,11 @@ import java.util.UUID;
  * @param kind le type
  * @param length la longueur d'une corde ou d'un treuil au dernier tick, en blocs ; {@code NaN} sans
  * @param owner le mod qui l'a posée
+ * @param otherRevision la révision de la definition de l'autre à laquelle {@code otherSocket} est écrit (ADR-179) ;
+ *     0 inconnue — une sauvegarde d'avant — ou pour un ancrage
  */
 public record AttachmentRecord(String socket, UUID other, String otherSocket, int[] anchor, String kind,
-        double length, String owner) {
+        double length, String owner, int otherRevision) {
 
     /** Au plus autant d'attaches gardées par assembly : ses sockets (ADR-171 D2). */
     public static final int MAX = 32;
@@ -31,6 +33,16 @@ public record AttachmentRecord(String socket, UUID other, String otherSocket, in
      * @param newLength la longueur, en blocs
      */
     public AttachmentRecord withLength(double newLength) {
-        return new AttachmentRecord(socket, other, otherSocket, anchor, kind, newLength, owner);
+        return new AttachmentRecord(socket, other, otherSocket, anchor, kind, newLength, owner, otherRevision);
+    }
+
+    /**
+     * {@return la même attache, au socket de l'autre sous ce nom à cette révision (ADR-179)}
+     *
+     * @param name le nom du socket de l'autre
+     * @param revision la révision de sa definition
+     */
+    public AttachmentRecord withOther(String name, int revision) {
+        return new AttachmentRecord(socket, other, name, anchor, kind, length, owner, revision);
     }
 }

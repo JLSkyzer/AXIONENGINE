@@ -61,6 +61,13 @@ axion:wheels  compound  usure de chaque pneu, par nom de roue (ADR-176 D4), abse
 - **Chargement.** Toute assembly chargée est créée endormie (22.4), puis réveillée par la gestion
   d'activité ; ses vitesses lui sont rendues au réveil.
 
+### `axion:atts`
+
+Les attaches que l'assembly a posées (ADR-171 D7), une entrée par attache : `socket`, `kind`, `owner`, `length` (corde et
+treuil), puis soit `anchor` (le bloc, trois entiers), soit `other` (UUID), `other_socket` et **`other_rev`** : la révision
+de la definition de l'autre à laquelle `other_socket` est écrit (ADR-179). Au rétablissement, le nom suit les migrations de
+l'autre depuis cette révision. Absente — une sauvegarde d'avant —, le nom se lit tel quel.
+
 ### `axion:rev` et `axion:sha`
 
 La révision (`revision` d'une definition du schéma 7, 1 sans) et l'empreinte du contenu de la definition à laquelle

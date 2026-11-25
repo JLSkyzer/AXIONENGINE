@@ -60,6 +60,19 @@ class RevisionsTest {
     }
 
     @Test
+    @DisplayName("ADR-179 D2 : un nom seul suit la chaîne, et disparaît quand une migration le donne à un autre")
+    void suivre() {
+        Revisions revisions = Revisions.of(definition("\"revision\": 3, \"migrations\": ["
+                + "{\"from\": 1, \"rename\": {\"sockets\": {\"arriere\": \"crochet\", \"anneau\": \"boucle\","
+                + " \"neuf\": \"vieux\"}}}, {\"from\": 2, \"rename\": {\"sockets\": {\"crochet\": \"timon\"}}}]"));
+        assertEquals(java.util.Optional.of("timon"), revisions.follow("sockets", 1, "arriere"));
+        assertEquals(java.util.Optional.of("timon"), revisions.follow("sockets", 2, "crochet"));
+        assertEquals(java.util.Optional.empty(), revisions.follow("sockets", 1, "vieux"), "pris par « neuf »");
+        assertEquals(java.util.Optional.of("autre"), revisions.follow("sockets", 1, "autre"));
+        assertEquals(java.util.Optional.of("arriere"), revisions.follow("sockets", 3, "arriere"), "déjà à jour");
+    }
+
+    @Test
     @DisplayName("D3 : le successeur d'un nom — les renommages d'une migration à la fois, un nom écrasé disparaît")
     void successeurs() {
         Revisions revisions = Revisions.of(definition("\"revision\": 3, \"migrations\": ["

@@ -630,7 +630,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return le document de la definition : celui que l'instance tient, sinon celui du registre, {@code null} : inerte} */
     /** {@return la révision et les migrations de la definition que l'instance lit} */
-    private dev.axion.definition.Revisions revisions() {
+    dev.axion.definition.Revisions revisions() {
         Definition bound = document();
         return bound == null ? dev.axion.definition.Revisions.NONE : dev.axion.definition.Revisions.of(bound.root());
     }

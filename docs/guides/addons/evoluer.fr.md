@@ -58,6 +58,9 @@ Au schéma 7, une definition déclare sa **révision** et ce qui mène une sauve
 - **`replaces`** : les identifiants de definitions que celle-ci remplace. Une assembly sauvegardée sous l'ancien
   identifiant s'y relie au lieu de rester inerte ; si une definition porte encore cet identifiant, elle le garde.
   Sans alias, une definition retirée laisse ses assemblies inertes et intactes.
+- **Les attaches** : un crochet que tu renommes par une migration reste accroché — la sauvegarde de l'autre véhicule
+  retient la révision à laquelle elle l'a nommé ([ADR-179](../../decisions/ADR-179.md)). Une sauvegarde d'avant cette
+  règle ne la retient pas : son crochet se cherche sous son ancien nom.
 
 Un contenu qui change **sans** nouvelle révision se restaure par nom, et le journal le dit une fois.
 

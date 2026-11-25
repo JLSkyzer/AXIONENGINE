@@ -406,6 +406,104 @@ public final class RechargementGameTests {
                 .thenSucceed();
     }
 
+    private static final String MAILLON_B = "axion:test/maillon_b";
+
+    private static final String CHEMIN_MAILLON_B = "axion:axion/definitions/test/maillon_b.json";
+
+    /** Un second maillon, que seul ce test recharge : sa révision et ses migrations. */
+    private static AssetSource avecLeMaillonB(AssetSource courantes, int revision, String migrations) {
+        String definition = "{\"schema\": 7, \"asset\": \"axion:models/test/maillon.gltf\", \"kind\": \"rigid_object\","
+                + " \"physics\": {\"mass\": 20.0}, \"revision\": " + revision + ", \"migrations\": [" + migrations
+                + "], \"sockets\": [{\"name\": \"avant\", \"accepts\": [\"rope\"]}, {\"name\": \"arriere\","
+                + " \"accepts\": [\"rope\"]}]}";
+        return new AssetSource() {
+            @Override
+            public List<String> list() {
+                List<String> chemins = new ArrayList<>(courantes.list());
+                chemins.add(CHEMIN_MAILLON_B);
+                return chemins;
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                return CHEMIN_MAILLON_B.equals(path) ? definition.getBytes(StandardCharsets.UTF_8)
+                        : courantes.read(path);
+            }
+        };
+    }
+
+    /** {@return le socket de l'autre que tient la seule attache d'une assembly, ou ce qui manque} */
+    private static String attacheeA(AxionEntity assembly) {
+        java.util.List<dev.axion.api.attach.Attachments.Attachment> attaches =
+                ForgeAxionApi.view(assembly).attachments().list();
+        return attaches.size() == 1 ? attaches.get(0).otherSocket() : attaches.size() + " attache(s)";
+    }
+
+    /**
+     * ADR-179 : une attache suit le crochet que l'autre assembly renomme — à chaud, puis alors que l'assembly qui la
+     * garde était déchargée pendant le renommage suivant. Chaque révision échange les noms de ses deux crochets : chercher
+     * le nom gardé tel quel accrocherait l'autre.
+     */
+    @GameTest(template = "test/plancher_16", batch = "rechargement_attache", timeoutTicks = 600)
+    public static void adr179_UneAttacheSuitLeCrochetRenomme(GameTestHelper helper) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
+        String echange = "{\"from\": %d, \"rename\": {\"sockets\": {\"avant\": \"arriere\","
+                + " \"arriere\": \"avant\"}}}";
+        String premier = String.format(java.util.Locale.ROOT, echange, 1);
+        String second = premier + ", " + String.format(java.util.Locale.ROOT, echange, 2);
+        runtime.onDefinitionReload(avecLeMaillonB(courantes, 1, ""));
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity[] a = {null};
+        AxionEntity[] b = {null};
+        net.minecraft.nbt.CompoundTag garde = new net.minecraft.nbt.CompoundTag();
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(AxionEntities.held(MAILLON_B).isPresent(),
+                        "le maillon B est compilé"))
+                .thenExecute(() -> {
+                    a[0] = AssembliesDeTest.poser(helper, "axion:test/maillon",
+                            new Vec3(6.0, DESSUS_DALLE + 0.05, 8.0), new float[] {0f, 0f, 0f, 1f});
+                    b[0] = AssembliesDeTest.poser(helper, MAILLON_B, new Vec3(9.0, DESSUS_DALLE + 0.05, 8.0),
+                            new float[] {0f, 0f, 0f, 1f});
+                })
+                .thenWaitUntil(() -> helper.assertTrue(a[0].hasPhysicalBounds() && b[0].hasPhysicalBounds(),
+                        "les deux sont simulées"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    dev.axion.api.attach.AttachResult attache = ForgeAxionApi.view(a[0]).attachments()
+                            .attach("avant", ForgeAxionApi.view(b[0]), "arriere", "rope");
+                    helper.assertTrue(attache.attached(), "attachée : " + attache.message());
+                    runtime.onDefinitionReload(avecLeMaillonB(courantes, 2, premier));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(b[0].definitionRevision() == 2
+                        && "avant".equals(attacheeA(a[0])), "à chaud, l'attache suit son crochet, devenu « avant » : B à"
+                        + " la révision " + b[0].definitionRevision() + ", accrochée à " + attacheeA(a[0])))
+                .thenExecute(() -> {
+                    // L'assembly qui garde l'attache est déchargée pendant le renommage suivant.
+                    a[0].saveWithoutId(garde);
+                    garde.putString("id", net.minecraft.world.entity.EntityType.getKey(a[0].getType()).toString());
+                    a[0].remove(net.minecraft.world.entity.Entity.RemovalReason.UNLOADED_TO_CHUNK);
+                    runtime.onDefinitionReload(avecLeMaillonB(courantes, 3, second));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(b[0].definitionRevision() == 3, "B est à la révision 3"))
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    a[0] = (AxionEntity) net.minecraft.world.entity.EntityType.loadEntityRecursive(garde,
+                            helper.getLevel(), entite -> entite);
+                    helper.assertTrue(helper.getLevel().addFreshEntity(a[0]), "elle revient au monde");
+                })
+                .thenWaitUntil(() -> helper.assertTrue("arriere".equals(attacheeA(a[0])),
+                        "au retour, l'attache suit son crochet, redevenu « arriere » : " + attacheeA(a[0])))
+                .thenExecute(() -> {
+                    ForgeAxionApi.view(a[0]).attachments().detach("avant");
+                    a[0].discard();
+                    b[0].discard();
+                    runtime.onDefinitionReload(courantes);
+                })
+                .thenSucceed();
+    }
+
     /** Combien d'assemblies le test de coût relie d'un coup. */
     private static final int POUR_LE_COUT = 24;
 

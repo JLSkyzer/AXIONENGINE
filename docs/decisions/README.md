@@ -30,7 +30,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
-| [ADR-179](ADR-179.md) | Une attache suit le crochet renommé de l'autre assembly (CAP-38) | 2026-11-25 | proposé |
+| [ADR-179](ADR-179.md) | Une attache suit le crochet renommé de l'autre assembly (CAP-38) | 2026-11-25 | accepté |
 | [ADR-178](ADR-178.md) | Un joueur debout sur une assembly : la collision, le support, le transport et la poussée (CAP-14) | 2026-11-25 | accepté |
 | [ADR-177](ADR-177.md) | La pose et l'échelle des occupants, et le mannequin du joueur (CAP-13, CAP-56 ; la direction de CAP-14) | 2026-11-18 | accepté |
 | [ADR-176](ADR-176.md) | Énergie, démarrage, usure des pneus et météo (CAP-12, CAP-20) | 2026-11-18 | accepté |

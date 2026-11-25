@@ -338,7 +338,8 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
             a.attachmentRecords().add(new AttachmentRecord(sa.name(), b == null ? null : b.getUUID(),
                     sb == null ? null : sb.name(),
                     anchor == null ? null : new int[] {anchor.getX(), anchor.getY(), anchor.getZ()}, kind,
-                    "rope".equals(kind) || "winch".equals(kind) ? length : Double.NaN, owner));
+                    "rope".equals(kind) || "winch".equals(kind) ? length : Double.NaN, owner,
+                    b == null ? 0 : b.definitionRevision()));
         }
         float maxForce = (float) Math.min(sa.maxForce(), sb == null ? Double.POSITIVE_INFINITY : sb.maxForce());
         float maxTorque = (float) Math.min(sa.maxTorque(), sb == null ? Double.POSITIVE_INFINITY : sb.maxTorque());
@@ -888,7 +889,14 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
             Optional<AttachmentGraph.Link> link = graph.socketLink(assembly.getUUID(), record.socket());
             Live attached = link.map(found -> live.get(found.id())).orElse(null);
             if (attached != null && Double.isFinite(attached.lastLength) && Double.isFinite(record.length())) {
-                records.set(i, record.withLength(attached.lastLength));
+                record = record.withLength(attached.lastLength);
+                records.set(i, record);
+            }
+            // ADR-179 D1 : le nom du socket de l'autre se garde avec la révision où il vaut, tant qu'elle est là et que
+            // l'attache tient un socket de la definition qu'elle lit.
+            if (attached != null && attached.b != null && !attached.b.isRemoved()
+                    && attached.b.sockets().sockets().indexOf(attached.bSocket) >= 0) {
+                records.set(i, record.withOther(attached.bSocket.name(), attached.b.definitionRevision()));
             }
         }
     }
@@ -1027,7 +1035,11 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                         waiting = true;
                         continue;
                     }
-                    Optional<Spec> otherSocket = other.sockets().named(record.otherSocket());
+                    // ADR-179 D2 : le nom gardé suit les migrations de l'autre depuis la révision où il a été écrit.
+                    Optional<String> wanted = record.otherRevision() > 0
+                            ? other.revisions().follow("sockets", record.otherRevision(), record.otherSocket())
+                            : Optional.of(record.otherSocket());
+                    Optional<Spec> otherSocket = wanted.flatMap(other.sockets()::named);
                     if (otherSocket.isEmpty()) {
                         unrestorableOnce(assembly, record, "le socket « " + record.otherSocket()
                                 + " » de l'autre assembly n'existe plus");
@@ -1035,6 +1047,11 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
                     }
                     result = place(assembly, socket.get(), other, otherSocket.get(), null, record.kind(),
                             record.owner(), record.length(), true);
+                    int rank = assembly.attachmentRecords().indexOf(record);
+                    if (result.attached() && rank >= 0) {
+                        assembly.attachmentRecords().set(rank,
+                                record.withOther(otherSocket.get().name(), other.definitionRevision()));
+                    }
                 }
                 if (!result.attached()) {
                     waiting = true;

@@ -57,6 +57,9 @@ From schema 7, a definition declares its **revision** and what leads a save from
 - **`replaces`**: the identifiers of definitions this one replaces. An assembly saved under the old identifier links
   to it instead of staying inert; if a definition still carries that identifier, it keeps it. Without an alias, a
   removed definition leaves its assemblies inert and intact.
+- **Attachments**: a hook you rename through a migration stays hooked — the other vehicle's save keeps the revision at
+  which it named it ([ADR-179](../../decisions/ADR-179.md)). A save from before this rule does not: it looks the hook up
+  under its old name.
 
 Content that changes **without** a new revision is restored by name, and the log says so once.
 
