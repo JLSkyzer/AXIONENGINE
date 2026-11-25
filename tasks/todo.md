@@ -3888,7 +3888,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - Défauts à reproduire (ADR-175, ADR-177) :
              - [x] guide des occupants (FR, EN) : multiplier l'échelle de la racine du mannequin l'agrandit autour d'un point
                    à 1,06 m au-dessus du siège, pas autour du siège (confirmé dans `Mannequin.ecrire` et `OccupantRender`) ;
-             - [ ] rayon d'interaction du serveur parti de l'œil de Minecraft quand le siège règle l'œil ou l'échelle
+             - [x] rayon d'interaction du serveur parti de l'œil de Minecraft quand le siège règle l'œil ou l'échelle
                    (`AxionEntity.aim`, confirmé par lecture ; même écart pour l'œil d'une vue déclarée, que le serveur ne
                    connaît pas : protocole, donc ADR) ;
              - [ ] reliure : variables et modificateurs vivants non migrés (`AxionEntity.rebind`, `AssemblyVariables`) ;

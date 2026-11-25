@@ -19,7 +19,9 @@ Les trois clés sont facultatives ; un siège sans `occupant` garde la pose, l'�
   change, pas la place où il est assis.
 - **`eye`** : l'œil de l'occupant à la première personne, dans le repère du node du siège, en mètres. Sans lui, c'est l'œil de
   Minecraft, **multiplié par `scale`** : un occupant à 0,67 voit de 0,67 fois plus bas. Une vue de caméra qui déclare son propre
-  `eye` (voir [les caméras](cameras.md)) le garde.
+  `eye` (voir [les caméras](cameras.md)) le garde. Le clic droit d'un passager part de cet œil, chez le serveur aussi : on vise ce
+  qu'on voit. L'`eye` d'une vue déclarée, lui, n'est pas connu du serveur : depuis une telle vue, le clic part toujours de l'œil du
+  siège.
 
 ## Deux manières d'accorder le modèle et le joueur
 

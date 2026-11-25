@@ -201,23 +201,16 @@ public final class VehicleCamera {
     private static void occupantEye(ViewportEvent.ComputeCameraAngles event, AxionEntity assembly, LocalPlayer player,
             AxionEntity.RenderPose shown) {
         Seating.Occupant occupant = assembly.occupantOf(player);
-        float[] declared = occupant.eye();
-        if (positionUnavailable || event.getCamera().isDetached() || (declared == null && occupant.scale() == 1f)) {
+        if (positionUnavailable || event.getCamera().isDetached()
+                || (occupant.eye() == null && occupant.scale() == 1f)) {
             return;
         }
         SeatPlacement.Pose pose = assembly.seatPoseAt(assembly.seatOf(player), shown);
         if (pose == null) {
             return;
         }
-        double[] eye;
-        if (declared != null) {
-            eye = ViewRig.transform(new double[] {pose.x(), pose.y(), pose.z()}, pose.rotation(), declared);
-        } else {
-            Vec3 vanilla = event.getCamera().getPosition();
-            double scale = occupant.scale();
-            eye = new double[] {pose.x() + (vanilla.x - pose.x()) * scale, pose.y() + (vanilla.y - pose.y()) * scale,
-                    pose.z() + (vanilla.z - pose.z()) * scale};
-        }
+        Vec3 vanilla = event.getCamera().getPosition();
+        double[] eye = ViewRig.occupantEye(occupant, pose, new double[] {vanilla.x, vanilla.y, vanilla.z});
         if (position(event.getCamera(), eye[0], eye[1], eye[2])) {
             placed = new Vec3(eye[0], eye[1], eye[2]);
         }

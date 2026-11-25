@@ -270,6 +270,50 @@ public final class SiegesGameTests {
         });
     }
 
+    /**
+     * ADR-177 D1 : le rayon d'interaction du serveur part de l'œil que le siège règle, celui d'où le client regarde. Le
+     * passager, debout à l'échelle 2, voit le siège conducteur par-dessus la caisse ; de l'œil de Minecraft, 1,62 m plus
+     * bas, le même regard tomberait sur la caisse, qui ne porte rien.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void leRayonDInteractionPartDeLOeilQueLeSiegeRegle(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege_occupant", new Vec3(4.5, DESSUS_DALLE, 4.5), QUART);
+        ServerPlayer passager = joueur(helper, "oeil_passager");
+        boolean[] fait = {false};
+        helper.succeedWhen(() -> {
+            helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée");
+            if (!fait[0]) {
+                helper.assertTrue(assembly.sit(passager, 1), "le passager s'assoit");
+                fait[0] = true;
+            }
+            assembly.positionRider(passager);
+            // Le point du siège passager est à (2 ; 1,1 ; 0) ; l'écart de l'œil de Minecraft à ce point, doublé.
+            Vec3 siege = duModele(assembly, 2f, 1.1f, 0f);
+            Vec3 oeil = siege.add(passager.getEyePosition().subtract(siege).scale(2.0));
+            Vec3 vers = duModele(assembly, -2f, 0.9f, 0f).subtract(oeil);
+            float lacet = (float) Math.toDegrees(Math.atan2(-vers.x, vers.z));
+            float tangage = (float) -Math.toDegrees(Math.atan2(vers.y, Math.hypot(vers.x, vers.z)));
+            passager.setYRot(lacet);
+            passager.setYHeadRot(lacet);
+            passager.setXRot(tangage);
+            net.minecraft.world.entity.ai.attributes.AttributeInstance portee =
+                    passager.getAttribute(net.minecraftforge.common.ForgeMod.ENTITY_REACH.get());
+            double avant = portee.getBaseValue();
+            portee.setBaseValue(8.0);
+            try {
+                InteractionResult resultat = assembly.interact(passager, InteractionHand.MAIN_HAND);
+                helper.assertTrue(resultat == InteractionResult.CONSUME && assembly.seatOf(passager) == 0,
+                        "vu de l'œil du siège, le clic prend le siège conducteur : " + resultat + ", siège "
+                                + assembly.seatOf(passager));
+            } finally {
+                portee.setBaseValue(avant);
+            }
+            passager.stopRiding();
+        });
+    }
+
     /** T-444 : à son retour, son siège pris, le joueur reçoit le premier libre. */
     @GameTest(template = "test/plancher", timeoutTicks = 300)
     public static void unJoueurDontLeSiegeEstPrisRecoitLePremierLibre(GameTestHelper helper) {

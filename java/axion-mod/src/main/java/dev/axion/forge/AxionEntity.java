@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import dev.axion.api.assembly.CustomData;
 import dev.axion.asset.Anatomy;
 import dev.axion.asset.DefinitionCompiler;
+import dev.axion.camera.ViewRig;
 import dev.axion.definition.Definition;
 import dev.axion.definition.Seating;
 import dev.axion.seat.GearRange;
@@ -2121,13 +2122,30 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 .orElse(GearRange.NONE);
     }
 
+    /**
+     * {@return d'où part le rayon du serveur : l'œil de Minecraft, et pour un passager de cette assembly l'œil que son
+     * siège règle (ADR-177 D1), celui d'où son client regarde à la première personne}
+     */
+    private Vec3 interactionEye(Player player) {
+        Vec3 vanilla = player.getEyePosition();
+        if (player.getVehicle() != this) {
+            return vanilla;
+        }
+        SeatPlacement.Pose pose = seatPose(seatOf(player));
+        if (pose == null) {
+            return vanilla;
+        }
+        double[] eye = ViewRig.occupantEye(occupantOf(player), pose, new double[] {vanilla.x, vanilla.y, vanilla.z});
+        return new Vec3(eye[0], eye[1], eye[2]);
+    }
+
     /** {@return ce que vise le joueur, d'après le rayon du serveur, ou {@code null}} */
     private Seating.Target aim(Player player, Seating seating) {
         DefinitionCompiler.Summary summary = summaryHeld();
         if (summary == null) {
             return null;
         }
-        Vec3 eye = player.getEyePosition();
+        Vec3 eye = interactionEye(player);
         Vec3 look = player.getViewVector(1.0f);
         double[] ray = {eye.x, eye.y, eye.z, look.x, look.y, look.z, player.getEntityReach()};
         double[] hit = new double[dev.axion.bridge.NativeBridge.RAY_OUTPUT];

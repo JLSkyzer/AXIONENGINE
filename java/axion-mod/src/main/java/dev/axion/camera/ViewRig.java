@@ -1,6 +1,8 @@
 package dev.axion.camera;
 
+import dev.axion.definition.Seating;
 import dev.axion.definition.VehicleViews;
+import dev.axion.seat.SeatPlacement;
 
 /**
  * Les prises de vue d'un véhicule (ADR-170 D1) : où se pose la caméra et où elle regarde, à chaque image, pour la vue
@@ -194,6 +196,28 @@ public final class ViewRig {
         double ez = qx * cy - qy * cx;
         return new double[] {position[0] + vx + 2 * (qw * cx + ex), position[1] + vy + 2 * (qw * cy + ey),
             position[2] + vz + 2 * (qw * cz + ez)};
+    }
+
+    /**
+     * {@return l'œil d'un occupant (ADR-177 D1) : celui que son siège déclare, dans le repère du siège ; sinon l'œil de
+     * Minecraft, dont l'écart au point du siège est multiplié par l'échelle} Sans l'un ni l'autre, l'œil de Minecraft.
+     * Le client y pose sa caméra à la première personne, le serveur en fait partir son rayon d'interaction.
+     *
+     * @param occupant ce que le siège règle
+     * @param seat la pose monde du siège
+     * @param vanilla l'œil de Minecraft, dans le repère du monde
+     */
+    public static double[] occupantEye(Seating.Occupant occupant, SeatPlacement.Pose seat, double[] vanilla) {
+        double[] origin = {seat.x(), seat.y(), seat.z()};
+        if (occupant.eye() != null) {
+            return transform(origin, seat.rotation(), occupant.eye());
+        }
+        double scale = occupant.scale();
+        if (scale == 1) {
+            return vanilla.clone();
+        }
+        return new double[] {origin[0] + (vanilla[0] - origin[0]) * scale, origin[1] + (vanilla[1] - origin[1]) * scale,
+            origin[2] + (vanilla[2] - origin[2]) * scale};
     }
 
     private static Shot lookAt(double x, double y, double z, double[] focus) {

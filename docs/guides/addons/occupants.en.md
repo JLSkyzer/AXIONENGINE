@@ -19,7 +19,8 @@ All three keys are optional; a seat without `occupant` keeps Minecraft's pose, s
   not the place where it sits.
 - **`eye`**: the occupant's first-person eye, in the seat node's frame, in metres. Without it, it is Minecraft's eye **multiplied by
   `scale`**: an occupant at 0.67 sees from 0.67 times lower. A camera view that declares its own `eye` (see
-  [cameras](cameras.md)) keeps it.
+  [cameras](cameras.md)) keeps it. A passenger's right click starts from that eye on the server too: you aim at what you
+  see. The server does not know a declared view's `eye`: from such a view, the click still starts from the seat's eye.
 
 ## Two ways to match the model and the player
 

@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.axion.definition.Seating;
 import dev.axion.definition.VehicleViews;
+import dev.axion.seat.SeatPlacement;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -96,6 +98,21 @@ class ViewRigTest {
         assertArrayEquals(new float[] {-30f, -10f}, ViewRig.bounded(0, 0, -50, -40, 30, 10), 1e-5f);
         assertArrayEquals(new float[] {100f, 0f}, ViewRig.bounded(100, 0, 70, 40, 0, 0), 1e-5f, "figée");
         assertArrayEquals(new float[] {150f, 45f}, ViewRig.bounded(0, 0, 150, 45, 180, 90), 1e-5f, "libre");
+    }
+
+    @Test
+    @DisplayName("ADR-177 D1 : l'œil de l'occupant — déclaré dans le repère du siège, sinon celui de Minecraft à l'échelle")
+    void oeilDeLOccupant() {
+        float s = (float) Math.sqrt(0.5);
+        SeatPlacement.Pose siege = new SeatPlacement.Pose(1, 64, 3, new float[] {0, s, 0, s});
+        double[] minecraft = {1, 65.27, 3};
+        double[] declare = ViewRig.occupantEye(
+                new Seating.Occupant(Seating.Pose.SIT, 0.5f, new float[] {0, 0.75f, 1}), siege, minecraft);
+        assertArrayEquals(new double[] {2, 64.75, 3}, declare, 1e-6, "déclaré : tourné comme le siège, l'échelle ignorée");
+        double[] reduit = ViewRig.occupantEye(new Seating.Occupant(Seating.Pose.SIT, 0.5f, null), siege, minecraft);
+        assertArrayEquals(new double[] {1, 64.635, 3}, reduit, 1e-9, "l'écart au point du siège, à moitié");
+        double[] vanilla = ViewRig.occupantEye(Seating.Occupant.DEFAULT, siege, minecraft);
+        assertArrayEquals(minecraft, vanilla, 0, "rien de réglé : l'œil de Minecraft, au bit près");
     }
 
     @Test
