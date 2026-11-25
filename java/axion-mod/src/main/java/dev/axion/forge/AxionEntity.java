@@ -507,6 +507,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             if (heldRegistry != registry) {
                 heldRegistry = registry;
                 held = null;
+                if (!inert) {
+                    // ADR-175 D3 : l'identifiant reçu à l'apparition peut avoir été remplacé ; le serveur relie sans le
+                    // redire, le client suit le même remplacement.
+                    definitionId = registry.current(definitionId);
+                }
             }
         }
         if (held == null && !inert) {
@@ -4176,6 +4181,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** {@return l'identifiant de la definition, ou ce qu'on sait d'une definition inconnue} */
     public String definitionId() {
+        if (level() != null && level().isClientSide()) {
+            held();
+        }
         return definitionId;
     }
 

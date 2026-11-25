@@ -3894,7 +3894,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              - [x] reliure : variables et modificateurs vivants non migrés (`AxionEntity.rebind`, `AssemblyVariables`) ;
              - [ ] reliure : variables et nodes perdus non journalisés ;
              - [ ] `other_socket` d'une attache non renommé par une migration ;
-             - [ ] après `replaces`, le client ne reçoit pas le nouvel identifiant ;
+             - [x] après `replaces`, le client suit le remplacement (`DefinitionRegistry.current`) ; à jouer au banc client ;
              - [ ] prédiction et proxies non remis à zéro quand la definition change (`ClientPrediction.tick`) ;
              - [ ] un changement du seul asset ne relie pas les assemblies.
            - Restes de CAP-12 et CAP-20 (cœur livré) : paragraphe périmé du guide moteur (FR, EN), précision d'ADR-176,

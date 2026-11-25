@@ -128,12 +128,17 @@ class RevisionsTest {
         assertEquals("mymod:nouvelle", seule.byHash(hashAncienne).orElseThrow().id(), "reliée à celle qui la remplace");
         assertEquals("mymod:nouvelle", seule.byHash(DefinitionIds.hash("mymod:autre")).orElseThrow().id());
         assertEquals("mymod:nouvelle", seule.byHash(DefinitionIds.hash("mymod:nouvelle")).orElseThrow().id());
+        // Le client, qui n'a que l'identifiant reçu à l'apparition, suit le même remplacement.
+        assertEquals("mymod:nouvelle", seule.current("mymod:ancienne"));
+        assertEquals("mymod:nouvelle", seule.current("mymod:nouvelle"));
+        assertEquals("mymod:inconnue", seule.current("mymod:inconnue"), "rien ne le remplace : il reste tel");
 
         DefinitionRegistry avecAncienne = DefinitionRegistry.load(new FakeSource()
                 .put("mymod:axion/definitions/nouvelle.json", nouvelle)
                 .put("mymod:axion/definitions/ancienne.json", ancienne), regles);
         assertEquals("mymod:ancienne", avecAncienne.byHash(hashAncienne).orElseThrow().id(),
                 "une definition qui porte encore l'identifiant le garde : R-704 tient");
+        assertEquals("mymod:ancienne", avecAncienne.current("mymod:ancienne"), "porté : il se garde");
         assertTrue(avecAncienne.warnings().stream().anyMatch(ligne -> ligne.contains("« mymod:ancienne »")
                 && ligne.contains("ignoré")), avecAncienne.warnings().toString());
     }

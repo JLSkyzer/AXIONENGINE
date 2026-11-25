@@ -650,6 +650,16 @@ public final class DefinitionRegistry {
         return Optional.ofNullable(byHash.get(hash));
     }
 
+    /**
+     * {@return l'identifiant sous lequel une assembly de cet identifiant se lit : le sien tant qu'une definition le
+     * porte ; sinon celui de la definition qui le remplace (ADR-175 D3) ; le sien encore, sans l'une ni l'autre}
+     *
+     * @param id identifiant
+     */
+    public String current(String id) {
+        return definitions.containsKey(id) ? id : byHash(DefinitionIds.hash(id)).map(Definition::id).orElse(id);
+    }
+
     /** {@return les identifiants, triés} */
     public List<String> ids() {
         return List.copyOf(definitions.keySet());
