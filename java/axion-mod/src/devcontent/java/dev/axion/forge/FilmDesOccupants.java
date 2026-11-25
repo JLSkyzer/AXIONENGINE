@@ -36,6 +36,9 @@ import org.slf4j.LoggerFactory;
  * y sont assis, tels qu'un client les dessine ; la dernière étape remet la caméra dans la tête du joueur local, assis au
  * premier buggy : son œil est celui que le siège règle, et le film le mesure contre l'œil de Minecraft.
  *
+ * <p>Sous {@code -Daxion.film.charger} ({@code -PfilmCharger}), la scène montre la seconde convention sur la Charger locale
+ * (hors du dépôt, faute de licence) : à sa taille réelle avec un occupant à 0,67, et agrandie ×1,5 avec un occupant à 1.
+ *
  * <p>Inerte sans {@code -Daxion.film=occupants} ; le lancement Gradle {@code runFilmOccupants} la pose. Rien ici ne part dans le
  * mod livré. Le film se juge lui-même avant de s'arrêter ({@code termine.json}).
  */
@@ -51,25 +54,33 @@ public final class FilmDesOccupants {
     /** Le sol du monde plat : la première couche d'air. */
     private static final int SOL = -60;
 
-    /** Les quatre buggys, de gauche à droite : la definition, et ce que le siège règle de son occupant. */
-    private static final String[] DEFINITIONS = {
-        "axion:test/vehicule_occupant_petit", "axion:test/vehicule", "axion:test/vehicule_occupant_grand",
-        "axion:test/vehicule_occupant_debout"};
+    /** Les deux Charger locales au lieu des buggys d'essai. */
+    private static final boolean CHARGER = Boolean.getBoolean("axion.film.charger");
 
-    private static final String[] LEGENDES = {"échelle 0,5", "échelle 1 (Minecraft)", "échelle 1,5", "debout"};
+    /** Les véhicules, de gauche à droite : la definition, et ce que le siège règle de son occupant. */
+    private static final String[] DEFINITIONS = CHARGER
+            ? new String[] {"axion:local/charger_reelle", "axion:local/charger"}
+            : new String[] {"axion:test/vehicule_occupant_petit", "axion:test/vehicule",
+                "axion:test/vehicule_occupant_grand", "axion:test/vehicule_occupant_debout"};
 
-    /** La caméra regarde vers +Z : +X est à sa gauche, et le premier buggy à gauche de l'image. */
-    private static final double[] X = {6.0, 2.0, -2.0, -6.0};
+    private static final String[] LEGENDES = CHARGER
+            ? new String[] {"à gauche : taille réelle, occupant à 0,67", "à droite : agrandie ×1,5, occupant à 1"}
+            : new String[] {"échelle 0,5", "échelle 1 (Minecraft)", "échelle 1,5", "debout"};
+
+    /** La caméra regarde vers +Z : +X est à sa gauche, et le premier véhicule à gauche de l'image. */
+    private static final double[] X = CHARGER ? new double[] {4.2, -4.2} : new double[] {6.0, 2.0, -2.0, -6.0};
+
+    /** Les Charger tournées d'un quart de tour : le côté de leur conducteur face à la caméra. */
+    private static final float[] ROTATION = CHARGER ? new float[] {0f, -0.70710677f, 0f, 0.70710677f}
+            : new float[] {0f, 0f, 0f, 1f};
 
     private static final double Z = 14.5;
-
-    private static final float[] SANS_ROTATION = {0f, 0f, 0f, 1f};
 
     /** L'écart toléré entre l'œil mesuré et l'œil attendu, en blocs. */
     private static final double TOLERANCE = 0.03;
 
-    /** Ce que l'œil de l'occupant du premier buggy gagne ou perd sur celui de Minecraft : (1 − échelle) × 1,27 m. */
-    private static final double BAISSE_ATTENDUE = (1.0 - 0.5) * (1.62 - 0.35);
+    /** Ce que l'œil de l'occupant du premier véhicule gagne ou perd sur celui de Minecraft : (1 − échelle) × 1,27 m. */
+    private static final double BAISSE_ATTENDUE = (1.0 - (CHARGER ? 0.6667 : 0.5)) * (1.62 - 0.35);
 
     private static final long ATTENTE_MAX_NS = TimeUnit.SECONDS.toNanos(180);
 
@@ -93,9 +104,9 @@ public final class FilmDesOccupants {
     private static volatile boolean assis;
     private static volatile RuntimeException fauteServeur;
 
-    private static final int[] IDS = {-1, -1, -1, -1};
-    private static final AxionEntity[] BUGGYS = new AxionEntity[4];
-    private static final JoueurSimule[] SIMULES = new JoueurSimule[4];
+    private static final int[] IDS = java.util.stream.IntStream.generate(() -> -1).limit(DEFINITIONS.length).toArray();
+    private static final AxionEntity[] BUGGYS = new AxionEntity[DEFINITIONS.length];
+    private static final JoueurSimule[] SIMULES = new JoueurSimule[DEFINITIONS.length];
 
     private static Tournage tournage;
     private static Entity camera;
@@ -220,7 +231,9 @@ public final class FilmDesOccupants {
                 }
             }
             case ASSEOIR -> {
-                if (assis && depuis(3.0) && lesOccupantsSontLa(minecraft)) {
+                // Les Charger locales sont lourdes : leur modele se compile chez le client en une dizaine de secondes, un
+                // cube a sa place d'ici la.
+                if (assis && depuis(CHARGER ? 25.0 : 3.0) && lesOccupantsSontLa(minecraft)) {
                     camera = new ArmorStand(EntityType.ARMOR_STAND, minecraft.level);
                     camera.setInvisible(true);
                     minecraft.setCameraEntity(camera);
@@ -235,7 +248,7 @@ public final class FilmDesOccupants {
         }
     }
 
-    /** {@return vrai si le client voit les quatre occupants assis dans leur buggy} */
+    /** {@return vrai si le client voit chaque occupant assis dans son véhicule} */
     private static boolean lesOccupantsSontLa(Minecraft minecraft) {
         for (int rang = 0; rang < IDS.length; rang++) {
             if (!(minecraft.level.getEntity(IDS[rang]) instanceof AxionEntity buggy) || buggy.getPassengers().isEmpty()) {
@@ -269,7 +282,7 @@ public final class FilmDesOccupants {
             AxionEntity[] poses = new AxionEntity[DEFINITIONS.length];
             for (int rang = 0; rang < DEFINITIONS.length; rang++) {
                 poses[rang] = AssembliesDeTest.poser(level, DEFINITIONS[rang], new Vec3(X[rang], SOL + 0.5, Z),
-                        SANS_ROTATION);
+                        ROTATION);
             }
             for (int rang = 0; rang < poses.length; rang++) {
                 BUGGYS[rang] = poses[rang];
@@ -309,21 +322,31 @@ public final class FilmDesOccupants {
             minecraft.setCameraEntity(doitEtreLeJoueur ? minecraft.player : camera);
         }
         if (doitEtreLeJoueur) {
+            if (CHARGER) {
+                // Les Charger sont tournees vers +X : le conducteur regarde sa route.
+                minecraft.player.setYRot(-90f);
+                minecraft.player.yRotO = -90f;
+                minecraft.player.setXRot(10f);
+                minecraft.player.xRotO = 10f;
+                minecraft.player.yHeadRot = -90f;
+                minecraft.player.yHeadRotO = -90f;
+            }
             return;
         }
         Vec3 oeil;
         Vec3 cible;
         switch (etape) {
             case GAUCHE -> {
-                oeil = new Vec3(4.0, SOL + 2.3, Z - 7.0);
-                cible = new Vec3(4.0, SOL + 1.2, Z);
+                // Les Charger : de près, par la vitre du conducteur, à la taille de chacune.
+                oeil = CHARGER ? new Vec3(X[0] - 1.4, SOL + 1.9, Z - 3.6) : new Vec3(4.0, SOL + 2.3, Z - 7.0);
+                cible = CHARGER ? new Vec3(X[0] - 0.2, SOL + 1.05, Z) : new Vec3(4.0, SOL + 1.2, Z);
             }
             case DROITE -> {
-                oeil = new Vec3(-4.0, SOL + 2.3, Z - 7.0);
-                cible = new Vec3(-4.0, SOL + 1.2, Z);
+                oeil = CHARGER ? new Vec3(X[1] - 2.0, SOL + 2.7, Z - 5.2) : new Vec3(-4.0, SOL + 2.3, Z - 7.0);
+                cible = CHARGER ? new Vec3(X[1] - 0.3, SOL + 1.5, Z) : new Vec3(-4.0, SOL + 1.2, Z);
             }
             default -> {
-                oeil = new Vec3(0.0, SOL + 3.2, Z - 11.5);
+                oeil = CHARGER ? new Vec3(0.0, SOL + 3.0, Z - 8.5) : new Vec3(0.0, SOL + 3.2, Z - 11.5);
                 cible = new Vec3(0.0, SOL + 1.2, Z);
             }
         }
@@ -381,10 +404,14 @@ public final class FilmDesOccupants {
             mesurerLOeil(minecraft);
         }
         String legende = switch (etape) {
-            case LARGE -> "Quatre buggys, un seul modèle : à l'échelle 0,5, à celle de Minecraft, à 1,5, et debout";
-            case GAUCHE -> "À gauche, l'occupant à l'échelle 0,5 (le joueur local) et celui de Minecraft";
-            case DROITE -> "À droite, l'occupant à l'échelle 1,5 et celui que son siège met debout";
-            case OEIL -> "Dans la tête du joueur local : l'œil de l'occupant à 0,5, plus bas que celui de Minecraft";
+            case LARGE -> CHARGER ? "La même voiture de deux façons : à sa taille réelle, ou agrandie pour le joueur"
+                    : "Quatre buggys, un seul modèle : à l'échelle 0,5, à celle de Minecraft, à 1,5, et debout";
+            case GAUCHE -> CHARGER ? "Taille réelle (5,10 m) : le siège met le joueur à l'échelle 0,67"
+                    : "À gauche, l'occupant à l'échelle 0,5 (le joueur local) et celui de Minecraft";
+            case DROITE -> CHARGER ? "Agrandie ×1,5 : le joueur garde l'échelle de Minecraft"
+                    : "À droite, l'occupant à l'échelle 1,5 et celui que son siège met debout";
+            case OEIL -> CHARGER ? "Au volant de la Charger à taille réelle : l'œil du conducteur à 0,67"
+                    : "Dans la tête du joueur local : l'œil de l'occupant à 0,5, plus bas que celui de Minecraft";
         };
         String valeurs = etape == Etape.OEIL && !Double.isNaN(baisse)
                 ? String.format(Locale.ROOT, "œil plus bas de %.3f m que celui de Minecraft (attendu %.3f m), décalé de"

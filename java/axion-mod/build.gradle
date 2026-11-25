@@ -346,6 +346,8 @@ minecraft {
             parent minecraft.runs.client
             workingDirectory rootProject.file('.runs/film-occupants')
             property 'axion.film', 'occupants'
+            // -PfilmCharger : la Charger locale a sa taille reelle et agrandie, au lieu des quatre buggys.
+            property 'axion.film.charger', project.hasProperty('filmCharger').toString()
             property 'axion.souris.libre', 'true'
             jvmArgs '-Xmx4G'
             args '--width', '1920', '--height', '984'
