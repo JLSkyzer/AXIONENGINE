@@ -2,6 +2,7 @@
 
 use ax_math::{DVec3, FloatingOrigin, Mat3, Quat, Vec3};
 use rapier3d::dynamics::RigidBodyAdditionalMassProps;
+use rapier3d::geometry::{Contact, ContactManifold};
 use rapier3d::parry::mass_properties::MassProperties;
 use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
@@ -1333,7 +1334,7 @@ impl PhysicsWorld {
                 continue;
             }
             let normal_impulse: f32 = pair
-                .manifolds
+                .solver_manifolds()
                 .iter()
                 .flat_map(|manifold| manifold.points.iter())
                 .map(|contact| contact.data.impulse)
@@ -1341,14 +1342,14 @@ impl PhysicsWorld {
             if normal_impulse <= 0.0 {
                 continue;
             }
-            let Some((manifold, contact)) = pair.find_deepest_contact() else {
+            let Some((manifold, contact)) = solved_contact(pair) else {
                 continue;
             };
             let normal = manifold.data.normal;
             let Some(collider) = self.inner.colliders.get(pair.collider1) else {
                 continue;
             };
-            let point = collider.position().transform_point(contact.local_p1);
+            let point = contact_point(collider, manifold, contact);
             let parent = |collider: ColliderHandle| {
                 self.inner
                     .colliders
@@ -1399,7 +1400,7 @@ impl PhysicsWorld {
     }
 
     /// Construit un événement de contact peuplé des données R-615 de la paire,
-    /// ou `None` si la paire n'a plus de contact profond exploitable. Sert pour
+    /// ou `None` si la paire n'a plus de contact exploitable. Sert pour
     /// CONTACT_START comme pour CONTACT_IMPULSE.
     fn build_contact_event(
         &self,
@@ -1408,14 +1409,9 @@ impl PhysicsWorld {
         kind: u32,
     ) -> Option<PhysicsEvent> {
         let pair = self.inner.contact_pair(a, b)?;
-        let (manifold, contact) = pair.find_deepest_contact()?;
+        let (manifold, contact) = solved_contact(pair)?;
         let normal = manifold.data.normal;
-        let world_point = self
-            .inner
-            .colliders
-            .get(a)?
-            .position()
-            .transform_point(contact.local_p1);
+        let world_point = contact_point(self.inner.colliders.get(a)?, manifold, contact);
 
         let (identity_a, body_a) = self.contact_body(a);
         let (identity_b, body_b) = self.contact_body(b);
@@ -1449,7 +1445,7 @@ impl PhysicsWorld {
     /// Retient, à chaque sous-pas, le CONTACT_IMPULSE (§10.7) de chaque paire de contact
     /// active dont l'impulsion dépasse le seuil (R-1012).
     ///
-    /// Un seul événement par paire et par tick : le contact le plus profond du sous-pas,
+    /// Un seul événement par paire et par tick : le contact [`solved_contact`] du sous-pas,
     /// et des sous-pas, le plus fort — l'agrégation par paire de R-1011, impulsion maximale
     /// conservée (ADR-146), que [`Self::flush_contact_impulses`] verse au lot après le
     /// dernier sous-pas. Le seuil écarte les contacts légers de la remontée vers Java — et, au
@@ -2807,13 +2803,13 @@ impl PhysicsWorld {
                     Vec::new(),
                 )
             });
-            for manifold in &pair.manifolds {
+            for manifold in pair.solver_manifolds() {
                 let normal = manifold.data.normal;
                 for contact in &manifold.points {
                     if contact.dist > 0.0 && contact.data.impulse <= 0.0 {
                         continue;
                     }
-                    let point = first.position().transform_point(contact.local_p1);
+                    let point = contact_point(first, manifold, contact);
                     cross(point, CONTACT_CROSS, relative, &mut entry.3);
                     entry.4.push(DebugSegment {
                         a: relative(point),
@@ -3613,6 +3609,35 @@ fn solver_rule(rule: CombineRule) -> CoefficientCombineRule {
         CombineRule::Multiply => CoefficientCombineRule::Multiply,
         CombineRule::Max => CoefficientCombineRule::Max,
     }
+}
+
+/// Le contact d'une paire que lisent ses événements et son roulement (R-615, ADR-149 D6), avec sa variété : le plus
+/// profond de ceux qui ont porté une impulsion, sinon le plus profond ; à égalité, le premier. Lu dans les variétés
+/// que le solveur a vues : quand une paire en a plusieurs — formes composées, champ de hauteurs —, Rapier les regroupe
+/// et range les impulsions dans ses grappes, celles des variétés d'origine restant nulles.
+fn solved_contact(pair: &ContactPair) -> Option<(&ContactManifold, &Contact)> {
+    pair.solver_manifolds()
+        .iter()
+        .flat_map(|manifold| {
+            manifold
+                .points
+                .iter()
+                .map(move |contact| (manifold, contact))
+        })
+        .min_by(|(_, a), (_, b)| {
+            (a.data.impulse <= 0.0)
+                .cmp(&(b.data.impulse <= 0.0))
+                .then(a.dist.total_cmp(&b.dist))
+        })
+}
+
+/// Le point d'un contact sur le premier collider de sa paire, en repère du monde, la pose de la pièce d'un composé
+/// comprise.
+fn contact_point(first: &Collider, manifold: &ContactManifold, contact: &Contact) -> Vec3 {
+    let local = manifold.subshape_pos1().map_or(contact.local_p1, |pose| {
+        pose.transform_point(contact.local_p1)
+    });
+    first.position().transform_point(local)
 }
 
 /// Pose sur un collider rapier le contact d'un matériau : coefficients et modes.

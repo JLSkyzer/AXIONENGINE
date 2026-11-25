@@ -6,8 +6,8 @@
 use ax_math::{Quat, Vec3};
 use ax_model::dm::geometry::WorldTransform;
 use ax_physics::{
-    combine, event_kind, BodyCollider, BodyId, BodyKind, ContactMaterial, Handle, PhysicsMaterial,
-    Shape, SimDriver,
+    combine, event_kind, BodyCollider, BodyId, BodyKind, CompoundPart, ContactMaterial, Handle,
+    PhysicsMaterial, Shape, SimDriver,
 };
 
 /// Un matériau de contact ; le reste de DM-07 à des valeurs plausibles, sans effet ici.
@@ -347,4 +347,127 @@ fn adr149_le_roulement_ne_freine_pas_une_rotation_autour_de_la_normale() {
         (freinee - libre).abs() < 1.0e-3 * libre.abs(),
         "roulement appliqué à une rotation autour de la normale : {freinee} contre {libre}"
     );
+}
+
+/// Une tuile de deux boîtes jointives en x = 8, dessus à 1 bloc, au matériau `index` : un corps à cheval sur le joint
+/// touche deux formes d'un même collider, que Rapier regroupe pour son solveur.
+fn dalle_en_deux_boites(driver: &mut SimDriver, index: u16) {
+    let contact = driver.material(index);
+    assert!(driver.set_world_tile(
+        0,
+        [0, 0, 0],
+        &[
+            [0.0, 0.0, 0.0, 8.0, 1.0, 16.0],
+            [8.0, 0.0, 0.0, 16.0, 1.0, 16.0]
+        ],
+        contact
+    ));
+}
+
+#[test]
+fn r615_un_corps_a_cheval_sur_deux_boites_rapporte_ses_impulsions() {
+    let mut driver = SimDriver::new();
+    driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+    driver.set_physics_materials(&[materiau(0.6, 0.0, 0.0, AVG)]);
+    dalle_en_deux_boites(&mut driver, 0);
+    let bloc = Handle::new(1, 1);
+    assembly(&mut driver, bloc, cube(), 1.5, 0);
+    for _ in 0..10 {
+        driver.advance_all(1.0 / 60.0);
+    }
+    let _ = driver.drain_events();
+    // Il glisse, toujours à cheval : le frottement combiné, 0,6, se lit sur l'événement.
+    let (mu, _) = frottement_en_glissement(&mut driver, bloc);
+    assert!((mu - 0.6).abs() < 0.01, "μ = {mu}");
+}
+
+#[test]
+fn r615_le_point_d_un_contact_entre_formes_composees_est_la_ou_elles_se_touchent() {
+    let mut driver = SimDriver::new();
+    driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+    driver.set_physics_materials(&[materiau(0.6, 0.0, 0.0, AVG)]);
+    // Le corps est un composé d'une pièce décalée de 4 blocs, la tuile un composé d'une boîte : les deux pièces ont une
+    // pose propre, et le point du contact en tient compte, quel que soit leur ordre dans la paire.
+    let piece = CompoundPart {
+        translation: Vec3::new(4.0, 0.0, 0.0),
+        rotation: Quat::IDENTITY,
+        shape: cube(),
+    };
+    corps_en(
+        &mut driver,
+        Shape::Compound { parts: vec![piece] },
+        [8.0, 1.5, 3.0],
+        0,
+    );
+    dalle(&mut driver, 0);
+    for _ in 0..10 {
+        driver.advance_all(1.0 / 60.0);
+    }
+    let point = driver
+        .drain_events()
+        .into_iter()
+        .find(|event| event.kind == event_kind::CONTACT_IMPULSE)
+        .expect("le bloc pèse sur la dalle")
+        .point;
+    // Le monde tient son origine au coin de la section (0, 0, 0).
+    assert!(
+        (point[0] - 12.0).abs() <= 0.51
+            && (point[1] - 1.0).abs() < 0.05
+            && (point[2] - 3.0).abs() <= 0.51,
+        "contact en {point:?}"
+    );
+}
+
+#[test]
+fn adr149_une_bille_a_cheval_sur_deux_boites_est_freinee_par_le_roulement() {
+    let vitesse = |rolling: f32| {
+        let mut driver = SimDriver::new();
+        driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+        driver.set_physics_materials(&[materiau(0.8, 0.0, rolling, AVG)]);
+        dalle_en_deux_boites(&mut driver, 0);
+        // Sur le joint, roulant le long de lui.
+        let bille = corps_en(&mut driver, Shape::Ball { radius: 0.5 }, [8.0, 1.5, 2.0], 0);
+        for _ in 0..10 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        let masse = 1000.0 * 4.0 / 3.0 * std::f32::consts::PI * 0.125;
+        driver.apply_impulse(
+            Handle::new(1, 1),
+            Vec3::new(0.0, 0.0, 3.0 * masse),
+            Vec3::ZERO,
+            false,
+        );
+        for _ in 0..180 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        driver.world_mut(0).unwrap().velocity(bille).unwrap().z
+    };
+    let (libre, freinee) = (vitesse(0.0), vitesse(0.05));
+    assert!(libre > 1.8, "sans roulement : {libre} m/s");
+    assert!(
+        freinee < libre - 0.5,
+        "freinée : {freinee} contre {libre} m/s"
+    );
+}
+
+/// Un corps d'un collider au matériau `index`, posé en `(x, y, z)`, sous la poignée (1, 1).
+fn corps_en(driver: &mut SimDriver, shape: Shape, position: [f64; 3], index: u16) -> BodyId {
+    driver
+        .create_assembly(
+            0,
+            Handle::new(1, 1),
+            WorldTransform {
+                position,
+                rotation: [0.0, 0.0, 0.0, 1.0],
+            },
+            BodyKind::Dynamic,
+            &[BodyCollider {
+                shape,
+                density: 1000.0,
+                material: ContactMaterial::unresolved(index),
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        )
+        .expect("assembly créée")
 }

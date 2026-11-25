@@ -2701,3 +2701,16 @@ joueur à sa sortie.
 
 **Règle.** Dans une scène de banc, calculer l'emprise de ce qu'on pose et la tenir hors de celle des voisins. Un test intermittent
 s'instrumente jusqu'à voir la scène (poses, orientations), il ne se classe pas « bruit ».
+
+## 2026-11-25 | Les chocs contre le monde valaient zéro dès qu'un corps touchait deux formes
+
+**Ce qui a mal tourné.** Un corps posé sur deux boîtes d'une tuile, ou sur un champ de hauteurs, n'émettait aucun
+`CONTACT_IMPULSE` et roulait sans frein ; le point d'un contact entre composés tombait à côté. Les tests de matériaux
+passaient, tous sur une dalle d'une seule boîte.
+
+**Cause.** Rapier 0.35 regroupe les variétés d'une paire qui en a plusieurs : les impulsions vivent dans
+`solver_manifolds()`, celles de `manifolds` restent nulles. La documentation de `contact_clustering` le dit ; la montée
+de version ne l'a pas fait relire.
+
+**Règle.** Lire impulsions et points par `solver_manifolds()`, avec `subshape_pos1`. Un test de contact pose au moins un
+corps à cheval sur deux formes. À une montée de Rapier, relire les valeurs par défaut de `IntegrationParameters`.
