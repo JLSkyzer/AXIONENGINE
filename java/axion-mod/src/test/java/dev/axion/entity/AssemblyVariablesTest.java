@@ -80,6 +80,33 @@ class AssemblyVariablesTest {
     }
 
     @Test
+    @DisplayName("ADR-175 D2 : ce qu'une sauvegarde garde et que la definition ne reprend pas se nomme")
+    void nonRepris() {
+        AssemblyVariables variables = new AssemblyVariables(PAR_SIEGE, List.of("conducteur"));
+        assertEquals(List.of(), variables.unclaimed(Map.of("phares", 1.0), Map.of("radio", Map.of("conducteur", 2.0))));
+        assertEquals(List.of("antenne", "liseuse", "radio", "phares", "toit", "radio@parti"),
+                variables.unclaimed(ordonnee("antenne", "liseuse", "radio"),
+                        parSieges("phares", "conducteur", "toit", "conducteur", "radio", "parti")),
+                "inconnue, plus gardée, changée de portée, et le siège qu'on ne trouve plus");
+    }
+
+    private static Map<String, Double> ordonnee(String... noms) {
+        Map<String, Double> table = new LinkedHashMap<>();
+        for (String nom : noms) {
+            table.put(nom, 1.0);
+        }
+        return table;
+    }
+
+    private static Map<String, Map<String, Double>> parSieges(String... couples) {
+        Map<String, Map<String, Double>> table = new LinkedHashMap<>();
+        for (int i = 0; i < couples.length; i += 2) {
+            table.put(couples[i], Map.of(couples[i + 1], 1.0));
+        }
+        return table;
+    }
+
+    @Test
     @DisplayName("toggle bascule au front montant seulement, tenue ou non")
     void toggle() {
         AssemblyVariables variables = new AssemblyVariables(DECLAREES);

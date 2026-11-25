@@ -3892,7 +3892,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                    (`AxionEntity.aim`, confirmé par lecture ; même écart pour l'œil d'une vue déclarée, que le serveur ne
                    connaît pas : protocole, donc ADR) ;
              - [x] reliure : variables et modificateurs vivants non migrés (`AxionEntity.rebind`, `AssemblyVariables`) ;
-             - [ ] reliure : variables et nodes perdus non journalisés ;
+             - [x] reliure : variables et nodes non repris journalisés (`E-7012`) ;
              - [ ] `other_socket` d'une attache non renommé par une migration ;
              - [x] après `replaces`, le client suit le remplacement (`DefinitionRegistry.current`) ; à jouer au banc client ;
              - [ ] prédiction et proxies non remis à zéro quand la definition change (`ClientPrediction.tick`) ;

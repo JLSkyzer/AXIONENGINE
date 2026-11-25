@@ -914,6 +914,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                                 state.emissive(), state.color(), swapped == null ? -1 : swapped));
                     }
                 }
+                List<String> unnamed = kept.keySet().stream().filter(name -> !named.containsKey(name)).toList();
+                if (!unnamed.isEmpty()) {
+                    LOGGER.warn("AXION : E-7012 assembly {} — état gardé de nodes que {} ne nomme plus, sans effet : {}",
+                            getUUID(), definitionId, unnamed);
+                }
                 // Un node de remplacement n'est pas dessiné à sa place tant qu'aucun swap_mesh ne l'y appelle ; ce que
                 // le NBT gardait de lui l'emporte (il le garde aussi montré, pour ce cas).
                 for (java.util.Map.Entry<String, Integer> target : seating.swapTargets().entrySet()) {
@@ -1378,6 +1383,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             }
             for (String refusal : refusals) {
                 LOGGER.warn("AXION : assembly {} — {}", getUUID(), refusal);
+            }
+            // ADR-175 D2 : ce que le NBT garde et que cette definition ne reprend pas se dit, une fois par definition.
+            List<String> unclaimed = fresh.unclaimed(AssemblyTags.variables(stored), AssemblyTags.seatVariables(stored));
+            if (!unclaimed.isEmpty()) {
+                LOGGER.warn("AXION : E-7012 assembly {} — variables gardées que {} ne reprend pas, sans effet : {}",
+                        getUUID(), definitionId, unclaimed);
             }
             // ADR-167 D4 : une écriture explicite se juge avec ce que la variable règle.
             fresh.guard((index, next) -> {

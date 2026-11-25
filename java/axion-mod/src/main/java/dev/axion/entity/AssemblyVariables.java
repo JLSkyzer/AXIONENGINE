@@ -560,6 +560,37 @@ public final class AssemblyVariables {
         return refusals;
     }
 
+    /**
+     * {@return les noms qu'une sauvegarde garde et qu'aucune variable ne reprend (ADR-175 D2)} Non déclarée, plus
+     * gardée, ou passée de l'assembly au siège ou l'inverse ; un siège que la definition ne déclare plus se dit
+     * {@code variable@siège}. Leurs valeurs restent dans le NBT (R-1710) : elles se taisent, elles ne se perdent pas.
+     *
+     * @param saved les valeurs gardées de l'assembly, par nom
+     * @param savedSeats les valeurs gardées par siège, par nom de variable puis de siège
+     */
+    public List<String> unclaimed(Map<String, Double> saved, Map<String, Map<String, Double>> savedSeats) {
+        List<String> unclaimed = new ArrayList<>();
+        saved.keySet().forEach(name -> {
+            if (!claims(name, false)) {
+                unclaimed.add(name);
+            }
+        });
+        savedSeats.forEach((name, bySeat) -> {
+            if (!claims(name, true)) {
+                unclaimed.add(name);
+                return;
+            }
+            bySeat.keySet().stream().filter(seat -> !seats.contains(seat))
+                    .forEach(seat -> unclaimed.add(name + "@" + seat));
+        });
+        return unclaimed;
+    }
+
+    private boolean claims(String name, boolean perSeat) {
+        int index = declared.indexOf(name);
+        return index >= 0 && declared.get(index).persist() && declared.get(index).perSeat() == perSeat;
+    }
+
     /** {@return le nom de chaque variable déclarée, dans l'ordre de la definition} */
     public List<String> names() {
         List<String> names = new ArrayList<>(declared.size());

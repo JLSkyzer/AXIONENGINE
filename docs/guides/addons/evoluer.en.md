@@ -31,6 +31,9 @@ lost — body "trunk", joint "hitch"; new, at its rest pose — body "door"
 
 Nothing else changes: the assembly lives, at rest wherever it has no state.
 
+Saved variables and node state your definition no longer takes up are named under the same code. These stay in the
+save, without effect: they come back if you declare them again.
+
 ## Revision, migrations and replacement
 
 From schema 7, a definition declares its **revision** and what leads a save from one revision to the next

@@ -32,6 +32,9 @@ perdu — corps « coffre », joint « attelage » ; nouveau, à sa pose de repo
 
 Rien d'autre ne change : l'assembly vit, au repos là où elle n'a pas d'état.
 
+Les variables gardées et l'état de nodes que ta definition ne reprend plus sont nommés sous le même code. Eux restent
+dans la sauvegarde, sans effet : ils reviennent si tu les redéclares.
+
 ## Révision, migrations et remplacement
 
 Au schéma 7, une definition déclare sa **révision** et ce qui mène une sauvegarde d'une révision à la suivante
