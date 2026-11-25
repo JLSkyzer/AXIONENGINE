@@ -58,14 +58,17 @@ material, by name, in the log (R-580) — never a silent clamp.
 A block takes its `by_block` entry, otherwise the first `by_tag` entry whose tag it has — in the
 order the file declares them: from the most specific to the most general —, otherwise `default`
 (R-1040). Several files are merged in the order of their identifiers; an entry from a later file
-replaces the earlier one, and the log says so. Each collision tile of the world takes the contact of
-its dominant material (R-643).
+replaces the earlier one, and the log says so. Each block keeps that contact in the world's collision
+tile (R-643).
 
 ## On contact
 
 Each collider of an assembly takes the material of its **part** — the one whose `root_node` carries it;
-with no part, or with a part that names none, generic steel (ADR-149). Each world tile takes the material
-of its dominant block. When two colliders touch:
+with no part, or with a part that names none, generic steel (ADR-149). In a world tile, each block has its
+own: up to sixteen per tile, beyond which the rarest take the most numerous one; a tile cut too finely by
+material, or turned into a heightfield, says so in the log — falling back to its single dominant material,
+or, as a field, one material per column read by the wheel, impacts keeping the dominant one (ADR-180).
+When two colliders touch:
 
 - the pair's **friction** and **restitution** combine by each one's mode; if the two modes differ,
   **the stronger one wins**: `max` > `multiply` > `min` > `average`. Ice set to `min` stays slippery under

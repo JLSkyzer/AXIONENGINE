@@ -23,8 +23,8 @@ implementation choices are in the cited ADRs. Options are set in `axion-common.t
 
 The blocks around each assembly become **collision tiles**, one per 16³ section (C-38): merged
 boxes, or a heightfield for regular terrain, with at most `world.tiles_per_tick` tiles extracted per
-tick within a radius of `world.tile_radius` tiles. Friction and bounce come from the section's
-dominant physical material, resolved by the mods' `axion/block_materials/` mappings — by block, then
+tick within a radius of `world.tile_radius` tiles. Friction and bounce come from each block's
+physical material (ADR-180), resolved by the mods' `axion/block_materials/` mappings — by block, then
 by tag, then the default (§11.4, ADR-145); materials and their format are described in
 [MATERIALS.md](MATERIALS.md). Fluid blocks become fluid volumes, at the density of water whatever
 the fluid, for now: a body that enters one is subject to buoyancy and drag.

@@ -165,6 +165,78 @@ public final class WorldTileGeometry {
         return boxes;
     }
 
+    /** Matériaux au plus dans la palette d'une tuile (ADR-180 D1). Miroir de {@code MAX_TILE_PALETTE} au natif. */
+    public static final int MAX_PALETTE = 16;
+
+    /**
+     * Les matériaux d'une tuile tels que la frontière les prend (ADR-180 D1).
+     *
+     * @param material le matériau de toute la tuile quand elle n'en a qu'un, sinon son dominant
+     * @param palette ses matériaux, vide quand elle n'en a qu'un
+     * @param ranks le rang de chaque entrée dans la palette, vide sans palette
+     */
+    public record TilePalette(int material, int[] palette, byte[] ranks) {}
+
+    /**
+     * {@return la palette d'une tuile dont chaque entrée — boîte ou cellule — porte un matériau} Un seul : sans
+     * palette. Plus de {@link #MAX_PALETTE} : les moins nombreux en blocs prennent le dominant.
+     *
+     * @param entries le matériau de chaque entrée
+     * @param blocks le nombre de blocs de chaque matériau ; à égalité, le plus petit index passe d'abord
+     * @param dominant le matériau dominant de la tuile (R-643)
+     */
+    public static TilePalette palette(int[] entries, java.util.Map<Integer, Integer> blocks, int dominant) {
+        java.util.List<Integer> present = java.util.Arrays.stream(entries).distinct().boxed()
+                .sorted(java.util.Comparator.<Integer>comparingInt(m -> -blocks.getOrDefault(m, 0))
+                        .thenComparingInt(m -> m))
+                .collect(java.util.stream.Collectors.toList());
+        if (present.size() <= 1) {
+            return new TilePalette(present.isEmpty() ? dominant : present.get(0), new int[0], new byte[0]);
+        }
+        if (present.size() > MAX_PALETTE) {
+            present = new java.util.ArrayList<>(present.subList(0, MAX_PALETTE));
+            if (!present.contains(dominant)) {
+                present.set(MAX_PALETTE - 1, dominant);
+            }
+        }
+        int fallback = present.indexOf(dominant);
+        if (fallback < 0) {
+            present.set(present.size() - 1, dominant);
+            fallback = present.size() - 1;
+        }
+        int[] palette = present.stream().mapToInt(Integer::intValue).toArray();
+        byte[] ranks = new byte[entries.length];
+        for (int i = 0; i < entries.length; i++) {
+            int rank = present.indexOf(entries[i]);
+            ranks[i] = (byte) (rank < 0 ? fallback : rank);
+        }
+        return new TilePalette(dominant, palette, ranks);
+    }
+
+    /**
+     * Fusionne les blocs pleins matériau par matériau (ADR-180 D1) : deux blocs de matériaux différents ne se
+     * confondent pas dans une boîte. Les matériaux se traitent par index croissant ; un seul matériau donne les boîtes
+     * de {@link #mergeFullBlocks}.
+     *
+     * @param cells le matériau de chaque bloc plein au rang {@link #cellIndex}, négatif ailleurs
+     * @param materials reçoit le matériau de chaque boîte rendue, dans l'ordre
+     * @return les boîtes
+     */
+    public static List<float[]> mergeByMaterial(int[] cells, java.util.List<Integer> materials) {
+        List<float[]> boxes = new ArrayList<>();
+        boolean[] mask = new boolean[cells.length];
+        for (int material : java.util.Arrays.stream(cells).filter(m -> m >= 0).distinct().sorted().toArray()) {
+            for (int i = 0; i < cells.length; i++) {
+                mask[i] = cells[i] == material;
+            }
+            for (float[] box : mergeFullBlocks(mask)) {
+                boxes.add(box);
+                materials.add(material);
+            }
+        }
+        return boxes;
+    }
+
     /**
      * Fusionne l'eau d'une section en boîtes maximales, comme {@link #mergeFullBlocks} les blocs
      * pleins (C-38, R-642). Une boîte par bloc d'eau en donnait jusqu'à 4 096 par section :

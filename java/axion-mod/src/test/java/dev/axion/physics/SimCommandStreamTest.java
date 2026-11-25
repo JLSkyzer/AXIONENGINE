@@ -294,6 +294,26 @@ class SimCommandStreamTest {
     }
 
     @Test
+    @org.junit.jupiter.api.DisplayName("ADR-180 : la palette suit les boîtes, un index sur deux octets puis un rang par boîte")
+    void encodeUneTuileAPalette() {
+        float[][] boites = {{0f, 0f, 0f, 1f, 1f, 1f}, {1f, 0f, 0f, 2f, 1f, 1f}};
+        byte[] bytes = new SimCommandStream()
+                .setWorldCollision(0L, new int[] {0, 0, 0}, boites, 4, new int[] {4, 300}, new byte[] {1, 0})
+                .toBytes();
+        ByteBuffer b = wrap(bytes);
+        assertEquals(32 + 2 * 24 + 2 * 2 + 2, b.getInt(12), "payload_len");
+        assertEquals(4, b.getShort(40), "material");
+        assertEquals(2, b.getShort(42), "palette_count");
+        int apres = 16 + 32 + 2 * 24;
+        assertEquals(4, b.getShort(apres));
+        assertEquals(300, b.getShort(apres + 2));
+        assertEquals(1, b.get(apres + 4));
+        assertEquals(0, b.get(apres + 5));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> new SimCommandStream()
+                .setWorldCollision(0L, new int[] {0, 0, 0}, boites, 4, new int[] {4}, new byte[] {0, 1}));
+    }
+
+    @Test
     void encodeUnRetraitDeTuile() {
         byte[] bytes = new SimCommandStream().removeWorldCollision(2L, new int[] {3, 4, 5}).toBytes();
         assertEquals(8 + 8 + 24, bytes.length);

@@ -161,6 +161,50 @@ public final class CollisionDuMondeGameTests {
     }
 
     /**
+     * ADR-180 : chaque bloc garde son matériau dans la tuile — une bande de glace sur un sol de pierre a ses boîtes et
+     * son rang, le reste ceux de la pierre.
+     */
+    @GameTest(template = "test/plancher")
+    public static void chaqueBlocGardeSonMateriauDansLaTuile(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        long dimension = DimensionId.of(level.dimension().location().toString());
+        BlockMaterials mapping = new BlockMaterials(
+                java.util.Map.of("minecraft:ice", new BlockMaterials.Material("essai:glace", 0.05f, 0f)),
+                java.util.Map.of(), new BlockMaterials.Material("essai:route", 0.9f, 0f));
+        ForgeWorldCollisionSource source = new ForgeWorldCollisionSource(
+                id -> id == dimension ? level : null, () -> mapping, id -> "essai:glace".equals(id) ? 2 : 1);
+        ChunkPos chunk = new ChunkPos(helper.absolutePos(BlockPos.ZERO).offset(0, 0, 100_000));
+        level.getChunk(chunk.x, chunk.z);
+        int sectionY = SectionPos.blockToSectionCoord(level.getMaxBuildHeight()) - 3;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int x = 0; x < SIZE; x++) {
+            for (int z = 0; z < SIZE; z++) {
+                pos.set(chunk.getMinBlockX() + x, sectionY * SIZE, chunk.getMinBlockZ() + z);
+                level.setBlock(pos, (x == 3 ? Blocks.ICE : Blocks.STONE).defaultBlockState(), Block.UPDATE_CLIENTS);
+            }
+        }
+        SectionTile tile = source.tileOf(dimension, chunk.x, sectionY, chunk.z);
+        if (!(tile.collision() instanceof CollisionShape.Boxes boites)) {
+            helper.fail("collision en " + tile.collision().getClass().getSimpleName() + ", boîtes attendues");
+            return;
+        }
+        helper.assertTrue(boites.material() == 1 && boites.palette().length == 2
+                && boites.ranks().length == boites.boxes().length,
+                "la pierre domine, deux matériaux : " + boites.material() + " " + Arrays.toString(boites.palette()));
+        int glace = 0;
+        for (int i = 0; i < boites.boxes().length; i++) {
+            float[] boite = boites.boxes()[i];
+            int porte = boites.palette()[boites.ranks()[i]];
+            boolean surLaBande = boite[0] >= 3f && boite[3] <= 4f;
+            helper.assertTrue(porte == (surLaBande ? 2 : 1),
+                    "boîte " + Arrays.toString(boite) + " : matériau " + porte);
+            glace += surLaBande ? (int) (boite[5] - boite[2]) : 0;
+        }
+        helper.assertTrue(glace == SIZE, "toute la bande de glace a ses boîtes : " + glace);
+        helper.succeed();
+    }
+
+    /**
      * R-641 : une section trop découpée pour sa liste de boîtes passe en champ de hauteurs
      * conservateur. Des escaliers, deux boîtes chacun, empilés colonne par colonne jusqu'à une
      * hauteur propre à chaque colonne : quelque 6 400 boîtes, au-delà du plafond de 4 096. Chaque

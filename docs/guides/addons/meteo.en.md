@@ -37,9 +37,9 @@ There is no weather rule for snow: the examples map `minecraft:snow`, `minecraft
 `axion:snow` material (friction 0.35, `wet` 1), like any block has its material. These values are design choices, not measurements; your
 content declares its own (see [materials](../MATERIALS.en.md)).
 
-**The limit.** The ground carries a single material per 16 × 16 × 16-block section: that of the most numerous block among
-those with a collision. The first snow layer, which has none, therefore never counts; and snow, like any block, changes
-grip only where it dominates its section. A narrow road laid on grass likewise takes the grip of grass.
+**The ground, block by block.** Each wheel takes the material of the block it touches ([ADR-180](../../decisions/ADR-180.md)):
+a road on grass grips like the road. The first snow layer, which has no collision, does not count yet: the wheel touches
+the block below.
 
 ## Reading it
 

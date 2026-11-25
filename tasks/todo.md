@@ -3914,8 +3914,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [ ] **ADR-180, le matériau sous chaque roue** (accepté le 2026-11-25, A31).
            - [x] 14a (2026-11-25) — natif, ABI 36 : palette dans les deux commandes de tuile, boîtes groupées par matériau,
                  matériau par cellule du champ de hauteurs lu par la roue.
-           - [ ] 14b — Java : palette et fusion par matériau, repli au-delà de 16 matériaux et de 4096 boîtes, champ de
-                 hauteurs par colonne ; R-643 amendé ; GameTest d'une route sur de l'herbe.
+           - [x] 14b (2026-11-25) — Java : palette et fusion par matériau, replis, champ de hauteurs par colonne ; R-643
+                 amendé ; GameTest d'une bande de glace sur de la pierre.
            - [ ] 14c — la couche couvrante (`cover`), la première couche de neige.
            - [ ] 14d — impacts sur champ de hauteurs ; mesure avant (commit `76250c51`) et après : construction des tuiles,
                  nombre de boîtes, pas, mémoire.

@@ -25,7 +25,7 @@ pack la pilote. La référence normative reste le cahier des charges (PARTIE 10,
 Les blocs autour de chaque assembly deviennent des **tuiles de collision** par section de 16³
 (C-38) : des boîtes regroupées, ou un champ de hauteur pour un terrain régulier, au plus
 `world.tiles_per_tick` tuiles extraites par tick dans un rayon de `world.tile_radius` tuiles.
-Frottement et rebond viennent du matériau physique dominant de la section, que résolvent les
+Frottement et rebond viennent du matériau physique de chaque bloc (ADR-180), que résolvent les
 mappages `axion/block_materials/` des mods — par bloc, puis par étiquette, puis le défaut
 (§11.4, ADR-145) ; les matériaux et leur format sont décrits dans [MATERIALS.md](MATERIALS.md).
 Les blocs de fluide deviennent des volumes de fluide, à la

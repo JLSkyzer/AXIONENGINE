@@ -6,6 +6,8 @@ import dev.axion.world.BlockMaterials;
 import dev.axion.world.WorldCollisionSource;
 import dev.axion.world.WorldTileGeometry;
 import dev.axion.world.WorldTilePlanner.SectionKey;
+import java.util.IdentityHashMap;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -56,6 +58,8 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
 
     /** Sections déjà signalées en champ de hauteurs : un avertissement par section (R-641). */
     private final Set<SectionKey> heightfieldsWarned = new HashSet<>();
+    /** Les sections repliées sur leur matériau dominant (ADR-180 D4), dites une fois. */
+    private final Set<SectionKey> uniformWarned = new HashSet<>();
 
     /**
      * @param levelById résout la clé de dimension ({@link dev.axion.world.DimensionId}) en son niveau, ou
@@ -88,11 +92,17 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         int oz = sectionZ * SIZE;
         // Fiche 5.30, étape 2 : une liste compacte de boîtes. Les blocs pleins vont dans une
         // grille, fusionnée en boîtes maximales ; les formes partielles gardent leurs boîtes.
+        // Les formes partielles, chacune avec son matériau ; les blocs pleins dans une grille, celui de chacun.
         List<float[]> boxes = new ArrayList<>();
+        List<Integer> boxMaterials = new ArrayList<>();
         boolean[] full = new boolean[SIZE * SIZE * SIZE];
+        int[] fullMaterials = new int[SIZE * SIZE * SIZE];
+        Arrays.fill(fullMaterials, -1);
         float[] fluidHeights = new float[SIZE * SIZE * SIZE];
         Map<String, Integer> blockCounts = new HashMap<>();
         Map<String, BlockState> representative = new HashMap<>();
+        Map<BlockState, Integer> stateMaterials = new IdentityHashMap<>();
+        Map<Integer, Integer> materialBlocks = new HashMap<>();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         boolean overBudget = false;
 
@@ -106,12 +116,18 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
 
                     VoxelShape shape = overBudget ? null : state.getCollisionShape(level, pos);
                     if (shape != null && !shape.isEmpty()) {
+                        // ADR-180 D1 : chaque bloc garde son matériau, résolu une fois par état.
+                        int material = stateMaterials.computeIfAbsent(state,
+                                block -> indexOf(materialOf(mapping, block, fallback)));
+                        materialBlocks.merge(material, 1, Integer::sum);
                         // La forme lue elle-même, et non le drapeau mis en cache par l'état :
                         // celui-ci est calculé hors contexte, la forme d'ici peut en dépendre.
                         if (Block.isShapeFullBlock(shape)) {
                             full[WorldTileGeometry.cellIndex(lx, ly, lz)] = true;
+                            fullMaterials[WorldTileGeometry.cellIndex(lx, ly, lz)] = material;
                         } else {
                             for (AABB aabb : shape.toAabbs()) {
+                                boxMaterials.add(material);
                                 boxes.add(
                                         new float[] {
                                             WorldTileGeometry.quantize(lx + aabb.minX),
@@ -143,10 +159,23 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                 }
             }
         }
+        boolean uniform = false;
         if (!overBudget) {
-            boxes.addAll(WorldTileGeometry.mergeFullBlocks(full));
+            List<float[]> partial = new ArrayList<>(boxes);
+            boxes.addAll(WorldTileGeometry.mergeByMaterial(fullMaterials, boxMaterials));
             // R-641 : le seuil porte sur la liste compacte, celle qui traverse la frontière.
-            overBudget = WorldTileGeometry.needsHeightfield(boxes.size());
+            if (WorldTileGeometry.needsHeightfield(boxes.size())) {
+                // ADR-180 D4 : d'abord la fusion sans matériau, avec le dominant ; le champ de hauteurs ensuite.
+                boxes = partial;
+                boxes.addAll(WorldTileGeometry.mergeFullBlocks(full));
+                uniform = true;
+                overBudget = WorldTileGeometry.needsHeightfield(boxes.size());
+                if (!overBudget && uniformWarned.add(new SectionKey(dimension, sectionX, sectionY, sectionZ))) {
+                    LOGGER.warn("AXION : section ({}, {}, {}) de la dimension {} trop découpée par matériau : elle"
+                            + " porte son seul matériau dominant (ADR-180 D4)", sectionX, sectionY, sectionZ,
+                            dimension);
+                }
+            }
         }
 
         if (overBudget && heightfieldsWarned.add(new SectionKey(dimension, sectionX, sectionY, sectionZ))) {
@@ -160,11 +189,31 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         float[][] fluidBoxes = WorldTileGeometry.mergeFluids(fluidHeights).toArray(new float[0][]);
         float fluidDensity = fluidBoxes.length == 0 ? 0f : WATER_DENSITY;
 
-        CollisionShape collision =
-                overBudget
-                        ? heightfield(level, ox, oy, oz, material) // R-641
-                        : new CollisionShape.Boxes(boxes.toArray(new float[0][]), indexOf(material));
+        int dominant = indexOf(material);
+        CollisionShape collision;
+        if (overBudget) {
+            collision = heightfield(level, ox, oy, oz, mapping, fallback, dominant); // R-641
+        } else if (uniform) {
+            collision = new CollisionShape.Boxes(boxes.toArray(new float[0][]), dominant);
+        } else {
+            WorldTileGeometry.TilePalette tile = WorldTileGeometry.palette(
+                    boxMaterials.stream().mapToInt(Integer::intValue).toArray(), materialBlocks, dominant);
+            collision = new CollisionShape.Boxes(boxes.toArray(new float[0][]), tile.material(), tile.palette(),
+                    tile.ranks());
+        }
         return new SectionTile(collision, fluidBoxes, fluidDensity);
+    }
+
+    /** {@return le contact qu'un état de bloc a dans le mappage, par son identifiant puis ses étiquettes} */
+    private static BlockMaterials.Material materialOf(
+            BlockMaterials mapping, BlockState state, BlockMaterials.Material fallback) {
+        ResourceLocation id = ForgeRegistries.BLOCKS.getKey(state.getBlock());
+        if (id == null) {
+            return fallback;
+        }
+        List<String> tags = new ArrayList<>();
+        state.getTags().forEach(tag -> tags.add(tag.location().toString()));
+        return mapping.resolve(id.toString(), tags);
     }
 
     /**
@@ -211,10 +260,28 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
      * (échelle y = 1), échelle x/z = 16.
      */
     private CollisionShape.Heightfield heightfield(
-            Level level, int ox, int oy, int oz, BlockMaterials.Material material) {
+            Level level, int ox, int oy, int oz, BlockMaterials mapping, BlockMaterials.Material fallback,
+            int dominant) {
         int verts = SIZE + 1; // 17 sommets pour 16 cellules
         float[] heights = new float[verts * verts];
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        // ADR-180 D1 : chaque cellule porte le matériau du bloc le plus haut de sa colonne.
+        int[] cells = new int[SIZE * SIZE];
+        Arrays.fill(cells, dominant);
+        Map<Integer, Integer> counts = new HashMap<>();
+        for (int z = 0; z < SIZE; z++) {
+            for (int x = 0; x < SIZE; x++) {
+                for (int ly = SIZE - 1; ly >= 0; ly--) {
+                    pos.set(ox + x, oy + ly, oz + z);
+                    BlockState state = level.getBlockState(pos);
+                    if (!state.getCollisionShape(level, pos).isEmpty()) {
+                        cells[z * SIZE + x] = indexOf(materialOf(mapping, state, fallback));
+                        break;
+                    }
+                }
+                counts.merge(cells[z * SIZE + x], 1, Integer::sum);
+            }
+        }
         for (int row = 0; row < verts; row++) { // z
             for (int col = 0; col < verts; col++) { // x
                 int cx = ox + Math.min(col, SIZE - 1);
@@ -230,7 +297,8 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                 heights[row * verts + col] = top;
             }
         }
+        WorldTileGeometry.TilePalette tile = WorldTileGeometry.palette(cells, counts, dominant);
         return new CollisionShape.Heightfield(
-                verts, verts, heights, new float[] {SIZE, 1f, SIZE}, indexOf(material));
+                verts, verts, heights, new float[] {SIZE, 1f, SIZE}, tile.material(), tile.palette(), tile.ranks());
     }
 }

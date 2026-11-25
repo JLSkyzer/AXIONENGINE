@@ -302,4 +302,59 @@ class WorldTileGeometryTest {
                 IllegalArgumentException.class,
                 () -> WorldTileGeometry.mergeFluids(new float[4095]));
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("ADR-180 D1 : une palette n'apparaît qu'à deux matériaux ; au-delà de 16, les rares prennent le dominant")
+    void palette() {
+        WorldTileGeometry.TilePalette un = WorldTileGeometry.palette(new int[] {5, 5}, java.util.Map.of(5, 2), 5);
+        assertEquals(5, un.material());
+        assertEquals(0, un.palette().length);
+        assertEquals(0, un.ranks().length);
+
+        WorldTileGeometry.TilePalette deux = WorldTileGeometry.palette(new int[] {7, 3, 7},
+                java.util.Map.of(3, 10, 7, 2), 3);
+        assertEquals(3, deux.material(), "le dominant");
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new int[] {3, 7}, deux.palette(), "par nombre de blocs");
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new byte[] {1, 0, 1}, deux.ranks());
+
+        int[] vingt = java.util.stream.IntStream.range(0, 20).toArray();
+        java.util.Map<Integer, Integer> blocs = new java.util.HashMap<>();
+        for (int m : vingt) {
+            blocs.put(m, m == 19 ? 1 : 100 - m);
+        }
+        // Le dominant (au sens de R-643) est le 19, rare ici : il garde sa place.
+        WorldTileGeometry.TilePalette trop = WorldTileGeometry.palette(vingt, blocs, 19);
+        assertEquals(WorldTileGeometry.MAX_PALETTE, trop.palette().length);
+        assertEquals(19, trop.palette()[15]);
+        for (int m = 0; m < 20; m++) {
+            int porte = trop.palette()[trop.ranks()[m]];
+            assertEquals(m < 15 ? m : 19, porte, "matériau " + m);
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("ADR-180 D1 : la fusion ne confond pas deux matériaux ; un seul donne les boîtes d'avant")
+    void fusionParMateriau() {
+        int[] cells = new int[16 * 16 * 16];
+        java.util.Arrays.fill(cells, -1);
+        boolean[] full = new boolean[cells.length];
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int cell = WorldTileGeometry.cellIndex(x, 0, z);
+                cells[cell] = x == 3 ? 9 : 1;
+                full[cell] = true;
+            }
+        }
+        java.util.List<Integer> materiaux = new java.util.ArrayList<>();
+        java.util.List<float[]> boites = WorldTileGeometry.mergeByMaterial(cells, materiaux);
+        assertEquals(boites.size(), materiaux.size());
+        assertEquals(3, boites.size(), "de part et d'autre de la bande, et elle");
+        assertEquals(java.util.List.of(1, 1, 9), materiaux);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {3, 0, 0, 4, 1, 16}, boites.get(2));
+
+        java.util.Arrays.setAll(cells, i -> full[i] ? 1 : -1);
+        java.util.List<float[]> uniques = WorldTileGeometry.mergeByMaterial(cells, new java.util.ArrayList<>());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(
+                WorldTileGeometry.mergeFullBlocks(full).toArray(new float[0][]), uniques.toArray(new float[0][]));
+    }
 }

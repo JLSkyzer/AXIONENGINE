@@ -278,6 +278,9 @@ public final class SimCommandStream {
      */
     public static final int MAX_WORLD_TILE_BOXES = 4096;
 
+    /** Matériaux au plus dans la palette d'une tuile (ADR-180), miroir de {@code MAX_TILE_PALETTE} au natif. */
+    public static final int MAX_TILE_PALETTE = 16;
+
     /** Plafond des dimensions d'un champ de hauteurs de tuile (ADR-117). */
     public static final int MAX_WORLD_HEIGHTFIELD_DIM = 64;
 
@@ -648,15 +651,35 @@ public final class SimCommandStream {
      */
     public SimCommandStream setWorldCollision(
             long dimension, int[] section, float[][] boxes, int material) {
+        return setWorldCollision(dimension, section, boxes, material, new int[0], new byte[0]);
+    }
+
+    /**
+     * {@link #setWorldCollision(long, int[], float[][], int)} avec une palette (ADR-180 D1) : après les boîtes, les
+     * index de la palette puis le rang de chaque boîte.
+     *
+     * @param dimension dimension visée
+     * @param section index de section
+     * @param boxes boîtes de collision
+     * @param material matériau de la tuile sans palette
+     * @param palette au plus {@link #MAX_TILE_PALETTE} index, vide sans palette
+     * @param ranks le rang de chaque boîte dans la palette, vide sans palette
+     * @return {@code this}
+     */
+    public SimCommandStream setWorldCollision(
+            long dimension, int[] section, float[][] boxes, int material, int[] palette, byte[] ranks) {
         checkSection(section);
         checkBoxes(boxes);
-        int payloadLen = SET_WORLD_COLLISION_HEADER_BYTES + boxes.length * BOX_BYTES;
+        checkPalette(palette, ranks, boxes.length);
+        int payloadLen = SET_WORLD_COLLISION_HEADER_BYTES + boxes.length * BOX_BYTES
+                + palette.length * 2 + ranks.length;
         ByteBuffer command = beginCommand(OP_SET_WORLD_COLLISION, payloadLen);
         command.putLong(dimension);
         putSection(command, section);
         command.putInt(boxes.length);
-        putMaterial(command, material);
+        putMaterial(command, material, palette.length);
         putBoxes(command, boxes);
+        putPalette(command, palette, ranks);
         commands.add(command.array());
         return this;
     }
@@ -686,6 +709,34 @@ public final class SimCommandStream {
             float[] heights,
             float[] scale,
             int material) {
+        return setWorldHeightfield(dimension, section, rows, cols, heights, scale, material, new int[0], new byte[0]);
+    }
+
+    /**
+     * {@link #setWorldHeightfield(long, int[], int, int, float[], float[], int)} avec une palette (ADR-180 D1) : après
+     * les hauteurs, les index de la palette puis le rang de chaque cellule {@code (rows − 1) × (cols − 1)}.
+     *
+     * @param dimension dimension visée
+     * @param section index de section
+     * @param rows lignes
+     * @param cols colonnes
+     * @param heights hauteurs
+     * @param scale échelle
+     * @param material matériau de la tuile sans palette
+     * @param palette au plus {@link #MAX_TILE_PALETTE} index, vide sans palette
+     * @param ranks le rang de chaque cellule, vide sans palette
+     * @return {@code this}
+     */
+    public SimCommandStream setWorldHeightfield(
+            long dimension,
+            int[] section,
+            int rows,
+            int cols,
+            float[] heights,
+            float[] scale,
+            int material,
+            int[] palette,
+            byte[] ranks) {
         checkSection(section);
         if (scale.length != 3) {
             throw new IllegalArgumentException("l'échelle est un vecteur à 3 composantes");
@@ -696,19 +747,21 @@ public final class SimCommandStream {
         if (heights.length != rows * cols) {
             throw new IllegalArgumentException("heights doit contenir rows × cols valeurs");
         }
-        int payloadLen = SET_WORLD_HEIGHTFIELD_HEADER_BYTES + heights.length * 4;
+        checkPalette(palette, ranks, (rows - 1) * (cols - 1));
+        int payloadLen = SET_WORLD_HEIGHTFIELD_HEADER_BYTES + heights.length * 4 + palette.length * 2 + ranks.length;
         ByteBuffer command = beginCommand(OP_SET_WORLD_HEIGHTFIELD, payloadLen);
         command.putLong(dimension);
         putSection(command, section);
         command.putInt(rows);
         command.putInt(cols);
-        putMaterial(command, material);
+        putMaterial(command, material, palette.length);
         command.putFloat(scale[0]);
         command.putFloat(scale[1]);
         command.putFloat(scale[2]);
         for (float height : heights) {
             command.putFloat(height);
         }
+        putPalette(command, palette, ranks);
         commands.add(command.array());
         return this;
     }
@@ -737,12 +790,41 @@ public final class SimCommandStream {
 
     /** Index de matériau d'un en-tête de tuile : {@code u16}, puis 6 octets réservés (ADR-149). */
     private static void putMaterial(ByteBuffer command, int material) {
+        putMaterial(command, material, 0);
+    }
+
+    /** Le matériau d'une tuile, le nombre de matériaux de sa palette (ADR-180), le réservé. */
+    private static void putMaterial(ByteBuffer command, int material, int paletteCount) {
         if (material < 0 || material > NO_MATERIAL) {
             throw new IllegalArgumentException("index de matériau hors d'un u16 : " + material);
         }
         command.putShort((short) material);
-        command.putShort((short) 0);
+        command.putShort((short) paletteCount);
         command.putInt(0);
+    }
+
+    private static void checkPalette(int[] palette, byte[] ranks, int entries) {
+        if (palette.length > MAX_TILE_PALETTE || ranks.length != (palette.length == 0 ? 0 : entries)) {
+            throw new IllegalArgumentException("palette d'au plus " + MAX_TILE_PALETTE
+                    + " matériaux, un rang par entrée : " + palette.length + " et " + ranks.length + " pour " + entries);
+        }
+        for (int material : palette) {
+            if (material < 0 || material > NO_MATERIAL) {
+                throw new IllegalArgumentException("index de matériau hors d'un u16 : " + material);
+            }
+        }
+        for (byte rank : ranks) {
+            if (rank < 0 || rank >= palette.length) {
+                throw new IllegalArgumentException("rang hors de la palette : " + rank);
+            }
+        }
+    }
+
+    private static void putPalette(ByteBuffer command, int[] palette, byte[] ranks) {
+        for (int material : palette) {
+            command.putShort((short) material);
+        }
+        command.put(ranks);
     }
 
     /**

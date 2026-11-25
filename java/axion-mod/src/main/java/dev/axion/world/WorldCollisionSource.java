@@ -48,14 +48,32 @@ public interface WorldCollisionSource {
         /**
          * Collision par boîtes (cas courant) : {@code boxes} boîtes section-relatives
          * quantifiées. Une liste vide dénote une section sans collision (la tuile est retirée).
+         *
+         * @param palette les matériaux de la tuile (ADR-180), vide quand toutes les boîtes portent {@code material}
+         * @param ranks le rang de chaque boîte dans la palette, vide sans palette
          */
-        record Boxes(float[][] boxes, int material) implements CollisionShape {}
+        record Boxes(float[][] boxes, int material, int[] palette, byte[] ranks) implements CollisionShape {
+
+            /** Des boîtes d'un seul matériau. */
+            public Boxes(float[][] boxes, int material) {
+                this(boxes, material, new int[0], new byte[0]);
+            }
+        }
 
         /**
          * Collision par champ de hauteurs (repli R-641) : {@code rows × cols} hauteurs
          * ligne-major, échelle {@code [x, y, z]}.
+         *
+         * @param palette les matériaux de la tuile (ADR-180), vide quand toutes les cellules portent {@code material}
+         * @param ranks le rang de chaque cellule {@code (rows − 1) × (cols − 1)}, ligne-major, vide sans palette
          */
-        record Heightfield(int rows, int cols, float[] heights, float[] scale, int material)
-                implements CollisionShape {}
+        record Heightfield(int rows, int cols, float[] heights, float[] scale, int material, int[] palette,
+                byte[] ranks) implements CollisionShape {
+
+            /** Un champ d'un seul matériau. */
+            public Heightfield(int rows, int cols, float[] heights, float[] scale, int material) {
+                this(rows, cols, heights, scale, material, new int[0], new byte[0]);
+            }
+        }
     }
 }

@@ -170,6 +170,7 @@ public final class WorldTileService {
             if (shape instanceof CollisionShape.Boxes boxes) {
                 out.writeByte(0);
                 writeRows(out, boxes.boxes());
+                writePalette(out, boxes.palette(), boxes.ranks());
             } else {
                 // CollisionShape est scellée : ce qui n'est pas des boîtes est un champ de hauteurs.
                 CollisionShape.Heightfield field = (CollisionShape.Heightfield) shape;
@@ -178,6 +179,7 @@ public final class WorldTileService {
                 out.writeInt(field.cols());
                 writeRow(out, field.heights());
                 writeRow(out, field.scale());
+                writePalette(out, field.palette(), field.ranks());
             }
             writeRows(out, tile.fluidBoxes());
             out.writeFloat(tile.fluidDensity());
@@ -186,6 +188,15 @@ public final class WorldTileService {
             throw new UncheckedIOException(impossible);
         }
         return sha.digest();
+    }
+
+    private static void writePalette(DataOutputStream out, int[] palette, byte[] ranks) throws IOException {
+        out.writeInt(palette.length);
+        for (int material : palette) {
+            out.writeInt(material);
+        }
+        out.writeInt(ranks.length);
+        out.write(ranks);
     }
 
     private static void writeRows(DataOutputStream out, float[][] rows) throws IOException {
@@ -205,7 +216,8 @@ public final class WorldTileService {
     private static void emitCollision(
             SimCommandStream stream, long dimension, int[] section, CollisionShape shape) {
         if (shape instanceof CollisionShape.Boxes boxes) {
-            stream.setWorldCollision(dimension, section, boxes.boxes(), boxes.material());
+            stream.setWorldCollision(dimension, section, boxes.boxes(), boxes.material(), boxes.palette(),
+                    boxes.ranks());
         } else if (shape instanceof CollisionShape.Heightfield hf) {
             stream.setWorldHeightfield(
                     dimension,
@@ -214,7 +226,9 @@ public final class WorldTileService {
                     hf.cols(),
                     hf.heights(),
                     hf.scale(),
-                    hf.material());
+                    hf.material(),
+                    hf.palette(),
+                    hf.ranks());
         }
     }
 }

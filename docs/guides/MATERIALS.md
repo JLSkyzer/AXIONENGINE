@@ -58,14 +58,17 @@ le matériau, nommé, au journal (R-580) — jamais un bornage silencieux.
 Un bloc prend son entrée `by_block`, sinon la première entrée `by_tag` dont il porte l'étiquette —
 dans l'ordre où le fichier les déclare : de la plus précise à la plus générale —, sinon `default`
 (R-1040). Plusieurs fichiers se fusionnent dans l'ordre de leurs identifiants ; une entrée d'un
-fichier plus tardif remplace la précédente, et le journal le dit. Chaque tuile de collision du
-monde prend le contact de son matériau dominant (R-643).
+fichier plus tardif remplace la précédente, et le journal le dit. Chaque bloc garde ce contact dans
+la tuile de collision du monde (R-643).
 
 ## Au contact
 
 Chaque collider d'une assembly prend le matériau de sa **part** — celle dont le `root_node` le porte ;
-sans part, ou d'une part qui n'en nomme pas, l'acier générique (ADR-149). Chaque tuile du monde prend
-celui de son bloc dominant. Quand deux colliders se touchent :
+sans part, ou d'une part qui n'en nomme pas, l'acier générique (ADR-149). Dans une tuile du monde, chaque
+bloc a le sien : jusqu'à seize par tuile, les plus rares prenant au-delà le plus nombreux ; une tuile trop
+découpée par matériau, ou repliée en champ de hauteurs, le dit au journal — repliée sur son seul matériau
+dominant, ou, en champ, un matériau par colonne que lit la roue, les chocs gardant le dominant (ADR-180).
+Quand deux colliders se touchent :
 
 - le **frottement** et la **restitution** de la paire se combinent par le mode de chacun ; si les deux
   modes diffèrent, **le plus fort l'emporte** : `max` > `multiply` > `min` > `average`. Une glace en
