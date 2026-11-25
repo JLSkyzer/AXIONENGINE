@@ -81,6 +81,7 @@ public final class AxionEntities {
             id -> Optional.empty();
     private static volatile Function<String, Optional<dev.axion.definition.HeldDefinition>> held =
             id -> Optional.empty();
+    private static volatile Function<String, Optional<String>> assetStamps = id -> Optional.empty();
 
     /** Les paramètres réglables d'une definition compilée (ADR-167 D1), par identifiant. */
     private static volatile Function<String, Optional<dev.axion.definition.Tuning>> tunings = id -> Optional.empty();
@@ -166,6 +167,7 @@ public final class AxionEntities {
         nodeNames = runtime::assetNodeNames;
         bodyRests = runtime::bodyRests;
         held = runtime::heldDefinition;
+        assetStamps = runtime::assetStamp;
         tunings = runtime::tuning;
         rays = runtime::raycastAssembly;
         boxes = runtime::boxTouchesAssembly;
@@ -227,6 +229,15 @@ public final class AxionEntities {
      */
     static Optional<dev.axion.definition.HeldDefinition> held(String id) {
         return held.apply(id);
+    }
+
+    /**
+     * {@return l'empreinte du modèle compilé d'une definition (ADR-175 D5), vide tant qu'elle l'attend}
+     *
+     * @param id identifiant de la definition
+     */
+    static Optional<String> assetStamp(String id) {
+        return assetStamps.apply(id);
     }
 
     /**

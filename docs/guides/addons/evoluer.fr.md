@@ -67,8 +67,8 @@ Quand tu recharges tes definitions (`/reload`, ou en développement, à la sauve
 posées sont **reliées** à la definition nouvelle ([ADR-175](../../decisions/ADR-175.md) D5) : elles gardent leur place,
 leur vitesse, leurs corps, leurs attaches et leurs occupants. Le journal dit chaque reliure.
 
-- **Ce qui est relié** : une assembly dont la definition a changé de contenu, ou a été remplacée (`replaces`). Une
-  definition qui n'a pas changé ne relie rien.
+- **Ce qui est relié** : une assembly dont la definition a changé de contenu, a été remplacée (`replaces`), ou dont le
+  modèle a changé. Une definition et un modèle inchangés ne relient rien.
 - **Comment** : l'état est repris tel qu'une sauvegarde le garde, mené de la révision de l'assembly à celle de la
   definition par tes `migrations`, puis lu contre la definition nouvelle, **par nom**. Ce qui n'existe plus est dit au
   journal et perdu ; ce qui est nouveau part de sa pose de repos.

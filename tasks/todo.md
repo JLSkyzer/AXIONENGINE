@@ -3896,7 +3896,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              - [ ] `other_socket` d'une attache non renommé par une migration ;
              - [x] après `replaces`, le client suit le remplacement (`DefinitionRegistry.current`) ; à jouer au banc client ;
              - [ ] prédiction et proxies non remis à zéro quand la definition change (`ClientPrediction.tick`) ;
-             - [ ] un changement du seul asset ne relie pas les assemblies.
+             - [x] un changement du seul modèle relie les assemblies.
            - Restes de CAP-12 et CAP-20 (cœur livré). Faits le 2026-11-25 : guide moteur (FR, EN), usure visible actée
              dans ADR-176, `energy.fuel` testé, GameTest de `/axion energy` (celui d'`Assembly.energy()` existait). Restent :
              annexe A.7 et A27 ; GameTests du contact et de la masse prédits, des réservoirs de remorque ; API ou commande

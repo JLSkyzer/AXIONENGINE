@@ -18,6 +18,8 @@ import java.util.List;
  * @param bodyRests la pose de repos de chacun de ses corps
  * @param ignition le rang de la variable que le démarreur lit comme contact (ADR-176 D1), -1 sans démarreur
  * @param energy ce qu'elle déclare de réservoir et de batterie (ADR-176 D3)
+ * @param assetStamp l'empreinte du modèle compilé dont cette compilation est sortie (D5) : un modèle qui change sous
+ *     la même definition en fait une autre
  */
 public record HeldDefinition(
         Definition definition,
@@ -27,7 +29,8 @@ public record HeldDefinition(
         List<String> nodeNames,
         BodyRests bodyRests,
         int ignition,
-        EnergySpec energy) {
+        EnergySpec energy,
+        String assetStamp) {
 
     /** Copie les noms. */
     public HeldDefinition {

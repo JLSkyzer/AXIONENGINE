@@ -525,8 +525,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /**
      * {@return vrai si une definition rechargée remplace celle que l'instance tient, et qu'elle est compilée} Son contenu
-     * a changé (empreinte), ou elle porte un autre identifiant — elle en remplace une autre (ADR-175 D3, D5). Une
-     * definition qui n'est plus chargée ne relie rien : l'instance garde ce qu'elle tient.
+     * a changé (empreinte), ou elle porte un autre identifiant — elle en remplace une autre —, ou son modèle a changé
+     * (ADR-175 D3, D5). Une definition qui n'est plus chargée ne relie rien : l'instance garde ce qu'elle tient.
      */
     boolean needsRebind() {
         dev.axion.definition.HeldDefinition tenue = held;
@@ -535,8 +535,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
         Definition now = AxionEntities.definitions().byHash(dev.axion.definition.DefinitionIds.hash(definitionId))
                 .orElse(null);
-        if (now == null
-                || (now.sha256().equals(tenue.definition().sha256()) && now.id().equals(definitionId))) {
+        // Une empreinte de modèle absente dit une compilation en cours : rien à relier encore.
+        if (now == null || (now.sha256().equals(tenue.definition().sha256()) && now.id().equals(definitionId)
+                && AxionEntities.assetStamp(now.id()).map(tenue.assetStamp()::equals).orElse(true))) {
             return false;
         }
         return AxionEntities.held(now.id()).filter(compiled -> compiled.definition().sha256().equals(now.sha256()))

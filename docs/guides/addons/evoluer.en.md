@@ -66,8 +66,8 @@ When you reload your definitions (`/reload`, or on file save in development), as
 to the new definition ([ADR-175](../../decisions/ADR-175.md) D5): they keep their position, velocity, bodies,
 attachments and occupants. The log reports each rebind.
 
-- **What is rebound**: an assembly whose definition changed content, or was replaced (`replaces`). An unchanged
-  definition rebinds nothing.
+- **What is rebound**: an assembly whose definition changed content, was replaced (`replaces`), or whose model
+  changed. An unchanged definition and model rebind nothing.
 - **How**: the state is taken as a save keeps it, carried from the assembly's revision to the definition's by your
   `migrations`, then read against the new definition, **by name**. What no longer exists is reported in the log and
   lost; what is new starts from its rest pose.

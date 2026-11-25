@@ -1325,6 +1325,17 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return l'empreinte du modèle compilé d'une definition (ADR-175 D5)} Vide tant qu'elle attend son asset, ou si
+     * elle a été refusée.
+     *
+     * @param id identifiant de la definition
+     */
+    public Optional<String> assetStamp(String id) {
+        DefinitionCompilation compiling = compilation;
+        return compiling == null ? Optional.empty() : compiling.assetStamp(id);
+    }
+
+    /**
      * {@return le nom de chaque node de l'asset d'une definition compilée, dans son ordre (ADR-174 D4)} Vide tant
      * qu'elle attend son asset, ou si elle a été refusée.
      *

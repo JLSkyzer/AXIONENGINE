@@ -343,6 +343,69 @@ public final class RechargementGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-175 D4, D5 : un modèle qui change sous la même definition relie aussi les assemblies vivantes ; sans quoi leur
+     * corps natif et leurs sièges restent ceux de l'ancien modèle, quand le jeu dessine le nouveau. Ici le node du siège
+     * conducteur passe de x = -2 à x = -3.
+     */
+    @GameTest(template = "test/plancher", batch = "rechargement_modele", timeoutTicks = 600)
+    public static void adr175_UnModeleQuiChangeRelieLesAssemblies(GameTestHelper helper) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
+        AssetSource modeles = RegisteredContent.source(ContentKind.MODEL);
+        AssetSource deplace = new AssetSource() {
+            @Override
+            public List<String> list() {
+                return modeles.list();
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                byte[] lu = modeles.read(path);
+                if (!path.endsWith("models/test/siege.gltf")) {
+                    return lu;
+                }
+                com.google.gson.JsonObject modele = com.google.gson.JsonParser
+                        .parseString(new String(lu, StandardCharsets.UTF_8)).getAsJsonObject();
+                for (com.google.gson.JsonElement node : modele.getAsJsonArray("nodes")) {
+                    if ("siege_g".equals(node.getAsJsonObject().get("name").getAsString())) {
+                        node.getAsJsonObject().add("translation",
+                                com.google.gson.JsonParser.parseString("[-3.0, 0.0, 0.0]"));
+                    }
+                }
+                return modele.toString().getBytes(StandardCharsets.UTF_8);
+            }
+        };
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        dev.axion.definition.HeldDefinition[] avant = {null};
+        double[] siege = new double[2];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds() && assembly.held() != null,
+                        "l'assembly est simulée, sa definition tenue"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    siege[0] = assembly.seatPose(0).x() - assembly.getX();
+                    avant[0] = assembly.held();
+                    runtime.onAssetReload(deplace);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(
+                        assembly.held() != avant[0] && assembly.hasPhysicalBounds(), "l'assembly est reliée au modèle"))
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    siege[1] = assembly.seatPose(0).x() - assembly.getX();
+                    assembly.discard();
+                    // Les autres tests retrouvent les modèles enregistrés.
+                    runtime.onAssetReload(modeles);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(AxionEntities.held("axion:test/siege").isPresent(),
+                        "le modèle d'origine est recompilé"))
+                .thenExecute(() -> helper.assertTrue(
+                        Math.abs(siege[0] + 2.0) < 0.05 && Math.abs(siege[1] + 3.0) < 0.05,
+                        "le siège suit le modèle : " + siege[0] + " puis " + siege[1]))
+                .thenSucceed();
+    }
+
     /** Combien d'assemblies le test de coût relie d'un coup. */
     private static final int POUR_LE_COUT = 24;
 

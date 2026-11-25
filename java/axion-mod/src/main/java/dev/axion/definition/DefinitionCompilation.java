@@ -45,6 +45,7 @@ public final class DefinitionCompilation {
     private final Map<String, List<String>> nodeNames = new HashMap<>();
     /** La pose de repos de chaque corps d'une definition compilée, dans le repère du corps racine (ADR-175 D2). */
     private final Map<String, BodyRests> bodyRests = new HashMap<>();
+    private final Map<String, String> assetStamps = new HashMap<>();
     private final Map<String, Tuning> tunings = new HashMap<>();
     private final SortedMap<String, String> refused = new TreeMap<>();
 
@@ -79,6 +80,7 @@ public final class DefinitionCompilation {
         seatings.clear();
         nodeNames.clear();
         bodyRests.clear();
+        assetStamps.clear();
         tunings.clear();
         refused.clear();
         pending.clear();
@@ -178,6 +180,7 @@ public final class DefinitionCompilation {
             seatings.put(definition.id(), seating);
             nodeNames.put(definition.id(), nodeNamesOf(a3d));
             bodyRests.put(definition.id(), bodyRestsOf(a3d, result.summary().roots()));
+            assetStamps.put(definition.id(), stampOf(a3d));
             tunings.put(definition.id(), Tuning.of(definition.id(), definition.root(), loaded.extensions()));
             for (String warning : result.summary().warnings()) {
                 journal.add("AXION : definition " + definition.id() + " : " + warning);
@@ -239,7 +242,27 @@ public final class DefinitionCompilation {
         }
         return Optional.of(new HeldDefinition(definition, summary, seating, tuning,
                 nodeNames.getOrDefault(id, List.of()), bodyRests.getOrDefault(id, BodyRests.NONE),
-                Ignition.variable(definition.root(), seating.variables()), EnergySpec.of(definition.root())));
+                Ignition.variable(definition.root(), seating.variables()), EnergySpec.of(definition.root()),
+                assetStamps.getOrDefault(id, "")));
+    }
+
+    /**
+     * {@return l'empreinte du modèle compilé d'une definition (ADR-175 D5), ou vide si elle attend ou a été refusée}
+     *
+     * @param id identifiant de la definition
+     */
+    public synchronized Optional<String> assetStamp(String id) {
+        return Optional.ofNullable(assetStamps.get(id));
+    }
+
+    private static String stampOf(byte[] a3d) {
+        try {
+            return java.util.HexFormat.of()
+                    .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(a3d));
+        } catch (java.security.NoSuchAlgorithmException absent) {
+            // SHA-256 est exigé de toute plateforme Java.
+            throw new IllegalStateException(absent);
+        }
     }
 
     /**
