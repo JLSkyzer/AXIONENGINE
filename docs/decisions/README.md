@@ -30,14 +30,15 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
-| [ADR-171](ADR-171.md) | Les attaches entre assemblies et l'ensemble attaché (C-48, CAP-15, CAP-37) | 2026-11-15 | accepté |
-| [ADR-172](ADR-172.md) | Les véhicules qu'on n'avait pas nommés, l'espace, et un jalon d'optimisation (CAP-60 à CAP-75) | 2026-11-18 | accepté |
-| [ADR-173](ADR-173.md) | Les sources lues par le serveur, et la phase d'enregistrement du client (CAP-43, CAP-45) | 2026-11-18 | accepté |
-| [ADR-174](ADR-174.md) | Événements, déclencheurs et actions de contenu (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) | 2026-11-18 | accepté |
-| [ADR-175](ADR-175.md) | Le contenu qui évolue sous les sauvegardes, et le rechargement à chaud (CAP-38, CAP-33) | 2026-11-18 | accepté |
-| [ADR-176](ADR-176.md) | Énergie, démarrage, usure des pneus et météo (CAP-12, CAP-20) | 2026-11-18 | accepté |
-| [ADR-177](ADR-177.md) | La pose et l'échelle des occupants, et le mannequin du joueur (CAP-13, CAP-56 ; la direction de CAP-14) | 2026-11-18 | accepté |
+| [ADR-179](ADR-179.md) | Une attache suit le crochet renommé de l'autre assembly (CAP-38) | 2026-11-25 | proposé |
 | [ADR-178](ADR-178.md) | Un joueur debout sur une assembly : la collision, le support, le transport et la poussée (CAP-14) | 2026-11-25 | accepté |
+| [ADR-177](ADR-177.md) | La pose et l'échelle des occupants, et le mannequin du joueur (CAP-13, CAP-56 ; la direction de CAP-14) | 2026-11-18 | accepté |
+| [ADR-176](ADR-176.md) | Énergie, démarrage, usure des pneus et météo (CAP-12, CAP-20) | 2026-11-18 | accepté |
+| [ADR-175](ADR-175.md) | Le contenu qui évolue sous les sauvegardes, et le rechargement à chaud (CAP-38, CAP-33) | 2026-11-18 | accepté |
+| [ADR-174](ADR-174.md) | Événements, déclencheurs et actions de contenu (CAP-02, CAP-04, CAP-05, CAP-11, CAP-16) | 2026-11-18 | accepté |
+| [ADR-173](ADR-173.md) | Les sources lues par le serveur, et la phase d'enregistrement du client (CAP-43, CAP-45) | 2026-11-18 | accepté |
+| [ADR-172](ADR-172.md) | Les véhicules qu'on n'avait pas nommés, l'espace, et un jalon d'optimisation (CAP-60 à CAP-75) | 2026-11-18 | accepté |
+| [ADR-171](ADR-171.md) | Les attaches entre assemblies et l'ensemble attaché (C-48, CAP-15, CAP-37) | 2026-11-15 | accepté |
 | [ADR-170](ADR-170.md) | La caméra de véhicule et le tableau de bord (CAP-10) | 2026-11-15 | accepté |
 | [ADR-168](ADR-168.md) | La prédiction du véhicule piloté : monde prédit, corrections, rejeu | 2026-11-12 | accepté |
 | [ADR-167](ADR-167.md) | Les paramètres d'une instance : réglage à chaud, causes composées, contrôleurs de véhicule | 2026-11-12 | accepté |
@@ -60,6 +61,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-180](ADR-180.md) | Le matériau du sol sous chaque roue (CAP-20) | 2026-11-25 | proposé |
 | [ADR-152](ADR-152.md) | Rapier 0.35.3 vendorisé et corrigé : moteurs et friction résolus avec les axes bloqués, impulsion publiée par joint | 2026-10-22 | accepté |
 | [ADR-151](ADR-151.md) | Les joints de M4 : une assembly porte plusieurs corps, reliés par les joints impulsionnels de Rapier ; schéma de definition 2, ABI 7 | 2026-10-22 | accepté |
 | [ADR-149](ADR-149.md) | Le matériau physique passe la frontière : une table DM-07 par la file de commandes, un index par collider et par tuile | 2026-10-17 | accepté |
