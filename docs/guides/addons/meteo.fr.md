@@ -38,6 +38,11 @@ Aucune règle météo pour la neige : les exemples font correspondre `minecraft:
 matériau `axion:snow` (frottement 0,35, `wet` 1), comme n'importe quel bloc a son matériau. Ces valeurs sont des choix de conception,
 pas des mesures ; ton contenu déclare les siennes (voir [les matériaux](../MATERIALS.md)).
 
+**La limite.** Le sol porte un seul matériau par section de 16 × 16 × 16 blocs : celui du bloc le plus nombreux parmi ceux
+qui ont une collision. La première couche de neige, qui n'en a pas, ne compte donc jamais ; et la neige, comme n'importe
+quel bloc, ne change l'adhérence que là où elle domine sa section. Une route étroite posée sur de l'herbe prend de même
+l'adhérence de l'herbe.
+
 ## Le lire
 
 - La source procédurale `vehicle.wet` (de 0 à 1, schéma 7) : une jauge, une piste de matériau, des essuie-glaces.
