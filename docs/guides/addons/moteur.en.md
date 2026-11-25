@@ -82,6 +82,3 @@ A schema 7 definition can declare its energy ([ADR-176](../../decisions/ADR-176.
 - **Sources**: `energy.fuel` (litres), `energy.fuel_ratio` and `energy.battery` (0 to 1) for a procedural track or a gauge.
 
 The example buggy has a starter (`contact` variable, command 3), a 20-litre tank and a battery: it is the model for all of the above.
-
-The native side holds the energy (fuel and battery), deterministic, which the client replays; reading it from Java, saving,
-the `energy.*` sources and the API come with the next slices of ADR-176.

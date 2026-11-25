@@ -85,6 +85,3 @@ Une definition au schéma 7 peut déclarer son énergie ([ADR-176](../../decisio
 
 Le buggy d'exemple a un démarreur (variable `contact`, commande 3), un réservoir de 20 litres et une batterie : son exemple est le
 modèle de tout ce qui précède.
-
-Le natif tient l'énergie (carburant et batterie), déterministe, que le client rejoue ; la lecture par Java, la sauvegarde, les
-sources `energy.*` et l'API viennent avec les tranches suivantes d'ADR-176.
