@@ -79,7 +79,8 @@ Chaque collider d'une assembly prend le matériau de sa **part** — celle dont 
 sans part, ou d'une part qui n'en nomme pas, l'acier générique (ADR-149). Dans une tuile du monde, chaque
 bloc a le sien : jusqu'à seize par tuile, les plus rares prenant au-delà le plus nombreux ; une tuile trop
 découpée par matériau, ou repliée en champ de hauteurs, le dit au journal — repliée sur son seul matériau
-dominant, ou, en champ, un matériau par colonne que lit la roue, les chocs gardant le dominant (ADR-180).
+dominant, ou, en champ, un matériau par colonne, que prennent la roue comme les corps qui le touchent ; un
+corps à cheval sur deux colonnes prend la moyenne de leur frottement et de leur rebond (ADR-180).
 Quand deux colliders se touchent :
 
 - le **frottement** et la **restitution** de la paire se combinent par le mode de chacun ; si les deux

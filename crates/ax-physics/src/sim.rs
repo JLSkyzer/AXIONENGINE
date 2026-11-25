@@ -551,7 +551,7 @@ impl SimDriver {
     }
 
     /// Donne à un champ de hauteurs posé le matériau de chacune de ses cellules (ADR-180
-    /// D1, D2) : la roue lit celui de la cellule qu'elle touche. `cells` est en disposition
+    /// D1, D2) : la roue et les contacts des corps lisent celui de la cellule qu'ils touchent. `cells` est en disposition
     /// ligne-major, `(rows − 1) × (cols − 1)`. Sans effet sans tuile à cette place, ou d'un
     /// nombre de cellules qui n'est pas le sien.
     pub fn set_world_tile_cells(

@@ -3920,7 +3920,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            - [x] 14d1 (2026-11-25) — mesure de D5 avant (`76250c51`) et après (`tools/campagne/mesure_sol.py`, banc de
                  CAP-53) : `docs/mesures/ADR-180-sol-2026-11-25.md`. Tuiles +45 à +64 %, pas natif +20 % sur monde plat,
                  inchangé sur terrain naturel, 20 TPS.
-           - [ ] 14d2 — les impacts d'un corps sur un champ de hauteurs prennent le matériau de la cellule (D2).
+           - [x] 14d2 (2026-11-25) — les contacts d'un corps sur un champ de hauteurs prennent la cellule touchée (D2) ;
+                 défaut trouvé et corrigé : les chocs des paires à plusieurs variétés valaient zéro (ADR-149).
+           - [ ] 14e — preuve prévue restante : essai à deux processus sur un sol à deux matériaux ; puis grille D7
+                 d'ADR-160 et clôture d'ADR-180.
            - [ ] Coût du sol : profiler la construction des tuiles et le surplus de colliders du monde plat, puis réduire
                  (question posée à Killian le 2026-11-25).
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,

@@ -79,7 +79,8 @@ Each collider of an assembly takes the material of its **part** — the one whos
 with no part, or with a part that names none, generic steel (ADR-149). In a world tile, each block has its
 own: up to sixteen per tile, beyond which the rarest take the most numerous one; a tile cut too finely by
 material, or turned into a heightfield, says so in the log — falling back to its single dominant material,
-or, as a field, one material per column read by the wheel, impacts keeping the dominant one (ADR-180).
+or, as a field, one material per column, taken by the wheel and by the bodies that touch it; a body straddling
+two columns takes the average of their friction and bounce (ADR-180).
 When two colliders touch:
 
 - the pair's **friction** and **restitution** combine by each one's mode; if the two modes differ,

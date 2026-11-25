@@ -471,3 +471,113 @@ fn corps_en(driver: &mut SimDriver, shape: Shape, position: [f64; 3], index: u16
         )
         .expect("assembly créée")
 }
+
+/// Un champ de hauteurs plat à 1 bloc sur la section (0, 0, 0), au matériau dominant `dominant`, de deux cellules côte à
+/// côte : `cellules[0]` pour x < 8, `cellules[1]` au-delà (ADR-180 D1).
+fn champ_a_deux_cellules(driver: &mut SimDriver, dominant: u16, cellules: [u16; 2]) {
+    let echelle = [16.0, 1.0, 16.0];
+    let contact = driver.material(dominant);
+    assert!(driver.set_world_tile_heightfield(0, [0, 0, 0], 2, 3, vec![1.0; 6], echelle, contact));
+    let cellules = cellules.map(|index| driver.material(index)).to_vec();
+    driver.set_world_tile_cells(0, [0, 0, 0], 2, 3, echelle, cellules);
+}
+
+#[test]
+fn adr180_un_corps_frotte_sur_la_cellule_qu_il_touche() {
+    // Le bloc (0) et la cellule de droite (2) en moyenne ; la glace de gauche (1) impose `min` ; le dominant (3) ne
+    // sert à aucune des deux.
+    let table = [
+        materiau(0.8, 0.0, 0.0, AVG),
+        materiau(0.05, 0.0, 0.0, (combine::MIN, combine::AVERAGE)),
+        materiau(0.6, 0.0, 0.0, AVG),
+        materiau(0.2, 0.0, 0.0, AVG),
+    ];
+    for (x, cellule, attendu) in [(4.0, 1, 0.05), (12.0, 2, 0.7)] {
+        let mut driver = SimDriver::new();
+        driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+        driver.set_physics_materials(&table);
+        champ_a_deux_cellules(&mut driver, 3, [1, 2]);
+        corps_en(&mut driver, cube(), [x, 1.5, 8.0], 0);
+        for _ in 0..10 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        let _ = driver.drain_events();
+        let (mu, materiaux) = frottement_en_glissement(&mut driver, Handle::new(1, 1));
+        assert!((mu - attendu).abs() < 0.01, "x = {x} : μ = {mu}");
+        assert_eq!(materiaux, [0, cellule], "x = {x} : matériau de la cellule");
+    }
+}
+
+#[test]
+fn adr180_une_bille_rebondit_selon_la_cellule_qu_elle_touche() {
+    let table = [
+        materiau(0.6, 0.0, 0.0, AVG),
+        materiau(0.6, 0.8, 0.0, (combine::AVERAGE, combine::MAX)),
+    ];
+    let rebond = |x: f64| {
+        let mut driver = SimDriver::new();
+        driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+        driver.set_physics_materials(&table);
+        champ_a_deux_cellules(&mut driver, 0, [1, 0]);
+        let bille = corps_en(&mut driver, Shape::Ball { radius: 0.5 }, [x, 3.5, 8.0], 0);
+        let mut touche = false;
+        let mut plus_haut = f32::MIN;
+        for _ in 0..240 {
+            driver.advance_all(1.0 / 60.0);
+            let world = driver.world_mut(0).unwrap();
+            let y = world.pose(bille).expect("bille").translation.y;
+            touche |= world.velocity(bille).unwrap().y > 0.0;
+            if touche {
+                plus_haut = plus_haut.max(y);
+            }
+        }
+        let y = driver
+            .world_mut(0)
+            .unwrap()
+            .pose(bille)
+            .expect("bille")
+            .translation
+            .y;
+        assert!(y > 1.4, "la bille reste au-dessus du champ : y = {y}");
+        plus_haut - 1.0 - 0.5
+    };
+    let (vif, mort) = (rebond(4.0), rebond(12.0));
+    assert!(vif > 0.9, "cellule rebondissante : {vif}");
+    assert!(mort < 0.05, "cellule sans restitution : {mort}");
+}
+
+#[test]
+fn adr180_une_bille_roule_selon_la_cellule_qu_elle_touche() {
+    let table = [
+        materiau(0.8, 0.0, 0.0, AVG),
+        materiau(0.8, 0.0, 0.05, (combine::MAX, combine::AVERAGE)),
+    ];
+    // La bille roule vers +z : elle reste dans sa colonne de cellules.
+    let vitesse = |x: f64| {
+        let mut driver = SimDriver::new();
+        driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+        driver.set_physics_materials(&table);
+        champ_a_deux_cellules(&mut driver, 0, [1, 0]);
+        let bille = corps_en(&mut driver, Shape::Ball { radius: 0.5 }, [x, 1.5, 2.0], 0);
+        for _ in 0..10 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        let masse = 1000.0 * 4.0 / 3.0 * std::f32::consts::PI * 0.125;
+        driver.apply_impulse(
+            Handle::new(1, 1),
+            Vec3::new(0.0, 0.0, 3.0 * masse),
+            Vec3::ZERO,
+            false,
+        );
+        for _ in 0..180 {
+            driver.advance_all(1.0 / 60.0);
+        }
+        driver.world_mut(0).unwrap().velocity(bille).unwrap().z
+    };
+    let (freinee, libre) = (vitesse(4.0), vitesse(12.0));
+    assert!(libre > 1.8, "sans roulement : {libre} m/s");
+    assert!(
+        freinee < libre - 0.5,
+        "freinée : {freinee} contre {libre} m/s"
+    );
+}

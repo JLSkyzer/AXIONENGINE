@@ -8,10 +8,11 @@ use rapier3d::parry::query::ShapeCastOptions;
 use rapier3d::parry::utils::Array2;
 use rapier3d::prelude::{
     ActiveCollisionTypes, ActiveEvents, ActiveHooks, CoefficientCombineRule, Collider,
-    ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, CollisionEventFlags, ContactPair,
-    EventHandler, PairFilterContext, PhysicsHooks, PhysicsWorld as RapierWorld, Pose as RapierPose,
-    QueryFilter as RapierQueryFilter, QueryFilterFlags, Ray, Real, RigidBody, RigidBodyBuilder,
-    RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, SolverFlags, Vector,
+    ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, CollisionEventFlags,
+    ContactModificationContext, ContactPair, EventHandler, PairFilterContext, PhysicsHooks,
+    PhysicsWorld as RapierWorld, Pose as RapierPose, QueryFilter as RapierQueryFilter,
+    QueryFilterFlags, Ray, Real, RigidBody, RigidBodyBuilder, RigidBodyHandle, RigidBodySet,
+    RigidBodyType, SharedShape, SolverFlags, Vector,
 };
 
 use crate::activity::{Candidate, Observers};
@@ -133,15 +134,21 @@ const PAIR_SELF_COLLIDES: u128 = 1 << 1;
 /// Décalage de l'identifiant d'assembly (`handle_key`) dans le `user_data`.
 const PAIR_ASSEMBLY_SHIFT: u32 = 64;
 
-/// Le filtre des paires de contact (§10.4, ADR-151 D2) : deux colliders marqués de la même
-/// assembly ne se touchent pas, sauf si elle déclare ses collisions internes. Sans état :
-/// la marque est dans le `user_data` de chaque collider, posée par
-/// [`PhysicsWorld::seal_assembly`] sur les seules assemblies à plusieurs corps — rapier
-/// n'appelle le filtre que pour une paire dont un collider l'active, et une assembly à un
-/// corps n'en paie rien.
-struct AssemblyPairFilter;
+/// Les crochets de contact du monde. Rapier n'appelle chacun que pour une paire dont un collider l'active : ce qui
+/// n'en active aucun n'en paie rien.
+///
+/// - Le filtre des paires (§10.4, ADR-151 D2) : deux colliders marqués de la même assembly ne se touchent pas, sauf si
+///   elle déclare ses collisions internes. La marque est dans le `user_data` de chaque collider, posée par
+///   [`PhysicsWorld::seal_assembly`] sur les seules assemblies à plusieurs corps.
+/// - Le contact d'un champ de hauteurs du monde (ADR-180 D2) : le frottement et le rebond d'une variété sont la moyenne,
+///   sur ses points, de ceux de la cellule touchée combinés à ceux de l'autre collider — Rapier n'en tient qu'un jeu par
+///   variété. Posé par [`PhysicsWorld::set_cell_materials`].
+struct ContactHooks<'a> {
+    cells: &'a HashMap<ColliderHandle, CellMaterials>,
+    materials: &'a HashMap<ColliderHandle, ContactMaterial>,
+}
 
-impl PhysicsHooks for AssemblyPairFilter {
+impl PhysicsHooks for ContactHooks<'_> {
     fn filter_contact_pair(&self, context: &PairFilterContext) -> Option<SolverFlags> {
         let mark = |handle| {
             context
@@ -157,6 +164,46 @@ impl PhysicsHooks for AssemblyPairFilter {
             None
         } else {
             Some(SolverFlags::COMPUTE_IMPULSES)
+        }
+    }
+
+    fn modify_solver_contacts(&self, context: &mut ContactModificationContext) {
+        let (field, other, field_is_first) = match (
+            self.cells.get(&context.collider1),
+            self.cells.get(&context.collider2),
+        ) {
+            (Some(cells), _) => ((context.collider1, cells), context.collider2, true),
+            (None, Some(cells)) => ((context.collider2, cells), context.collider1, false),
+            (None, None) => return,
+        };
+        let Some(collider) = context.colliders.get(field.0) else {
+            return;
+        };
+        let other = self.materials.get(&other).copied().unwrap_or_default();
+        let (mut friction, mut restitution) = (0.0f32, 0.0f32);
+        for contact in context.solver_contacts.iter() {
+            // Dans le crochet, les ancres sont les points du monde.
+            let world = if field_is_first {
+                contact.anchor1
+            } else {
+                contact.anchor2
+            };
+            let cell = field
+                .1
+                .at(collider.position().inverse_transform_point(world));
+            friction += CombineRule::combine(
+                (cell.friction, cell.friction_combine),
+                (other.friction, other.friction_combine),
+            );
+            restitution += CombineRule::combine(
+                (cell.restitution, cell.restitution_combine),
+                (other.restitution, other.restitution_combine),
+            );
+        }
+        let count = context.solver_contacts.len();
+        if count > 0 {
+            *context.friction = friction / count as f32;
+            *context.restitution = restitution / count as f32;
         }
     }
 }
@@ -908,7 +955,11 @@ impl PhysicsWorld {
             self.update_automatic_ccd(dt);
             self.record_pre_step_motion();
             let collector = ContactCollector::default();
-            self.inner.step_with_events(&AssemblyPairFilter, &collector);
+            let hooks = ContactHooks {
+                cells: &self.cell_materials,
+                materials: &self.collider_materials,
+            };
+            self.inner.step_with_events(&hooks, &collector);
             self.enforce_body_guardrails();
             self.apply_rolling_friction();
             self.stage_log
@@ -1304,6 +1355,20 @@ impl PhysicsWorld {
             .map_or(NO_MATERIAL, |material| material.index)
     }
 
+    /// Le matériau d'un collider au point `world` : celui de sa cellule pour un champ de hauteurs du monde (ADR-180 D2).
+    fn material_at(&self, handle: ColliderHandle, world: Vec3) -> ContactMaterial {
+        if let (Some(cells), Some(collider)) = (
+            self.cell_materials.get(&handle),
+            self.inner.colliders.get(handle),
+        ) {
+            return cells.at(collider.position().inverse_transform_point(world));
+        }
+        self.collider_materials
+            .get(&handle)
+            .copied()
+            .unwrap_or_default()
+    }
+
     /// Freine le roulement de chaque contact actif (ADR-149 D6) : une impulsion angulaire
     /// opposée à la rotation relative des deux corps — sa part tangente au plan de contact, la
     /// rotation autour de la normale n'étant pas du roulement —, de module
@@ -1319,13 +1384,15 @@ impl PhysicsWorld {
             if !pair.has_any_active_contact() {
                 continue;
             }
-            let side = |collider: ColliderHandle| {
-                self.collider_materials
-                    .get(&collider)
-                    .copied()
-                    .unwrap_or_default()
+            let Some((manifold, contact)) = solved_contact(pair) else {
+                continue;
             };
-            let (first, second) = (side(pair.collider1), side(pair.collider2));
+            let Some(collider) = self.inner.colliders.get(pair.collider1) else {
+                continue;
+            };
+            let point = contact_point(collider, manifold, contact);
+            let first = self.material_at(pair.collider1, point);
+            let second = self.material_at(pair.collider2, point);
             let rolling = CombineRule::combine(
                 (first.rolling_friction, first.friction_combine),
                 (second.rolling_friction, second.friction_combine),
@@ -1342,14 +1409,7 @@ impl PhysicsWorld {
             if normal_impulse <= 0.0 {
                 continue;
             }
-            let Some((manifold, contact)) = solved_contact(pair) else {
-                continue;
-            };
             let normal = manifold.data.normal;
-            let Some(collider) = self.inner.colliders.get(pair.collider1) else {
-                continue;
-            };
-            let point = contact_point(collider, manifold, contact);
             let parent = |collider: ColliderHandle| {
                 self.inner
                     .colliders
@@ -1434,8 +1494,8 @@ impl PhysicsWorld {
             tangent_impulse: contact.data.tangent_impulse.norm(),
             relative_velocity,
             effective_mass: effective_mass_at(world_point, normal, body_a, body_b),
-            material_a: self.material_of(a),
-            material_b: self.material_of(b),
+            material_a: self.material_at(a, world_point).index,
+            material_b: self.material_at(b, world_point).index,
             data: 0,
         };
         self.attribute_entity(&mut event, a, b);
@@ -2437,6 +2497,11 @@ impl PhysicsWorld {
             .and_then(|body| body.colliders().first())
         {
             self.cell_materials.insert(collider, cells);
+            if let Some(collider) = self.inner.colliders.get_mut(collider) {
+                collider.set_active_hooks(
+                    collider.active_hooks() | ActiveHooks::MODIFY_SOLVER_CONTACTS,
+                );
+            }
         }
     }
 
