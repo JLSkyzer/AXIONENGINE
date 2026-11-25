@@ -19,7 +19,7 @@ class DebugOverlaysTest {
             "wheels", "suspension", "bones", "nodes", "pivots", "sockets", "damage_zones",
             "subzones", "impacts", "deform_lattice", "deform_heat", "strain", "structure", "parts",
             "wear", "decals", "lod", "culling", "occluders", "occlusion_buffer", "shadow_map",
-            "probe", "world_tiles", "center_of_mass", "network", "budgets", "quality", "sensors", "seats");
+            "probe", "world_tiles", "center_of_mass", "network", "budgets", "quality", "sensors", "seats", "supports");
 
     @Test
     @DisplayName("R-800 : tous les overlays sont éteints par défaut, le masque est vide")
@@ -49,7 +49,7 @@ class DebugOverlaysTest {
     @Test
     @DisplayName("ADR-121 : le bit d'un overlay est le rang de son nom au §31.4")
     void bitAuRangDuParagraphe() {
-        assertEquals(37, PARAGRAPHE_31_4.size(), "37 overlays : le masque de 64 bits suffit");
+        assertEquals(38, PARAGRAPHE_31_4.size(), "38 overlays : le masque de 64 bits suffit");
         for (Overlay overlay : Overlay.values()) {
             int rang = PARAGRAPHE_31_4.indexOf(overlay.commandName());
             assertTrue(rang >= 0, overlay.commandName() + " n'est pas un overlay du §31.4");
@@ -77,12 +77,14 @@ class DebugOverlaysTest {
         assertEquals(List.of(Overlay.BONES, Overlay.NODES, Overlay.PIVOTS), java.util.Arrays.stream(Overlay.values())
                         .filter(overlay -> overlay.source() == DebugOverlays.Source.RENDER).toList(),
                 "bones, nodes et pivots, du contexte de rendu (ADR-155, tranche 6b)");
-        assertEquals(List.of(Overlay.SOCKETS, Overlay.SENSORS, Overlay.SEATS, Overlay.NETWORK, Overlay.LOD, Overlay.CULLING),
+        assertEquals(List.of(Overlay.SOCKETS, Overlay.SENSORS, Overlay.SEATS, Overlay.SUPPORTS, Overlay.NETWORK, Overlay.LOD,
+                        Overlay.CULLING),
                 java.util.Arrays.stream(Overlay.values())
                         .filter(overlay -> overlay.source() == DebugOverlays.Source.JAVA).toList(),
-                "sockets (ADR-171), sensors (ADR-174), seats (ADR-177), network, lod et culling, en Java seul, venus en M4 avec C-51 et"
+                "sockets (ADR-171), sensors (ADR-174), seats (ADR-177), supports (ADR-178), network, lod et culling, en Java seul, venus en"
+                        + " M4 avec C-51 et"
                         + " C-64 (ADR-146 §1, ADR-154)");
-        assertEquals(21, Overlay.values().length);
+        assertEquals(22, Overlay.values().length);
         for (Overlay overlay : Overlay.values()) {
             assertEquals(overlay, Overlay.ofRank(overlay.rank()), overlay.commandName());
         }

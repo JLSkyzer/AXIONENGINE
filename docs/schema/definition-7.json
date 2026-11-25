@@ -1914,6 +1914,9 @@
       "maxProperties": 64,
       "x-axion-code": "E-3050"
     },
+    "carry": {
+      "type": "boolean"
+    },
     "energy": {
       "type": "object",
       "properties": {

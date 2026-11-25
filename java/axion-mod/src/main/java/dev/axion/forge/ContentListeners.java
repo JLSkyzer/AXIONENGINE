@@ -45,6 +45,22 @@ final class ContentListeners {
         disabled.clear();
     }
 
+    private static volatile List<ListenerEntry<dev.axion.api.assembly.CarryListener>> carriers = List.of();
+
+    /**
+     * Publie les écouteurs de ce qui est porté (ADR-178).
+     *
+     * @param carryListeners les écouteurs, dans l'ordre
+     */
+    static synchronized void publishCarry(List<ListenerEntry<dev.axion.api.assembly.CarryListener>> carryListeners) {
+        carriers = List.copyOf(carryListeners);
+    }
+
+    /** {@return les écouteurs de ce qui est porté actifs} */
+    static List<ListenerEntry<dev.axion.api.assembly.CarryListener>> carriers() {
+        return carriers;
+    }
+
     /**
      * Publie les écouteurs des événements de contenu (ADR-174 D2).
      *

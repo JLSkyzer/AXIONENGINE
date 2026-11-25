@@ -61,6 +61,11 @@ public final class DebugOverlays {
          * déclare l'occupant, le client connaît la pose.
          */
         SEATS("seats", 1L << 36, Source.JAVA),
+        /**
+         * Le support du joueur local : le trait de ses pieds à l'origine du corps qui le porte, et une croix à sa place
+         * (ADR-178, axe Diagnostic). Rang 37, au bout du §31.4. En Java seul : le client connaît son support et la pose.
+         */
+        SUPPORTS("supports", 1L << 37, Source.JAVA),
         /** Les tuiles de collision du monde (C-38, A1). Rang 30. */
         WORLD_TILES("world_tiles", NativeBridge.OVERLAY_WORLD_TILES, Source.PHYSICS),
         /** Le centre de masse de chaque corps (A1). Rang 31. */

@@ -155,6 +155,7 @@ final class ContentRegistration {
         // ADR-174 D1 : les écouteurs des sièges et des interactions.
         ContentListeners.publish(registry.seatListeners(), registry.interactionListeners());
         ContentListeners.publishEvents(registry.eventListeners());
+        ContentListeners.publishCarry(registry.carryListeners());
         if (extensions.size() > 0) {
             LOGGER.info("AXION : contrôleurs de véhicule enregistrés : {}", extensions.controllers().stream()
                     .map(dev.axion.definition.VehicleExtensions.Controller::id).toList());

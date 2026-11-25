@@ -135,4 +135,14 @@ public interface Assembly {
     default java.util.List<Entity> sensorOccupants(String sensor) {
         throw new UnsupportedOperationException("sensorOccupants : cette assembly n'a pas de capteurs");
     }
+
+    /**
+     * {@return les entités que cette assembly porte au serveur (ADR-178, CAP-14)} Celles posées sur un de ses corps ; une
+     * copie, dans un ordre quelconque. Les passagers assis n'y sont pas : ils sont des passagers.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755).
+     */
+    default java.util.List<Entity> carried() {
+        throw new UnsupportedOperationException("carried : cette assembly ne dit pas ce qu'elle porte");
+    }
 }

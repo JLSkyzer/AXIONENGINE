@@ -902,9 +902,13 @@ public final class BancDeRendu {
                     RuntimeAccess.get().addCommandProvider(BancDeRendu::lancerLePlateau);
                 });
                 pendant("le plateau parti (" + critere + ")", 4);
+                une("allumer l'overlay supports (" + critere + ")",
+                        mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.SUPPORTS, true));
                 une("relever la place du joueur (" + critere + ")", mc -> releverPorte(mc, null));
                 pendant("le plateau en mouvement (" + critere + ")", 12);
                 une("juger " + critere, mc -> releverPorte(mc, critere));
+                une("éteindre l'overlay supports (" + critere + ")",
+                        mc -> AxionRenderPass.setOverlay(dev.axion.debug.DebugOverlays.Overlay.SUPPORTS, false));
                 serveur("sortir le joueur et retirer le plateau (" + critere + ")", s -> {
                     net.minecraft.server.level.ServerPlayer joueur = s.getPlayerList().getPlayers().get(0);
                     joueur.setGameMode(GameType.SPECTATOR);
@@ -2152,8 +2156,9 @@ public final class BancDeRendu {
                 // Ils tracent l'animation : jugés sur le bras plié (ADR-155, tranche 6b).
                 continue;
             }
-            if (overlay == dev.axion.debug.DebugOverlays.Overlay.SEATS) {
-                // Aucun siège dans cette scène : jugé sur le joueur assis (ADR-177 D1).
+            if (overlay == dev.axion.debug.DebugOverlays.Overlay.SEATS
+                    || overlay == dev.axion.debug.DebugOverlays.Overlay.SUPPORTS) {
+                // Aucun siège ni joueur porté dans cette scène : jugés sur le joueur assis (ADR-177 D1) et porté (ADR-178).
                 continue;
             }
             int n = plages.getOrDefault(overlay.rank(), 0);
@@ -2423,13 +2428,15 @@ public final class BancDeRendu {
         // Le serveur tient la dernière position reçue : à l'horizontale, il doit suivre son client.
         double ecartServeur = auServeur == null ? Double.NaN
                 : Math.hypot(auServeur.getX() - minecraft.player.getX(), auServeur.getZ() - minecraft.player.getZ());
-        boolean vert = porte && parcouru >= 0.8 && derive <= 0.15 && ecartServeur <= 0.75;
+        int liens = AxionRenderPass.debugRangesByOverlay()
+                .getOrDefault(dev.axion.debug.DebugOverlays.Overlay.SUPPORTS.rank(), 0);
+        boolean vert = porte && parcouru >= 0.8 && derive <= 0.15 && ecartServeur <= 0.75 && liens > 0;
         RAPPORT.noter(critere, vert, String.format(Locale.ROOT,
                 "joueur (%s) debout sur la caisse lancée de côté : porté au début et à la fin : %s ; la caisse a avancé de"
                         + " %.2f bloc, sa place sur elle a dérivé de %.3f bloc (au moins 0,8 et au plus 0,15) ; au serveur, il"
-                        + " est à %.3f bloc de son client à l'horizontale (au plus 0,75)",
+                        + " est à %.3f bloc de son client à l'horizontale (au plus 0,75) ; overlay supports : %d lien(s)",
                 auServeur == null ? "?" : auServeur.gameMode.getGameModeForPlayer().getName(), porte, parcouru, derive,
-                ecartServeur));
+                ecartServeur, liens));
     }
 
     /** ADR-177 D1 : l'overlay {@code seats} a tracé le siège du joueur assis. */

@@ -196,6 +196,60 @@ public final class RechargementGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-178 et ADR-175 D5 : un support tient le rang d'un corps de la definition où il est né. À la reliure, il meurt —
+     * la collision en refait un contre la definition nouvelle, qui peut avoir moins de corps.
+     */
+    // Un lot à lui, comme le test des occupants.
+    @GameTest(template = "test/plancher", batch = "rechargement_portage", timeoutTicks = 400)
+    public static void adr178_UnRechargementOublieLeSupportDeLaDefinitionDAvant(GameTestHelper helper) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
+        AssetSource revisee = new AssetSource() {
+            @Override
+            public List<String> list() {
+                return courantes.list();
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                return CHEMIN_SIEGE.equals(path)
+                        ? SIEGE_REVISE.getBytes(StandardCharsets.UTF_8)
+                        : courantes.read(path);
+            }
+        };
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f});
+        net.minecraft.world.entity.animal.Pig cochon =
+                net.minecraft.world.entity.EntityType.PIG.create(helper.getLevel());
+        dev.axion.definition.HeldDefinition[] avant = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds() && assembly.held() != null,
+                        "l'assembly est simulée, sa definition tenue"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    cochon.setNoAi(true);
+                    helper.getLevel().addFreshEntity(cochon);
+                    cochon.moveTo(assembly.getX(), assembly.getY() + 2.0, assembly.getZ(), 0f, 0f);
+                    cochon.move(net.minecraft.world.entity.MoverType.SELF, new Vec3(0.0, -2.0, 0.0));
+                    helper.assertTrue(CarrySupports.of(cochon) != null, "le cochon repose sur la caisse");
+                    avant[0] = assembly.held();
+                    runtime.onDefinitionReload(revisee);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(assembly.held() != avant[0] && assembly.hasPhysicalBounds(),
+                        "l'assembly est reliée à la definition rechargée"))
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    boolean oublie = CarrySupports.of(cochon) == null;
+                    // Les autres tests retrouvent les definitions enregistrées.
+                    runtime.onDefinitionReload(courantes);
+                    cochon.discard();
+                    helper.assertTrue(oublie, "le support né sur la definition d'avant est oublié");
+                })
+                .thenSucceed();
+    }
+
     /** Combien d'assemblies le test de coût relie d'un coup. */
     private static final int POUR_LE_COUT = 24;
 

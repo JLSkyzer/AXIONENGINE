@@ -551,6 +551,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         addAdditionalSaveData(snapshot);
         held = null;
         nodesRestored = false;
+        // ADR-178 : les poses gardées pour porter sont celles de la definition d'avant.
+        carryHistory.clear();
         readAdditionalSaveData(snapshot);
         Seating fresh = seating();
         if (old != null && fresh != null) {
@@ -2754,6 +2756,19 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return faux si la definition dit {@code "carry": false} (ADR-178 Q5) : elle arrête ce qui la heurte, mais ne porte
+     * rien}
+     */
+    boolean carries() {
+        Definition definition = document();
+        if (definition == null) {
+            return false;
+        }
+        com.google.gson.JsonElement carry = definition.root().get("carry");
+        return carry == null || carry.getAsBoolean();
+    }
+
+    /**
      * {@return l'empreinte de la definition que le natif a compilée, la clé du balayage de collision (ADR-178 D1), ou
      * {@code 0} sans definition compilée}
      */
@@ -2778,6 +2793,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** Les poses des derniers ticks, la plus récente d'abord (serveur). */
     private final java.util.ArrayDeque<double[]> carryHistory = new java.util.ArrayDeque<>(CARRY_HISTORY);
+
+    /** {@return la compilation de la definition que lisent les poses à porter ; une autre après une reliure} */
+    Object carryDefinition() {
+        return summaryHeld();
+    }
 
     /** Retient les poses du tick (serveur, fin de tick). */
     void rememberCarryPoses() {

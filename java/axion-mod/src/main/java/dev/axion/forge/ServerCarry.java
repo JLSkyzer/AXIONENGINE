@@ -148,7 +148,7 @@ public final class ServerCarry {
             if (entity instanceof Player || entity.level() != level) {
                 continue;
             }
-            if (entity.isRemoved() || entity.isPassenger() || support.assembly().isRemoved()) {
+            if (entity.isRemoved() || entity.isPassenger() || !support.current()) {
                 CarrySupports.clear(entity);
                 continue;
             }
@@ -169,7 +169,7 @@ public final class ServerCarry {
     /** {@return le corps que la sonde rencontre sous la boîte, sur une surface qui se marche, ou {@code -1}} */
     private static int probe(AxionEntity assembly, double[] poses, AABB box, double reach) {
         long key = assembly.collisionKey();
-        if (poses == null || key == 0L) {
+        if (poses == null || key == 0L || !assembly.carries()) {
             return -1;
         }
         double[] input = {box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, 0.0, -reach, 0.0};

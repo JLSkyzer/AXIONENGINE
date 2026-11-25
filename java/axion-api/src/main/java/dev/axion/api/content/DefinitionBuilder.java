@@ -242,6 +242,17 @@ public final class DefinitionBuilder {
     }
 
     /**
+     * {@code carry}.
+     *
+     * @param value la valeur
+     * @return ce réglage, pour enchaîner
+     */
+    public DefinitionBuilder carry(boolean value) {
+        values.put("carry", value);
+        return this;
+    }
+
+    /**
      * {@code custom}.
      *
      * @param key clé de la table

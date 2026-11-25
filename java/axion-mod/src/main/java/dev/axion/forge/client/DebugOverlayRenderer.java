@@ -139,6 +139,9 @@ final class DebugOverlayRenderer {
     /** Demi-longueur des trois traits qui marquent l'œil, en blocs. */
     static final float EYE_MARK = 0.12f;
 
+    /** Couleur de l'overlay {@code supports} : le lien d'un joueur porté à son corps (ADR-178). */
+    static final int SUPPORT_COLOR = 0x33FFCC;
+
     /** Segments d'un cercle de capteur sphérique. */
     static final int SENSOR_CIRCLE_SEGMENTS = 24;
 
@@ -170,6 +173,7 @@ final class DebugOverlayRenderer {
     private int socketsDrawn;
     private int sensorsDrawn;
     private int seatsDrawn;
+    private int supportsDrawn;
 
     /** Couleur de l'emprise d'une assembly retenue, dans {@code culling} (RGB). */
     static final int CULLING_KEPT = 0x40E040;
@@ -293,6 +297,8 @@ final class DebugOverlayRenderer {
         socketsDrawn = 0;
         sensorsDrawn = 0;
         seatsDrawn = 0;
+        supportsDrawn = 0;
+        boolean supports = overlays.isOn(DebugOverlays.Overlay.SUPPORTS);
         boolean seats = overlays.isOn(DebugOverlays.Overlay.SEATS);
         boolean sensors = overlays.isOn(DebugOverlays.Overlay.SENSORS);
         boolean network = overlays.isOn(DebugOverlays.Overlay.NETWORK);
@@ -300,7 +306,7 @@ final class DebugOverlayRenderer {
         boolean culled = overlays.isOn(DebugOverlays.Overlay.CULLING);
         boolean sockets = overlays.isOn(DebugOverlays.Overlay.SOCKETS);
         if (overlays.mask() == 0L || (geometry.ranges().isEmpty() && animation.ranges().isEmpty() && !network && !lod
-                && !culled && !sockets && !sensors && !seats)) {
+                && !culled && !sockets && !sensors && !seats && !supports)) {
             return;
         }
         RenderType type = RenderType.lines();
@@ -354,6 +360,9 @@ final class DebugOverlayRenderer {
         }
         if (seats) {
             out = drawSeats(frame, out, type, scratch);
+        }
+        if (supports) {
+            out = drawSupports(frame, out, type, scratch);
         }
         if (out != null) {
             frame.buffers().endBatch(type);
@@ -435,6 +444,51 @@ final class DebugOverlayRenderer {
             }
         }
         return out;
+    }
+
+    /**
+     * L'overlay {@code supports} : le joueur local porté, relié de ses pieds à l'origine du corps qui le porte, avec une croix à
+     * sa place sur lui, à la pose dessinée (ADR-178, axe Diagnostic).
+     */
+    private VertexConsumer drawSupports(RenderBackend.Frame frame, VertexConsumer out, RenderType type, Vector3f scratch) {
+        net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+        dev.axion.forge.CarrySupports.Support support = player == null ? null : dev.axion.forge.CarrySupports.of(player);
+        double[] local = support == null ? null : support.local();
+        if (local == null) {
+            return out;
+        }
+        AxionEntity assembly = support.assembly();
+        double[] poses = assembly.framePoses(assembly.renderPose(frame.partialTick()));
+        if (poses == null) {
+            return out;
+        }
+        if (out == null) {
+            out = frame.buffers().getBuffer(type);
+        }
+        Vec3 eye = frame.camera();
+        PoseStack.Pose last = frame.pose().last();
+        double[] place = dev.axion.physics.BodyFrame.toWorld(poses, support.body(), local);
+        int at = support.body() * dev.axion.physics.BodyFrame.POSE;
+        emit(out, last.pose(), last.normal(), scratch, supportSegments(place,
+                new double[] {poses[at], poses[at + 1], poses[at + 2]}, eye.x, eye.y, eye.z), SUPPORT_COLOR);
+        supportsDrawn++;
+        return out;
+    }
+
+    /**
+     * {@return les segments de {@code supports}, relatifs à la caméra : le trait de la place du joueur à l'origine du corps, puis
+     * trois traits en croix à sa place}
+     */
+    static float[] supportSegments(double[] place, double[] origin, double cameraX, double cameraY, double cameraZ) {
+        float x = (float) (place[0] - cameraX);
+        float y = (float) (place[1] - cameraY);
+        float z = (float) (place[2] - cameraZ);
+        return new float[] {
+            x, y, z, (float) (origin[0] - cameraX), (float) (origin[1] - cameraY), (float) (origin[2] - cameraZ),
+            x - EYE_MARK, y, z, x + EYE_MARK, y, z,
+            x, y - EYE_MARK, z, x, y + EYE_MARK, z,
+            x, y, z - EYE_MARK, x, y, z + EYE_MARK,
+        };
     }
 
     /**
@@ -764,6 +818,10 @@ final class DebugOverlayRenderer {
     }
 
     /** {@return les capteurs dessinés à la dernière frame (ADR-174, axe Diagnostic)} */
+    int supportsDrawn() {
+        return supportsDrawn;
+    }
+
     int seatsDrawn() {
         return seatsDrawn;
     }
@@ -826,6 +884,7 @@ final class DebugOverlayRenderer {
             case SOCKETS -> AXIS_COLORS[0];
             case SENSORS -> SENSOR_COLOR;
             case SEATS -> SEAT_COLOR;
+            case SUPPORTS -> SUPPORT_COLOR;
             case WORLD_TILES -> TILE_COLOR;
             case CENTER_OF_MASS -> MASS_COLOR;
             case NETWORK -> NETWORK_RECEIVED;
@@ -872,6 +931,7 @@ final class DebugOverlayRenderer {
             case PIVOTS -> "rose : l'origine de chaque node animé, autour de laquelle il tourne";
             case SOCKETS -> "axes de chaque socket, là où une attache se prend : rouge x, vert y, bleu z";
             case SENSORS -> "violet : le volume de chaque capteur déclaré, boîte ou sphère, à son node";
+            case SUPPORTS -> "turquoise : de la place du joueur porté à l'origine du corps qui le porte, croix à sa place";
             case SEATS -> "orange : l'occupant de chaque siège mis à l'échelle, et sa croix à l'œil ; gris : la boîte de"
                     + " collision d'un joueur, que l'échelle ne touche pas";
             case WORLD_TILES -> "gris : les colliders des tuiles du monde";

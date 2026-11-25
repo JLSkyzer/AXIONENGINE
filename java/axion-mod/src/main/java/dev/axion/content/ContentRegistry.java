@@ -82,6 +82,7 @@ public final class ContentRegistry {
 
     /** Les écouteurs des sièges et des interactions (ADR-174 D1), avec leur mod, dans l'ordre d'enregistrement. */
     private final List<ListenerEntry<dev.axion.api.assembly.SeatListener>> seatListeners = new ArrayList<>();
+    private final List<ListenerEntry<dev.axion.api.assembly.CarryListener>> carryListeners = new ArrayList<>();
     private final List<ListenerEntry<dev.axion.api.assembly.InteractionListener>> interactionListeners =
             new ArrayList<>();
     /** Les écouteurs des événements de contenu (ADR-174 D2), avec leur mod, dans l'ordre d'enregistrement. */
@@ -104,6 +105,11 @@ public final class ContentRegistry {
     /** {@return les écouteurs des sièges enregistrés, dans l'ordre (ADR-174 D1)} */
     public List<ListenerEntry<dev.axion.api.assembly.SeatListener>> seatListeners() {
         return List.copyOf(seatListeners);
+    }
+
+    /** {@return les écouteurs de ce qui est porté, dans l'ordre} */
+    public List<ListenerEntry<dev.axion.api.assembly.CarryListener>> carryListeners() {
+        return List.copyOf(carryListeners);
     }
 
     /** {@return les écouteurs des interactions enregistrés, dans l'ordre (ADR-174 D1)} */
@@ -423,6 +429,12 @@ public final class ContentRegistry {
         public void registerSeatListener(dev.axion.api.assembly.SeatListener listener) {
             ensureOpen();
             seatListeners.add(new ListenerEntry<>(modId, Objects.requireNonNull(listener, "listener")));
+        }
+
+        @Override
+        public void registerCarryListener(dev.axion.api.assembly.CarryListener listener) {
+            ensureOpen();
+            carryListeners.add(new ListenerEntry<>(modId, Objects.requireNonNull(listener, "listener")));
         }
 
         @Override

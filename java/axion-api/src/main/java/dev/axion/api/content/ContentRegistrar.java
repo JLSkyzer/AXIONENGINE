@@ -139,6 +139,17 @@ public interface ContentRegistrar {
     }
 
     /**
+     * Enregistre un écouteur de ce que les assemblies portent (ADR-178, CAP-14) : au serveur, chaque entité qui se pose sur
+     * une assembly ou la quitte. Les écouteurs sont appelés dans l'ordre des mods, puis de leur enregistrement.
+     *
+     * @param listener l'écouteur
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void registerCarryListener(dev.axion.api.assembly.CarryListener listener) {
+        throw new UnsupportedOperationException("registerCarryListener : ce registraire ne suit pas ce qui est porté");
+    }
+
+    /**
      * Enregistre un écouteur des événements de contenu (ADR-174 D2, CAP-02) : au serveur, chaque événement émis ; chez
      * un client, ceux qui lui sont envoyés. Les écouteurs sont appelés dans l'ordre des mods, puis de leur
      * enregistrement.

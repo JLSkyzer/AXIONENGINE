@@ -4,6 +4,7 @@ import dev.axion.bridge.NativeBridge;
 import dev.axion.physics.BoxSlide;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
@@ -31,6 +32,9 @@ public final class AssemblyCollision {
     static final int MAX_FAILURES = 3;
 
     private static final AtomicInteger FAILURES = new AtomicInteger();
+
+    /** Vrai une fois qu'on a dit qu'une poussée s'est arrêtée à un bloc : une fois par session. */
+    private static final AtomicBoolean PINNED = new AtomicBoolean();
 
     private static final ThreadLocal<double[][]> BUFFERS = ThreadLocal.withInitial(
             () -> new double[][] {new double[NativeBridge.COLLIDE_INPUT], new double[NativeBridge.COLLIDE_OUTPUT]});
@@ -116,7 +120,7 @@ public final class AssemblyCollision {
         // ADR-178 D2 : le support naît d'une chute arrêtée par une surface qu'on marche ; sinon, il meurt. Celui d'un
         // joueur au serveur se cherche à la fin du tick (D4) : ses déplacements annoncés n'y disent rien.
         if (!serverPlayer) {
-            if (motion.y < 0.0 && slid[1] > motion.y + 1.0e-9 && landing.assembly != null) {
+            if (motion.y < 0.0 && slid[1] > motion.y + 1.0e-9 && landing.assembly != null && landing.assembly.carries()) {
                 CarrySupports.land(entity, landing.assembly, landing.body);
             } else {
                 CarrySupports.clear(entity);
@@ -164,10 +168,11 @@ public final class AssemblyCollision {
 
     /**
      * Ce qui sort une entité d'une assembly qui avance dans elle (ADR-178 D5) : la plus courte sortie, bornée par
-     * {@code physics.push_speed_max}. Chez le client, pour le joueur local, qui est maître de sa position.
+     * {@code physics.push_speed_max}, puis arrêtée par les blocs — la poussée ne met personne dans un mur. Chez le client,
+     * pour le joueur local, qui est maître de sa position.
      *
      * @param entity l'entité
-     * @return le déplacement qui la sort, ou {@code null} si elle n'est dans aucune assembly
+     * @return le déplacement qui la sort, ou ce que les blocs en laissent ; {@code null} si elle n'est dans aucune assembly
      */
     public static Vec3 pushOut(Entity entity) {
         if (AssemblyIndex.total() == 0 || FAILURES.get() >= MAX_FAILURES || !AxionEntities.carry() || entity.noPhysics
@@ -204,7 +209,16 @@ public final class AssemblyCollision {
                 push = new Vec3(out[3] * reach, out[4] * reach, out[5] * reach);
             }
         }
-        return push;
+        if (push == null) {
+            return null;
+        }
+        // Vanilla glisse ce déplacement contre les blocs, comme un pas ; le joueur que rien ne laisse sortir reste contre eux.
+        Vec3 free = Entity.collideBoundingBox(entity, push, entity.getBoundingBox(), entity.level(), List.of());
+        if (free.distanceToSqr(push) > 1.0e-6 && PINNED.compareAndSet(false, true)) {
+            LOGGER.warn("AXION : une assembly pousse {} contre un bloc ; il reste contre le bloc (ADR-178 D5)",
+                    entity.getName().getString());
+        }
+        return free;
     }
 
     /** Rend à la fonction sa première heure : pour un test. */

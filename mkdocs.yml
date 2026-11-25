@@ -73,6 +73,7 @@ plugins:
             Écouter et refuser un geste: Listening to and refusing a gesture
             Faire évoluer son contenu: Evolving your content
             Mettre un siège à l'échelle: Scaling a seat
+            Plateaux, ponts et ascenseurs: Platforms, bridges and lifts
             Glossaire: Glossary
             Jouer et héberger: Play and host
             Configuration: Configuration
@@ -97,6 +98,7 @@ nav:
       - Écouter et refuser un geste: addons/ecouter.md
       - Faire évoluer son contenu: addons/evoluer.md
       - Mettre un siège à l'échelle: addons/occupants.md
+      - Plateaux, ponts et ascenseurs: addons/plateaux.md
       - Moteur, démarreur et contact: addons/moteur.md
       - Pneus et usure: addons/pneus.md
       - Pluie, neige et adhérence: addons/meteo.md

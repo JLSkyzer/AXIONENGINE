@@ -267,7 +267,7 @@ class DebugOverlayRendererTest {
                 couleurs.add(DebugOverlayRenderer.colorOf(overlay, 0));
             }
         }
-        assertEquals(14, couleurs.size(), "quatorze couleurs distinctes, seats comprise (ADR-177)");
+        assertEquals(15, couleurs.size(), "quinze couleurs distinctes, seats (ADR-177) et supports (ADR-178) comprises");
         assertEquals(
                 DebugOverlayRenderer.STATIC,
                 DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.COLLIDERS, DebugGeometry.BODY_STATIC));
@@ -369,6 +369,16 @@ class DebugOverlayRendererTest {
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f, -l}, axes[0], 1e-5f);
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, 0f, 4f + l, 0f}, axes[1], 1e-5f);
         org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 4f, 0f, l, 4f, 0f}, axes[2], 1e-5f);
+    }
+
+    @Test
+    @DisplayName("ADR-178 : l'overlay supports relie la place du joueur à l'origine du corps, et la marque d'une croix")
+    void leSupport() {
+        float[] segments = DebugOverlayRenderer.supportSegments(new double[] {10, 65, -3}, new double[] {10, 64, -3}, 10, 60, -3);
+        assertEquals(4 * DebugGeometry.FLOATS_PER_SEGMENT, segments.length, "le lien et la croix");
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new float[] {0f, 5f, 0f, 0f, 4f, 0f},
+                java.util.Arrays.copyOfRange(segments, 0, 6), 1e-5f, "de la place à l'origine");
+        assertEquals(DebugOverlayRenderer.SUPPORT_COLOR, DebugOverlayRenderer.colorOf(DebugOverlays.Overlay.SUPPORTS, 0));
     }
 
     @Test

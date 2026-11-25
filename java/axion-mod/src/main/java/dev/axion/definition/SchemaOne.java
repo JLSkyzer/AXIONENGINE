@@ -203,6 +203,8 @@ final class SchemaOne {
                     new Dict(new TextRule.Declares(NameCategory.VARIABLE), variable(version), Variables.MAX));
         }
         if (version >= 7) {
+            // ADR-178 Q5 : une assembly qui ne porte pas ce qui se pose sur elle (une porte de hangar) ; la collision reste.
+            root.opt("carry", bool());
             // ADR-176 D3 : l'énergie d'un véhicule, un réservoir et une batterie ; la cohérence (un réservoir déclare sa
             // consommation, une batterie exige un démarreur, la masse par litre exige physics.mass) se juge ensemble
             // (VehicleSpec.checkEnergy).
