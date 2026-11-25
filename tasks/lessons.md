@@ -2675,3 +2675,15 @@ chute de 52 ms pour 9,7 ms.
 
 **Règle.** Une vitesse se mesure avec **l'heure à laquelle la valeur est datée**, jamais avec un second horodatage pris à côté. Un
 verdict dont le chiffre est physiquement impossible accuse d'abord la mesure : le vérifier avant de toucher au code mesuré.
+
+## 2026-11-25 | Une corde qui ne se tend jamais, une fois sur quelques passages
+
+**Observé.** `t891` échouait par intermittence (CI et local) : maillon endormi, corde distendue, tension nulle. Trois fausses pistes :
+gouverneur, plafond de corps, événement de rupture perdu.
+
+**Cause.** L'attache posée au pas même où le corps allait s'endormir : encore éveillé, le joint ne demandait pas de réveil, et le pas
+l'endormait avant de le résoudre.
+
+**Règle.** Devant un test intermittent, **enrichir d'abord le message d'échec** de tout ce qui départage les hypothèses : la première
+occurrence suivante les a toutes écartées sauf une. Puis balayer en natif **chaque pas** au lieu d'échantillonner (tous les 10 ticks ne
+voyait rien ; le défaut tenait dans un seul pas sur 239).

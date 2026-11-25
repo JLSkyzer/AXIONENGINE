@@ -458,3 +458,66 @@ fn adr171_une_corde_posee_sur_une_assembly_nee_endormie_la_reveille() {
         world.is_sleeping(charge)
     );
 }
+
+#[test]
+fn t891_une_corde_posee_a_n_importe_quel_instant_se_tend_et_rompt() {
+    // Une corde courte et fragile, posée sur une caisse qui repose : elle se tend et rompt, que la caisse soit éveillée,
+    // endormie, ou sur le point de s'endormir au pas même où on l'attache — le pas l'endormait alors avant de résoudre
+    // le joint, que rien ne tendait plus.
+    let mut ratees = Vec::new();
+    // Un pas à la fois, au 1/60 s : l'instant où la caisse s'endort tombe dans l'intervalle.
+    for pas in 1u32..240 {
+        let mut world = monde(true);
+        world
+            .add_assembly(
+                BodyKind::Static,
+                Vec3::new(0.0, -0.5, 0.0),
+                Quat::IDENTITY,
+                &[BodyCollider {
+                    shape: Shape::Cuboid {
+                        half_extents: [8.0, 0.5, 8.0],
+                    },
+                    density: 1.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            )
+            .unwrap();
+        let charge = caisse(&mut world, Vec3::new(0.0, 0.25, 0.0), Vec3::splat(0.2));
+        for _ in 0..pas {
+            world.advance(1.0 / 60.0);
+        }
+        let mut corde = attache(attachment_kind::ROPE, Vec3::new(0.0, 0.2, 0.0));
+        corde.max_force = 50.0;
+        corde.length = 2.0;
+        world
+            .attach(
+                3,
+                assembly(1),
+                charge,
+                AttachEnd::World(Vec3::new(0.0, 4.4, 0.0)),
+                &corde,
+            )
+            .unwrap();
+        let mut rompue = false;
+        for _ in 0..60 {
+            world.advance(TICK);
+            if world
+                .drain_events()
+                .iter()
+                .any(|e| e.kind == event_kind::DETACH_ATTACHMENT)
+            {
+                rompue = true;
+                break;
+            }
+        }
+        if !rompue {
+            ratees.push(pas);
+        }
+    }
+    assert!(
+        ratees.is_empty(),
+        "posée à ces pas, la corde ne s'est jamais tendue : {ratees:?}"
+    );
+}

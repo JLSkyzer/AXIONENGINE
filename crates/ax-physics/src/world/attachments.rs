@@ -202,6 +202,16 @@ impl PhysicsWorld {
                 return Err(AttachError::InvalidSetting);
             }
         };
+        // Une attache réveille ce qu'elle joint. Le joint ne réveille qu'un corps déjà endormi ; un corps éveillé sur le point
+        // de s'endormir, le pas l'endormait avant de résoudre le joint, que rien ne tendait plus (T-891). Un corps endormi
+        // l'est par le joint, au pas suivant ; la gestion d'activité garde la main sur ceux qu'elle tient.
+        for end in [body, frame_b.0] {
+            if let Some(joined) = self.inner.bodies.get_mut(end.handle()) {
+                if joined.is_dynamic() && !joined.is_sleeping() {
+                    joined.wake_up(true);
+                }
+            }
+        }
         self.mark_attachment_joint(joint.0, id, other);
         if spec.kind == attachment_kind::ROPE {
             self.soften_rope(joint.0);
