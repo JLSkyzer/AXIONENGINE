@@ -82,6 +82,37 @@ class SeatPlacementTest {
         assertEquals(SeatOccupancy.FREE, SeatPlacement.seatFor(seating, table, "passager"), "aucun libre");
     }
 
+    @Test
+    @DisplayName("ADR-175 D5 : à la reliure, un occupant déplacé ne prend pas le siège d'un autre qui existe encore")
+    void reliureParNom() {
+        Seating avant = nommes("conducteur", "passager", "tireur");
+        Seating apres = nommes("passager", "tireur", "arriere");
+        SeatOccupancy table = SeatPlacement.remap(avant, apres, new int[] {10, 20, SeatOccupancy.FREE});
+        assertEquals(20, table.occupant(0), "« passager » garde son siège");
+        assertEquals(10, table.occupant(1), "« conducteur » disparu : le premier libre");
+        assertEquals(SeatOccupancy.FREE, table.occupant(2));
+
+        // Un siège de trop : celui dont le siège n'existe plus reste debout, les autres gardent le leur.
+        SeatOccupancy court = SeatPlacement.remap(avant, nommes("tireur", "passager"), new int[] {10, 20, 30});
+        assertEquals(30, court.occupant(0));
+        assertEquals(20, court.occupant(1));
+        assertEquals(SeatOccupancy.FREE, court.seatOf(10), "plus de place");
+
+        // Un siège libre ou perdu n'a personne à déplacer.
+        SeatOccupancy vide = SeatPlacement.remap(avant, apres,
+                new int[] {SeatOccupancy.LOST, SeatOccupancy.FREE, 30});
+        assertEquals(30, vide.occupant(1));
+        assertEquals(SeatOccupancy.FREE, vide.occupant(0));
+    }
+
+    private static Seating nommes(String... noms) {
+        List<Seating.Seat> sieges = new ArrayList<>();
+        for (int rang = 0; rang < noms.length; rang++) {
+            sieges.add(new Seating.Seat(noms[rang], rang + 1, rang == 0, List.of(), 0));
+        }
+        return new Seating(sieges, List.of(), List.of());
+    }
+
     private static Seating sieges() {
         return new Seating(List.of(
                 new Seating.Seat("conducteur", 1, true, List.of(), 0),

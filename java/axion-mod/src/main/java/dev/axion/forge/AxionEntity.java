@@ -561,29 +561,27 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * Les occupants gardent leur siège par nom à la reliure (ADR-175 D5) : un siège que la definition ne déclare plus, ou
-     * déjà pris, leur donne le premier libre ; sans place, ils sont éjectés ({@link SeatEjection.Cause#NO_SEAT}).
+     * Les occupants gardent leur siège par nom à la reliure (ADR-175 D5) : ceux dont la definition ne déclare plus le
+     * siège prennent ensuite les premiers libres ; sans place, ils sont éjectés ({@link SeatEjection.Cause#NO_SEAT}).
      */
     private void remapSeats(Seating old, Seating fresh, int[] seated) {
-        SeatOccupancy next = new SeatOccupancy(fresh.seats().size());
+        java.util.Map<Integer, Entity> riders = new java.util.HashMap<>();
+        getPassengers().forEach(passenger -> riders.put(passenger.getId(), passenger));
+        // Une entrée sans passager (parti entre-temps) ne réserve aucun siège.
+        int[] present = java.util.Arrays.stream(seated)
+                .map(id -> riders.containsKey(id) ? id : SeatOccupancy.FREE).toArray();
+        SeatOccupancy next = SeatPlacement.remap(old, fresh, present);
         List<Entity> lost = new ArrayList<>();
-        for (int rank = 0; rank < seated.length && rank < old.seats().size(); rank++) {
-            int occupant = seated[rank];
-            if (occupant == SeatOccupancy.FREE || occupant == SeatOccupancy.LOST) {
+        for (int rank = 0; rank < present.length && rank < old.seats().size(); rank++) {
+            Entity passenger = riders.get(present[rank]);
+            if (passenger == null) {
                 continue;
             }
             String name = old.seats().get(rank).name();
-            int seat = SeatPlacement.seatFor(fresh, next, name);
-            Entity passenger = getPassengers().stream()
-                    .filter(p -> p.getId() == occupant).findFirst().orElse(null);
-            if (seat == SeatOccupancy.FREE || passenger == null) {
-                if (passenger != null) {
-                    lost.add(passenger);
-                }
-                continue;
-            }
-            next.sit(occupant, seat);
-            if (!fresh.seats().get(seat).name().equals(name)) {
+            int seat = next.seatOf(passenger.getId());
+            if (seat == SeatOccupancy.FREE) {
+                lost.add(passenger);
+            } else if (!fresh.seats().get(seat).name().equals(name)) {
                 LOGGER.info("AXION : assembly {}, reliure : le siège « {} » de {} n'existe plus ou est pris ; il est assis"
                         + " au siège « {} »", getUUID(), name, passenger.getName().getString(),
                         fresh.seats().get(seat).name());

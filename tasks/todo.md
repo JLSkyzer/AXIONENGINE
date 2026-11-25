@@ -3880,6 +3880,36 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            client) ; ouvertes CAP-12, 13, 14, 20, 33, 52, 53, 56. Ordre proposé : petites (43, 42, 45) ; un ADR
            « événements et déclencheurs » (02, 16, 11, 05, 04) ; 38 puis 33 ; 12 puis 20 ; 13, 56 puis 14 ; 53 avec
            C-77 ; 52 au gel de l'API.
+     - [ ] **Audit de clôture de M5 (2026-11-25)** : M5 ne se prononce pas encore. Trois lectures du code, sans exécution ;
+           chaque défaut se reproduit par un test avant d'être corrigé, du plus petit au plus gros.
+           - [x] Migrations : renommages appliqués un par un, un échange de noms perdait des valeurs sauvegardées
+                 (précision d'ADR-175 du 2026-11-25).
+           - [x] Reliure à chaud : un occupant déplacé pouvait prendre le siège d'un autre (même précision).
+           - Défauts à reproduire (ADR-175, ADR-177) :
+             - [ ] guide des occupants (FR, EN) : multiplier l'échelle de la racine du mannequin l'agrandit autour d'un point
+                   à 1,06 m au-dessus du siège, pas autour du siège (confirmé dans `Mannequin.ecrire` et `OccupantRender`) ;
+             - [ ] rayon d'interaction du serveur parti de l'œil de Minecraft quand le siège règle l'œil ou l'échelle
+                   (`AxionEntity.aim`, confirmé par lecture ; même écart pour l'œil d'une vue déclarée, que le serveur ne
+                   connaît pas : protocole, donc ADR) ;
+             - [ ] reliure : variables et modificateurs vivants non migrés (`AxionEntity.rebind`, `AssemblyVariables`) ;
+             - [ ] reliure : variables et nodes perdus non journalisés ;
+             - [ ] `other_socket` d'une attache non renommé par une migration ;
+             - [ ] après `replaces`, le client ne reçoit pas le nouvel identifiant ;
+             - [ ] prédiction et proxies non remis à zéro quand la definition change (`ClientPrediction.tick`) ;
+             - [ ] un changement du seul asset ne relie pas les assemblies.
+           - Restes de CAP-12 et CAP-20 (cœur livré) : paragraphe périmé du guide moteur (FR, EN), précision d'ADR-176,
+             annexe A.7 et A27 ; `energy.fuel` dans `ProceduralTracksTest.sourcesDuVehicule` ; GameTests de
+             `Assembly.energy()`, de `/axion energy`, du contact et de la masse prédits, des réservoirs de remorque ; API ou
+             commande d'humidité ; essai à deux clients ou report ; neige (décision de Killian) ; film du plein et jauge ;
+             grille D7 d'ADR-176.
+           - CAP-11 et CAP-34 non livrées : GameTest d'`AttachmentListener` et isolement des écouteurs ; test natif de la
+             masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
+             entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,
+             canaux, sources) ; données d'addon synchronisées ; sections d'extension par pièce ; échelle par definition et
+             par instance ; joints à engrenages et crémaillère ; texte du CDC 23.2 et A.7. Ce qui touche un contrat, l'ABI
+             ou le protocole demande un ADR accepté.
+           - CAP-13, 33, 38, 56 : au-delà des défauts ci-dessus, banc client de l'échelle, de la pose debout et de l'œil ;
+             API de siège promise par la grille d'ADR-177 ; grilles D7 d'ADR-175 (ouverte) et d'ADR-177 (jamais vérifiée).
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
            `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
            (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Restent : la mesure du

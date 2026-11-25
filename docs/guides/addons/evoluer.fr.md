@@ -18,8 +18,8 @@ réexportant ton modèle, ne mélange donc plus rien : « capot » garde l'état
 | un corps ou un joint **retiré** | son état est perdu |
 | le **corps racine** | toujours restauré : il est la pose de l'assembly |
 
-Renommer, c'est perdre : la restauration ne sait pas que « portiere » est l'ancienne « porte ». Les migrations
-déclarées, qui renomment sans perdre, viennent avec la révision d'une definition.
+Renommer sans le dire, c'est perdre : la restauration ne sait pas que « portiere » est l'ancienne « porte ». Pour
+renommer sans perdre, déclare une migration (plus bas, « Révision, migrations et remplacement »).
 
 ## Ce que dit le journal
 
@@ -50,7 +50,8 @@ Au schéma 7, une definition déclare sa **révision** et ce qui mène une sauve
 - **`migrations`** : une par révision que tu quittes (`from`), qui **renomment** — `nodes` (corps et état des nodes),
   `joints`, `variables`, `seats` (les sièges d'une variable par siège), `sockets` (des attaches), `parameters`. Une
   assembly sauvegardée à la révision 1, chargée sous la révision 3, passe par les deux. Une migration ne crée ni ne
-  calcule rien. Son `from` précède la révision de la definition, et deux migrations ne partent pas de la même.
+  calcule rien. Son `from` précède la révision de la definition, et deux migrations ne partent pas de la même. Les
+  renommages d'une même migration valent tous à la fois : deux noms peuvent s'échanger.
 - **`replaces`** : les identifiants de definitions que celle-ci remplace. Une assembly sauvegardée sous l'ancien
   identifiant s'y relie au lieu de rester inerte ; si une definition porte encore cet identifiant, elle le garde.
   Sans alias, une definition retirée laisse ses assemblies inertes et intactes.
@@ -68,8 +69,8 @@ leur vitesse, leurs corps, leurs attaches et leurs occupants. Le journal dit cha
 - **Comment** : l'état est repris tel qu'une sauvegarde le garde, mené de la révision de l'assembly à celle de la
   definition par tes `migrations`, puis lu contre la definition nouvelle, **par nom**. Ce qui n'existe plus est dit au
   journal et perdu ; ce qui est nouveau part de sa pose de repos.
-- **Les occupants** : chacun garde le siège qui porte le même nom, même s'il a changé de rang. Un siège supprimé ou
-  déjà pris leur donne le premier libre ; sans place, ils sont éjectés (`NO_SEAT`).
+- **Les occupants** : chacun garde le siège qui porte le même nom, même s'il a changé de rang. Ceux dont le siège est
+  supprimé prennent ensuite les premiers libres, sans déloger personne ; sans place, ils sont éjectés (`NO_SEAT`).
 - **Le rythme** : `content.rebind_per_tick` (4 par défaut) assemblies par tick. Les autres vivent, jusqu'à leur tour,
   entièrement sur la definition d'avant — jamais sur un mélange des deux.
 - **Un tick sans corps** : le corps natif est retiré puis recréé au tick suivant ; l'assembly n'a pas bougé.

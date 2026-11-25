@@ -728,17 +728,22 @@ final class AssemblyTags {
         return count;
     }
 
+    /**
+     * Renomme les clés d'un composé, toutes à la fois : chaque valeur est retirée avant qu'aucune ne soit reposée, pour
+     * que deux noms puissent s'échanger et qu'une chaîne {@code a → b → c} ne perde rien, quel que soit l'ordre de la
+     * table.
+     */
     private static int renameKeys(CompoundTag compound, Map<String, String> table) {
-        int count = 0;
-        for (Map.Entry<String, String> rename : table.entrySet()) {
-            if (compound.contains(rename.getKey())) {
-                net.minecraft.nbt.Tag value = compound.get(rename.getKey());
-                compound.remove(rename.getKey());
-                compound.put(rename.getValue(), value);
-                count++;
+        Map<String, net.minecraft.nbt.Tag> moved = new LinkedHashMap<>();
+        table.forEach((from, to) -> {
+            net.minecraft.nbt.Tag value = compound.get(from);
+            if (value != null) {
+                moved.put(to, value);
             }
-        }
-        return count;
+        });
+        table.keySet().forEach(compound::remove);
+        moved.forEach(compound::put);
+        return moved.size();
     }
 
     private static int renameField(CompoundTag stored, String key, String field, Map<String, String> table) {

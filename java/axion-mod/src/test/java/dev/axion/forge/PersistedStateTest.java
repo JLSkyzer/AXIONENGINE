@@ -350,6 +350,40 @@ class PersistedStateTest {
     }
 
     @Test
+    @DisplayName("ADR-175 D3 : les renommages d'une migration valent tous à la fois — deux noms s'échangent, une chaîne ne perd rien")
+    void migrationEchangeEtChaine() {
+        CompoundTag stored = new CompoundTag();
+        AssemblyTags.putVariables(stored, java.util.Map.of("gauche", 1.0, "droite", 2.0, "c", 3.0, "d", 4.0));
+        AssemblyTags.putSeatVariables(stored, java.util.Map.of("radio", java.util.Map.of("avant", 5.0, "arriere", 6.0)));
+        CompoundTag nodes = new CompoundTag();
+        CompoundTag cache = new CompoundTag();
+        cache.putBoolean("hidden", true);
+        CompoundTag montre = new CompoundTag();
+        montre.putBoolean("hidden", false);
+        nodes.put("porte_g", cache);
+        nodes.put("porte_d", montre);
+        stored.put("axion:nodes", nodes);
+        AssemblyTags.putWheels(stored, java.util.Map.of("porte_g", 0.25, "porte_d", 0.5));
+
+        dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(
+                com.google.gson.JsonParser.parseString("{\"schema\": 7, \"revision\": 2, \"migrations\": ["
+                        + "{\"from\": 1, \"rename\": {\"variables\": {\"gauche\": \"droite\", \"droite\": \"gauche\","
+                        + " \"c\": \"d\", \"d\": \"e\"}, \"seats\": {\"avant\": \"arriere\", \"arriere\": \"avant\"},"
+                        + " \"nodes\": {\"porte_g\": \"porte_d\", \"porte_d\": \"porte_g\"}}}]}").getAsJsonObject());
+        java.util.List<String> notes = new java.util.ArrayList<>();
+        AssemblyTags.evolve(stored, revisions, "sha", 1L, notes::add);
+
+        assertEquals(java.util.Map.of("gauche", 2.0, "droite", 1.0, "d", 3.0, "e", 4.0),
+                AssemblyTags.variables(stored));
+        assertEquals(java.util.Map.of("radio", java.util.Map.of("avant", 6.0, "arriere", 5.0)),
+                AssemblyTags.seatVariables(stored));
+        assertTrue(stored.getCompound("axion:nodes").getCompound("porte_d").getBoolean("hidden"));
+        assertTrue(!stored.getCompound("axion:nodes").getCompound("porte_g").getBoolean("hidden"));
+        assertEquals(java.util.Map.of("porte_d", 0.25, "porte_g", 0.5), AssemblyTags.wheels(stored));
+        assertTrue(notes.get(0).endsWith("10 nom(s) changé(s)"), notes.get(0));
+    }
+
+    @Test
     @DisplayName("ADR-175 D3 : un état déjà à la révision courante n'est pas migré ; un contenu changé sans révision, ou un état plus récent, se dit")
     void evolutionDit() {
         dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(

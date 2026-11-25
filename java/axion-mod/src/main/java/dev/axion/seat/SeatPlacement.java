@@ -2,6 +2,7 @@ package dev.axion.seat;
 
 import dev.axion.asset.Anatomy;
 import dev.axion.definition.Seating;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -77,15 +78,54 @@ public final class SeatPlacement {
      * @param remembered nom du siège qu'il occupait, {@code null} sans
      */
     public static int seatFor(Seating seating, SeatOccupancy occupancy, String remembered) {
-        if (remembered != null) {
+        int seat = named(seating, occupancy, remembered);
+        return seat != SeatOccupancy.FREE ? seat : occupancy.firstFree();
+    }
+
+    /** {@return le siège libre de ce nom, {@link SeatOccupancy#FREE} s'il n'existe pas, est pris, ou sans nom} */
+    private static int named(Seating seating, SeatOccupancy occupancy, String name) {
+        if (name != null) {
             for (int seat = 0; seat < seating.seats().size(); seat++) {
-                if (seating.seats().get(seat).name().equals(remembered)
-                        && occupancy.occupant(seat) == SeatOccupancy.FREE) {
+                if (seating.seats().get(seat).name().equals(name) && occupancy.occupant(seat) == SeatOccupancy.FREE) {
                     return seat;
                 }
             }
         }
-        return occupancy.firstFree();
+        return SeatOccupancy.FREE;
+    }
+
+    /**
+     * {@return l'occupation d'une definition nouvelle, reprise de l'ancienne par nom de siège (ADR-175 D5)} En deux
+     * temps : d'abord chaque occupant dont le siège existe encore le garde ; ensuite seulement les autres prennent, dans
+     * l'ordre des anciens sièges, les premiers libres. Un occupant absent du résultat n'a plus de place.
+     *
+     * @param old les sièges de la definition d'avant
+     * @param fresh ceux de la nouvelle
+     * @param occupants l'occupant de chaque ancien siège, {@link SeatOccupancy#FREE} ou {@link SeatOccupancy#LOST} sans
+     */
+    public static SeatOccupancy remap(Seating old, Seating fresh, int[] occupants) {
+        SeatOccupancy next = new SeatOccupancy(fresh.seats().size());
+        int ranks = Math.min(occupants.length, old.seats().size());
+        List<Integer> displaced = new ArrayList<>();
+        for (int rank = 0; rank < ranks; rank++) {
+            int occupant = occupants[rank];
+            if (occupant == SeatOccupancy.FREE || occupant == SeatOccupancy.LOST) {
+                continue;
+            }
+            int seat = named(fresh, next, old.seats().get(rank).name());
+            if (seat != SeatOccupancy.FREE) {
+                next.sit(occupant, seat);
+            } else {
+                displaced.add(occupant);
+            }
+        }
+        for (int occupant : displaced) {
+            int seat = next.firstFree();
+            if (seat != SeatOccupancy.FREE) {
+                next.sit(occupant, seat);
+            }
+        }
+        return next;
     }
 
     /** {@return {@code v} tourné par le quaternion unitaire {@code q = [x, y, z, w]}} */

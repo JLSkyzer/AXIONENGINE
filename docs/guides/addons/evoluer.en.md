@@ -17,8 +17,8 @@ longer mixes anything up: "hood" keeps the state of "hood".
 | a body or joint **removed** | its state is lost |
 | the **root body** | always restored: it is the assembly's pose |
 
-Renaming is losing: the restoration does not know "door_left" is the old "door". Declared migrations, which rename
-without losing, come with a definition's revision.
+Renaming without saying so is losing: the restoration does not know "door_left" is the old "door". To rename without
+losing, declare a migration (below, "Revision, migrations and replacement").
 
 ## What the log says
 
@@ -49,7 +49,8 @@ From schema 7, a definition declares its **revision** and what leads a save from
 - **`migrations`**: one per revision you leave (`from`), which **rename** — `nodes` (bodies and node state), `joints`,
   `variables`, `seats` (the seats of a per-seat variable), `sockets` (of attachments), `parameters`. An assembly saved
   at revision 1, loaded under revision 3, goes through both. A migration creates and computes nothing. Its `from`
-  precedes the definition's revision, and two migrations do not start from the same one.
+  precedes the definition's revision, and two migrations do not start from the same one. The renames of one migration
+  all apply at once: two names can be swapped.
 - **`replaces`**: the identifiers of definitions this one replaces. An assembly saved under the old identifier links
   to it instead of staying inert; if a definition still carries that identifier, it keeps it. Without an alias, a
   removed definition leaves its assemblies inert and intact.
@@ -67,8 +68,8 @@ attachments and occupants. The log reports each rebind.
 - **How**: the state is taken as a save keeps it, carried from the assembly's revision to the definition's by your
   `migrations`, then read against the new definition, **by name**. What no longer exists is reported in the log and
   lost; what is new starts from its rest pose.
-- **Occupants**: each keeps the seat carrying the same name, even if its rank changed. A removed or already taken seat
-  gives them the first free one; with no room, they are ejected (`NO_SEAT`).
+- **Occupants**: each keeps the seat carrying the same name, even if its rank changed. Those whose seat was removed
+  then take the first free ones, without displacing anyone; with no room, they are ejected (`NO_SEAT`).
 - **Pace**: `content.rebind_per_tick` (4 by default) assemblies per tick. The others live, until their turn, entirely on
   the previous definition — never on a mix of both.
 - **One tick without a body**: the native body is removed then recreated on the next tick; the assembly has not moved.
