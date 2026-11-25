@@ -2430,13 +2430,16 @@ public final class BancDeRendu {
                 : Math.hypot(auServeur.getX() - minecraft.player.getX(), auServeur.getZ() - minecraft.player.getZ());
         int liens = AxionRenderPass.debugRangesByOverlay()
                 .getOrDefault(dev.axion.debug.DebugOverlays.Overlay.SUPPORTS.rank(), 0);
-        boolean vert = porte && parcouru >= 0.8 && derive <= 0.15 && ecartServeur <= 0.75 && liens > 0;
+        // Porté sans bouger de lui-même, il ne marche pas : ses jambes restent au repos.
+        float pas = minecraft.player.walkAnimation.speed();
+        boolean vert = porte && parcouru >= 0.8 && derive <= 0.15 && ecartServeur <= 0.75 && liens > 0 && pas <= 0.1f;
         RAPPORT.noter(critere, vert, String.format(Locale.ROOT,
                 "joueur (%s) debout sur la caisse lancée de côté : porté au début et à la fin : %s ; la caisse a avancé de"
                         + " %.2f bloc, sa place sur elle a dérivé de %.3f bloc (au moins 0,8 et au plus 0,15) ; au serveur, il"
-                        + " est à %.3f bloc de son client à l'horizontale (au plus 0,75) ; overlay supports : %d lien(s)",
+                        + " est à %.3f bloc de son client à l'horizontale (au plus 0,75) ; overlay supports : %d lien(s) ; pas de ses"
+                        + " jambes %.2f (au plus 0,10)",
                 auServeur == null ? "?" : auServeur.gameMode.getGameModeForPlayer().getName(), porte, parcouru, derive,
-                ecartServeur, liens));
+                ecartServeur, liens, pas));
     }
 
     /** ADR-177 D1 : l'overlay {@code seats} a tracé le siège du joueur assis. */

@@ -70,6 +70,14 @@ public final class CarriedPlayer {
         double[] world = BodyFrame.toWorld(poses, carried.body(), carried.local());
         carry = new Vec3(world[0] - player.getX(), world[1] - player.getY(), world[2] - player.getZ());
         player.setPos(world[0], world[1], world[2]);
+        // Le transport n'est pas un pas : les positions d'avant suivent, et l'animation de marche ne lit que le mouvement
+        // propre du joueur.
+        player.xo += carry.x;
+        player.yo += carry.y;
+        player.zo += carry.z;
+        player.xOld += carry.x;
+        player.yOld += carry.y;
+        player.zOld += carry.z;
     }
 
     private static void end(LocalPlayer player) {
