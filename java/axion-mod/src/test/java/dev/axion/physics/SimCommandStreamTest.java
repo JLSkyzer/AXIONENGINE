@@ -640,7 +640,16 @@ class SimCommandStreamTest {
         assertEquals(42, b.getInt(desc + 48), "entity @48");
         assertEquals(SimCommandStream.PROXY_CAPSULE, b.get(desc + 52), "shape @52");
         assertEquals(0, b.get(desc + 53), "_pad @53");
-        assertEquals(0, b.get(desc + 55), "_pad @55");
+        assertEquals(0, b.getShort(desc + 54), "mass_hg @54 : infinie");
+        // ADR-178 D6 : la masse d'un joueur, en hectogrammes.
+        SimCommandStream.EntityProxy joueur = new SimCommandStream.EntityProxy(7, new double[3],
+                new float[] {0.3f, 0.9f, 0.3f}, new float[3], SimCommandStream.PROXY_CAPSULE, 80.0);
+        ByteBuffer c = wrap(new SimCommandStream().setEntityProxies(0L, java.util.List.of(joueur)).toBytes());
+        assertEquals(800, c.getShort(desc + 54) & 0xFFFF, "80 kg");
+        for (double fautive : new double[] {-1.0, 6554.0, Double.NaN}) {
+            assertThrows(IllegalArgumentException.class, () -> new SimCommandStream.EntityProxy(1, new double[3],
+                    new float[] {1, 1, 1}, new float[3], 0, fautive), String.valueOf(fautive));
+        }
     }
 
     @Test

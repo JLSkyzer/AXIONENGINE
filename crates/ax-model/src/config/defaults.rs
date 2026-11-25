@@ -184,6 +184,10 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Entities and players are stopped by an assembly's colliders, and a player standing on one is carried."),
     srv(i("physics.carry_max_entities", 64, 0, 1024, "Nombre maximal d'entités, hors joueurs, qu'une assembly porte."))
         .en("Maximum number of entities, players excepted, that one assembly carries."),
+    srv(f("physics.player_proxy_mass", 80.0, 0.0, 6000.0, "Masse prêtée au joueur par la physique, en kg : il pèse sur ce qu'il touche et ralentit ce qui le heurte ; 0 : masse infinie, un mur."))
+        .en("Mass the physics lends a player, in kg: they weigh on what they touch and slow what hits them; 0: infinite mass, a wall."),
+    srv(f("physics.push_speed_max", 10.0, 0.0, 100.0, "Vitesse la plus grande, en m/s, à laquelle une assembly qui avance dans un joueur le repousse."))
+        .en("Highest speed, in m/s, at which an assembly moving into a player pushes them out."),
 
     // [damage]
     b("damage.enabled", true, "Active la chaîne de dommage : impacts, déformation, rupture, usure.")

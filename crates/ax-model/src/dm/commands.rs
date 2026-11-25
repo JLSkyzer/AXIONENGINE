@@ -994,7 +994,9 @@ pub struct EntityProxyDesc {
     /// Forme, voir [`entity_proxy_shape`].
     pub shape: u8,
     /// Réservé, à zéro.
-    pub _pad: [u8; 3],
+    pub _pad: u8,
+    /// Masse du proxy en hectogrammes (dixièmes de kilogramme) ; `0` : masse infinie, un corps cinématique (ADR-178 D6).
+    pub mass_hg: u16,
 }
 
 impl EntityProxyDesc {
@@ -1197,6 +1199,7 @@ mod tests {
         assert_eq!(offset_of!(EntityProxyDesc, entity), 48);
         assert_eq!(offset_of!(EntityProxyDesc, shape), 52);
         assert_eq!(offset_of!(EntityProxyDesc, _pad), 53);
+        assert_eq!(offset_of!(EntityProxyDesc, mass_hg), 54);
     }
 
     #[test]

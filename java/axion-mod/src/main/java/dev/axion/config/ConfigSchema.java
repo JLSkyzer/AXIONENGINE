@@ -266,6 +266,22 @@ public final class ConfigSchema {
                     true,
                     "Nombre maximal d'entités, hors joueurs, qu'une assembly porte."),
             new Option(
+                    "physics.player_proxy_mass",
+                    Kind.FLOAT,
+                    80.0,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.0, 6000.0, List.of()),
+                    false,
+                    true,
+                    "Masse prêtée au joueur par la physique, en kg : il pèse sur ce qu'il touche et ralentit ce qui le heurte ; 0 : masse infinie, un mur."),
+            new Option(
+                    "physics.push_speed_max",
+                    Kind.FLOAT,
+                    10.0,
+                    new Domain(DomainKind.FLOAT_RANGE, 0.0, 100.0, List.of()),
+                    false,
+                    true,
+                    "Vitesse la plus grande, en m/s, à laquelle une assembly qui avance dans un joueur le repousse."),
+            new Option(
                     "damage.enabled",
                     Kind.BOOLEAN,
                     true,

@@ -105,6 +105,11 @@ public final class AxionEntities {
     private static volatile LongSupplier carryMaxEntities = () -> 0L;
     private static volatile LongSupplier interpolationDelayMillis = () -> 0L;
 
+    /** {@code physics.player_proxy_mass}, {@code physics.push_speed_max} et le palier du gouverneur (ADR-178 D5 à D7). */
+    private static volatile java.util.function.DoubleSupplier playerProxyMass = () -> 0.0;
+    private static volatile java.util.function.DoubleSupplier pushSpeedMax = () -> 0.0;
+    private static volatile java.util.function.IntSupplier degradationLevel = () -> 0;
+
     /** Le balayage d'une boîte contre les colliders d'une definition posée, vu de l'entité. */
     @FunctionalInterface
     interface Collider {
@@ -169,6 +174,9 @@ public final class AxionEntities {
         carryTolerance = runtime::carryTolerance;
         carryMaxEntities = runtime::carryMaxEntities;
         interpolationDelayMillis = runtime::interpolationDelayMillis;
+        playerProxyMass = runtime::playerProxyMass;
+        pushSpeedMax = runtime::pushSpeedMax;
+        degradationLevel = runtime::degradationLevel;
         inputTimeoutMillis = runtime::inputTimeoutMillis;
     }
 
@@ -290,6 +298,21 @@ public final class AxionEntities {
     /** {@return le délai d'interpolation d'un client, en millisecondes} */
     static long interpolationDelayMillis() {
         return interpolationDelayMillis.getAsLong();
+    }
+
+    /** {@return la masse du proxy d'un joueur, en kg, {@code 0} : infinie} */
+    static double playerProxyMass() {
+        return playerProxyMass.getAsDouble();
+    }
+
+    /** {@return la vitesse à laquelle une assembly peut repousser un joueur, en m/s} */
+    static double pushSpeedMax() {
+        return pushSpeedMax.getAsDouble();
+    }
+
+    /** {@return le palier du gouverneur de la simulation, 0 normal (SM-02)} */
+    static int degradationLevel() {
+        return degradationLevel.getAsInt();
     }
 
     /** {@return le rayon contre les colliders d'une assembly} */

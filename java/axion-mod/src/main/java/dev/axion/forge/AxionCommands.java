@@ -294,6 +294,9 @@ final class AxionCommands {
                                         .then(Commands.literal("reset")
                                                 .executes(context -> wearSet(context.getSource(),
                                                         EntityArgument.getEntity(context, "cible"), null, 0.0)))))
+                        // ADR-178 : qui porte qui, au serveur.
+                        .then(Commands.literal("carry")
+                                .executes(context -> carried(context.getSource())))
                         .then(Commands.literal("debug")
                                 .then(Commands.literal("trace")
                                         .then(Commands.literal("on")
@@ -685,6 +688,21 @@ final class AxionCommands {
         List<String> lines = wearLines(assembly);
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
         return assembly.wheelNodes().size();
+    }
+
+    /** Les entités que les assemblies portent au serveur (ADR-178) : lecture seule. */
+    private static int carried(CommandSourceStack source) {
+        AuthoritativeThread.require();
+        List<String> lines = new ArrayList<>();
+        for (var entry : CarrySupports.serverEntries()) {
+            CarrySupports.Support support = entry.getValue();
+            lines.add(entry.getKey().getName().getString() + " : sur l'assembly " + support.assembly().getUUID()
+                    + ", corps " + support.body() + (support.lag() >= 0 ? ", retard " + support.lag() + " tick(s)" : ""));
+        }
+        String report = lines.isEmpty() ? "AXION : aucune entité portée" : "AXION : " + lines.size()
+                + " entité(s) portée(s)\n" + String.join("\n", lines);
+        source.sendSuccess(() -> Component.literal(report), false);
+        return lines.size();
     }
 
     /** Change un pneu, ou tous : commande d'administration, mutante, journalisée avec son auteur (R-810). */

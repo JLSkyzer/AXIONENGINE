@@ -443,6 +443,8 @@ pub struct PhysicsWorld {
 /// Le corps cinématique d'un proxy d'entité et la forme qu'il porte.
 #[derive(Debug, Clone, Copy)]
 struct ProxyBody {
+    /// Masse du proxy, `0` pour un corps cinématique (ADR-178 D6).
+    mass: f32,
     body: BodyId,
     collider: ColliderHandle,
     shape: ProxyShape,
@@ -1551,7 +1553,14 @@ impl PhysicsWorld {
                 continue;
             }
             match self.proxies.get(&proxy.entity).copied() {
-                Some(existing) => self.update_proxy(existing, proxy, center),
+                Some(existing) if existing.mass.to_bits() == proxy.mass.to_bits() => {
+                    self.update_proxy(existing, proxy, center);
+                }
+                // Une autre masse, donc une autre nature de corps : le proxy se refait.
+                Some(_) => {
+                    self.discard_proxy(proxy.entity);
+                    self.create_proxy(proxy, center);
+                }
                 None => self.create_proxy(proxy, center),
             }
         }
@@ -1570,24 +1579,44 @@ impl PhysicsWorld {
         }
     }
 
-    /// Crée le corps cinématique d'un proxy : à vitesse imposée, membre du groupe
-    /// `entity_proxy`, ne heurtant que le groupe `assembly`.
+    /// Retire le corps d'un proxy, pour le refaire d'une autre nature.
+    fn discard_proxy(&mut self, entity: u32) {
+        if let Some(proxy) = self.proxies.remove(&entity) {
+            self.proxy_colliders.remove(&proxy.collider);
+            self.inner.remove_body(proxy.body.handle());
+        }
+    }
+
+    /// Crée le corps d'un proxy : cinématique sans masse, dynamique sans rotation avec la sienne (ADR-178 D6) ; à la
+    /// vitesse de l'entité, membre du groupe `entity_proxy`, ne heurtant que le groupe `assembly`.
     fn create_proxy(&mut self, proxy: &EntityProxy, center: Vec3) {
         let Ok(shape) = shared_shape_of(&proxy.collision_shape()) else {
             return;
         };
-        let body = RigidBodyBuilder::kinematic_velocity_based()
-            .translation(center)
-            .linvel(proxy.velocity)
-            .build();
+        let body = if proxy.mass > 0.0 {
+            RigidBodyBuilder::dynamic()
+                .translation(center)
+                .linvel(proxy.velocity)
+                .lock_rotations()
+                .additional_mass(proxy.mass)
+                .can_sleep(false)
+                .build()
+        } else {
+            RigidBodyBuilder::kinematic_velocity_based()
+                .translation(center)
+                .linvel(proxy.velocity)
+                .build()
+        };
         let handle = self.inner.bodies.insert(body);
         let groups = CollisionGroups::from_indices(
             &[ReservedGroup::EntityProxy.bit()],
             &[ReservedGroup::Assembly.bit()],
         );
+        // La masse d'un proxy dynamique vient du corps seul : sa forme n'en ajoute aucune.
         let collider = ColliderBuilder::new(shape)
             .collision_groups(groups.to_rapier())
             .active_events(ActiveEvents::COLLISION_EVENTS)
+            .density(0.0)
             .build();
         let collider =
             self.inner
@@ -1597,6 +1626,7 @@ impl PhysicsWorld {
         self.proxies.insert(
             proxy.entity,
             ProxyBody {
+                mass: proxy.mass,
                 body: BodyId::from_handle(handle),
                 collider,
                 shape: proxy.shape,

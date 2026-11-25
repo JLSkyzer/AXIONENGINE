@@ -44,6 +44,8 @@ ignored (R-1830).
 | `wet_dry_seconds` | float | `30.0` | `0.1..600.0` | no | yes | Seconds a wet vehicle, no longer in the rain, takes to dry out completely. |
 | `player_carry` | boolean | `true` | `true \| false` | no | yes | Entities and players are stopped by an assembly's colliders, and a player standing on one is carried. |
 | `carry_max_entities` | integer | `64` | `0..1024` | no | yes | Maximum number of entities, players excepted, that one assembly carries. |
+| `player_proxy_mass` | float | `80.0` | `0.0..6000.0` | no | yes | Mass the physics lends a player, in kg: they weigh on what they touch and slow what hits them; 0: infinite mass, a wall. |
+| `push_speed_max` | float | `10.0` | `0.0..100.0` | no | yes | Highest speed, in m/s, at which an assembly moving into a player pushes them out. |
 
 ### `[damage]`
 

@@ -1,8 +1,9 @@
 //! Proxies des entités vanilla (R-614, ADR-123 §5).
 //!
 //! Une entité que vanilla tient pour solide ou poussable est vue par la physique comme un
-//! corps **cinématique temporaire** (§10.2, masse infinie) : posé chaque tick là où est
-//! l'entité, lancé à sa vitesse — le contact voit l'entité en mouvement. Il appartient au
+//! corps **temporaire** (§10.2), posé chaque tick là où est l'entité, lancé à sa vitesse — le contact voit l'entité en
+//! mouvement. Sans masse il est **cinématique**, de masse infinie ; avec une masse (un joueur, ADR-178 D6) il est
+//! **dynamique**, sans rotation : il pèse sur ce qu'il touche et ralentit ce qui le heurte, dans le rapport des masses. Il appartient au
 //! groupe réservé `entity_proxy` et ne heurte que les assemblies. L'ensemble des proxies
 //! d'une dimension est remplacé à chaque tick ; l'effet d'un contact sur l'entité, lui, est
 //! appliqué côté Java (R-614).
@@ -33,6 +34,8 @@ pub struct EntityProxy {
     pub velocity: Vec3,
     /// Forme.
     pub shape: ProxyShape,
+    /// Masse en kg ; `0` : masse infinie (ADR-178 D6).
+    pub mass: f32,
 }
 
 impl EntityProxy {
@@ -41,7 +44,9 @@ impl EntityProxy {
     /// du jeu, jamais crue sur parole.
     #[must_use]
     pub fn is_valid(&self) -> bool {
-        self.center.is_finite()
+        self.mass.is_finite()
+            && self.mass >= 0.0
+            && self.center.is_finite()
             && self.velocity.is_finite()
             && self
                 .half_extents
@@ -80,6 +85,7 @@ mod tests {
             half_extents,
             velocity: Vec3::ZERO,
             shape,
+            mass: 0.0,
         }
     }
 

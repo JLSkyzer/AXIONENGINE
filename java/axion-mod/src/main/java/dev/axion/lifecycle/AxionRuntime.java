@@ -1409,6 +1409,16 @@ public final class AxionRuntime {
                 : -1;
     }
 
+    /** {@return {@code physics.player_proxy_mass}, en kg (ADR-178 D6) ; 0 sans runtime natif} */
+    public double playerProxyMass() {
+        return hasNativeRuntime() ? outcome.config().getFloat("physics.player_proxy_mass") : 0.0;
+    }
+
+    /** {@return {@code physics.push_speed_max}, en m/s (ADR-178 D5) ; 0 sans runtime natif} */
+    public double pushSpeedMax() {
+        return hasNativeRuntime() ? outcome.config().getFloat("physics.push_speed_max") : 0.0;
+    }
+
     /** {@return {@code net.carry_tolerance}, en blocs (ADR-178 D4) ; 0,25 sans runtime natif} */
     public double carryTolerance() {
         return hasNativeRuntime() ? outcome.config().getFloat("net.carry_tolerance") : 0.25;

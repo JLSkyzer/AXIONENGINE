@@ -61,6 +61,7 @@ fn entite(entity: u32, x: f64, vitesse: f32) -> EntityProxy {
         half_extents: [0.5, 1.0, 0.5],
         velocity: Vec3::new(vitesse, 0.0, 0.0),
         shape: ProxyShape::Box,
+        mass: 0.0,
     }
 }
 
@@ -127,6 +128,45 @@ fn t304_une_assembly_heurte_une_entite_qui_s_identifie_dans_le_contact() {
     );
     // Masse infinie (§10.2) : la bille s'arrête contre l'entité.
     assert!(vitesse_x(&mut driver, corps) < 0.5);
+}
+
+#[test]
+fn adr178_d6_un_proxy_de_masse_finie_ralentit_l_assembly_sans_l_arreter() {
+    // La bille (environ 520 kg) heurte à 5 m/s un proxy de 80 kg : elle garde l'essentiel de son élan, au lieu de
+    // s'arrêter comme contre un mur (t304, masse infinie).
+    let mut driver = pilote();
+    let corps = bille(&mut driver, 0.0);
+    lancer(&mut driver, corps, 5.0);
+    let mut touche = false;
+    for _ in 0..20 {
+        let joueur = EntityProxy {
+            mass: 80.0,
+            ..entite(42, 3.0, 0.0)
+        };
+        if !du_genre(&tick(&mut driver, vec![joueur]), event_kind::CONTACT_START).is_empty() {
+            touche = true;
+            break;
+        }
+    }
+    assert!(touche, "la bille atteint le proxy");
+    assert!(
+        vitesse_x(&mut driver, corps) > 2.0,
+        "elle garde son élan : {}",
+        vitesse_x(&mut driver, corps)
+    );
+}
+
+#[test]
+fn adr178_d6_un_proxy_qui_change_de_masse_se_refait_et_reste_un() {
+    let mut driver = pilote();
+    tick(&mut driver, vec![entite(7, 3.0, 0.0)]);
+    let finie = EntityProxy {
+        mass: 80.0,
+        ..entite(7, 3.0, 0.0)
+    };
+    tick(&mut driver, vec![finie]);
+    tick(&mut driver, vec![entite(7, 3.0, 0.0)]);
+    assert_eq!(driver.world_mut(0).unwrap().entity_proxy_count(), 1);
 }
 
 #[test]

@@ -156,8 +156,10 @@ public final class EntityPresenceBridge implements SimCommandProvider {
             (entity.getY() - entity.yo) * TICKS_PER_SECOND,
             (entity.getZ() - entity.zo) * TICKS_PER_SECOND
         };
+        // ADR-178 D6 : un joueur pèse ; le reste est un mur.
+        double mass = entity instanceof net.minecraft.world.entity.player.Player ? AxionEntities.playerProxyMass() : 0.0;
         return new EntityProxySelector.Candidate(
-                entity.getId(), boxOf(entity.getBoundingBox()), velocity, entity instanceof LivingEntity);
+                entity.getId(), boxOf(entity.getBoundingBox()), velocity, entity instanceof LivingEntity, mass);
     }
 
     /**

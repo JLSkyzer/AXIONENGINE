@@ -44,6 +44,8 @@ alors ignorée (R-1830).
 | `wet_dry_seconds` | flottant | `30.0` | `0.1..600.0` | non | oui | Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait. |
 | `player_carry` | booléen | `true` | `true \| false` | non | oui | Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté. |
 | `carry_max_entities` | entier | `64` | `0..1024` | non | oui | Nombre maximal d'entités, hors joueurs, qu'une assembly porte. |
+| `player_proxy_mass` | flottant | `80.0` | `0.0..6000.0` | non | oui | Masse prêtée au joueur par la physique, en kg : il pèse sur ce qu'il touche et ralentit ce qui le heurte ; 0 : masse infinie, un mur. |
+| `push_speed_max` | flottant | `10.0` | `0.0..100.0` | non | oui | Vitesse la plus grande, en m/s, à laquelle une assembly qui avance dans un joueur le repousse. |
 
 ### `[damage]`
 

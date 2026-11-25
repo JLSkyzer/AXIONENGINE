@@ -1,6 +1,7 @@
 package dev.axion.forge.client;
 
 import dev.axion.AxionMod;
+import dev.axion.forge.AssemblyCollision;
 import dev.axion.forge.AuthoritativeThread;
 import dev.axion.forge.AxionEntity;
 import dev.axion.forge.CarrySupports;
@@ -72,6 +73,11 @@ public final class CarriedPlayer {
     }
 
     private static void end(LocalPlayer player) {
+        // ADR-178 D5 : une assembly qui avance dans un joueur le repousse ; le client est maître de sa position.
+        Vec3 push = AssemblyCollision.pushOut(player);
+        if (push != null) {
+            player.setPos(player.getX() + push.x, player.getY() + push.y, player.getZ() + push.z);
+        }
         CarrySupports.Support now = CarrySupports.of(player);
         if (now == null) {
             // Un saut ou le bord : il emporte la vitesse que le plateau lui donnait ce tick, à l'horizontale.

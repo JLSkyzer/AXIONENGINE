@@ -148,7 +148,7 @@ final class ClientProxies {
                 float[] v = proxy.velocity();
                 moved.add(new SimCommandStream.EntityProxy(proxy.entity(),
                         new double[] {c[0] + v[0] * lead, c[1] + v[1] * lead, c[2] + v[2] * lead}, proxy.halfExtents(),
-                        v, proxy.shape()));
+                        v, proxy.shape(), proxy.mass()));
             }
             out.setEntityProxies(dimension, moved);
         }

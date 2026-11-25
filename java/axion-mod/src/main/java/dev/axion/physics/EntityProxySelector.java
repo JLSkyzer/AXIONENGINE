@@ -74,7 +74,20 @@ public final class EntityProxySelector {
      * @param velocity sa vitesse {@code [x, y, z]}, en m/s
      * @param living vrai pour un être vivant : capsule plutôt que boîte
      */
-    public record Candidate(int entity, Box bounds, double[] velocity, boolean living) {}
+    public record Candidate(int entity, Box bounds, double[] velocity, boolean living, double mass) {
+
+        /**
+         * Un candidat de masse infinie.
+         *
+         * @param entity son identifiant
+         * @param bounds sa boîte
+         * @param velocity sa vitesse
+         * @param living vrai pour un être vivant
+         */
+        public Candidate(int entity, Box bounds, double[] velocity, boolean living) {
+            this(entity, bounds, velocity, living, 0.0);
+        }
+    }
 
     /**
      * {@return la marge d'influence entre une assembly et une entité, en blocs}
@@ -125,7 +138,8 @@ public final class EntityProxySelector {
         double[] v = candidate.velocity();
         float[] velocity = {(float) v[0], (float) v[1], (float) v[2]};
         int shape = candidate.living() ? SimCommandStream.PROXY_CAPSULE : SimCommandStream.PROXY_BOX;
-        return new SimCommandStream.EntityProxy(candidate.entity(), center, halfExtents, velocity, shape);
+        return new SimCommandStream.EntityProxy(candidate.entity(), center, halfExtents, velocity, shape,
+                candidate.mass());
     }
 
     private static double norm(double[] v) {

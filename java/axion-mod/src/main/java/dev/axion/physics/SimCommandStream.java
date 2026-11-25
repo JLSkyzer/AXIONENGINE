@@ -418,8 +418,22 @@ public final class SimCommandStream {
      * @param halfExtents demi-dimensions de l'AABB {@code [x, y, z]}
      * @param velocity vitesse de l'entité {@code [x, y, z]}, en m/s
      * @param shape {@link #PROXY_BOX} ou {@link #PROXY_CAPSULE}
+     * @param mass masse en kg, {@code 0} : infinie (ADR-178 D6)
      */
-    public record EntityProxy(int entity, double[] center, float[] halfExtents, float[] velocity, int shape) {
+    public record EntityProxy(int entity, double[] center, float[] halfExtents, float[] velocity, int shape, double mass) {
+
+        /**
+         * Un proxy de masse infinie.
+         *
+         * @param entity son identifiant
+         * @param center son centre
+         * @param halfExtents ses demi-dimensions
+         * @param velocity sa vitesse
+         * @param shape sa forme
+         */
+        public EntityProxy(int entity, double[] center, float[] halfExtents, float[] velocity, int shape) {
+            this(entity, center, halfExtents, velocity, shape, 0.0);
+        }
 
         /** Valide la forme du descripteur ; les valeurs inutilisables, le natif les ignore. */
         public EntityProxy {
@@ -428,6 +442,9 @@ public final class SimCommandStream {
             }
             if (shape != PROXY_BOX && shape != PROXY_CAPSULE) {
                 throw new IllegalArgumentException("forme de proxy inconnue : " + shape);
+            }
+            if (!(mass >= 0.0 && mass <= 6553.5)) {
+                throw new IllegalArgumentException("masse de proxy hors de [0, 6553,5] kg : " + mass);
             }
         }
     }
@@ -846,9 +863,8 @@ public final class SimCommandStream {
             command.putFloat(proxy.velocity()[2]);
             command.putInt(proxy.entity());
             command.put((byte) proxy.shape());
-            command.put((byte) 0); // _pad[3]
-            command.put((byte) 0);
-            command.put((byte) 0);
+            command.put((byte) 0); // _pad
+            command.putShort((short) Math.round(proxy.mass() * 10.0)); // mass_hg
         }
         commands.add(command.array());
         return this;

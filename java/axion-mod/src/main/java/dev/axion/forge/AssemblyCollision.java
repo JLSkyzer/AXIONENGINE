@@ -162,6 +162,51 @@ public final class AssemblyCollision {
         return best;
     }
 
+    /**
+     * Ce qui sort une entité d'une assembly qui avance dans elle (ADR-178 D5) : la plus courte sortie, bornée par
+     * {@code physics.push_speed_max}. Chez le client, pour le joueur local, qui est maître de sa position.
+     *
+     * @param entity l'entité
+     * @return le déplacement qui la sort, ou {@code null} si elle n'est dans aucune assembly
+     */
+    public static Vec3 pushOut(Entity entity) {
+        if (AssemblyIndex.total() == 0 || FAILURES.get() >= MAX_FAILURES || !AxionEntities.carry() || entity.noPhysics
+                || entity.isSpectator() || entity.isPassenger()) {
+            return null;
+        }
+        // La boîte rentrée d'un millième : reposer sur un sol n'est pas s'y enfoncer.
+        AABB box = entity.getBoundingBox().deflate(1.0e-3);
+        List<AxionEntity> near = AssemblyIndex.near(entity.level(), box);
+        if (near.isEmpty()) {
+            return null;
+        }
+        double[][] buffers = BUFFERS.get();
+        double[] input = buffers[0];
+        double[] out = buffers[1];
+        double[] bounds = {box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ};
+        System.arraycopy(bounds, 0, input, 0, 6);
+        input[6] = 0.0;
+        input[7] = 0.0;
+        input[8] = 0.0;
+        Vec3 push = null;
+        double deepest = 0.0;
+        for (AxionEntity assembly : near) {
+            long key = assembly.collisionKey();
+            double[] poses = key == 0L ? null : assembly.collisionPoses();
+            if (poses == null) {
+                continue;
+            }
+            int code = AxionEntities.collider().collide(key, NativeBridge.COLLIDE_PENETRATION, poses,
+                    poses.length / NativeBridge.COLLIDE_POSE, input, out);
+            if (code == NativeBridge.OK && out[0] > 0.5 && out[2] > deepest) {
+                deepest = out[2];
+                double reach = Math.min(out[2], AxionEntities.pushSpeedMax() / 20.0);
+                push = new Vec3(out[3] * reach, out[4] * reach, out[5] * reach);
+            }
+        }
+        return push;
+    }
+
     /** Rend à la fonction sa première heure : pour un test. */
     static void reset() {
         FAILURES.set(0);

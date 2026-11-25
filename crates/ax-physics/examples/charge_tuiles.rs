@@ -189,6 +189,7 @@ fn scenario(title: &str, boxes: fn(u32) -> Vec<[f32; 6]>) {
         half_extents: [0.45, 0.7, 0.45],
         velocity: Vec3::ZERO,
         shape: ProxyShape::Capsule,
+        mass: 0.0,
     };
     let mut enters = Vec::new();
     let mut leaves = Vec::new();

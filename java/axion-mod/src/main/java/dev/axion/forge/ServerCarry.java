@@ -67,7 +67,11 @@ public final class ServerCarry {
             for (ServerPlayer player : level.players()) {
                 carryPlayer(player, assemblies);
             }
-            carryOthers(level);
+            // ADR-178 D7 : au deuxième palier, le gouverneur coupe le transport des entités autres que les joueurs ;
+            // jamais la collision ni celui d'un joueur.
+            if (AxionEntities.degradationLevel() < 2) {
+                carryOthers(level);
+            }
         }
     }
 

@@ -605,7 +605,9 @@ fn apply_set_entity_proxies(driver: &mut SimDriver, payload: &[u8]) -> Result<()
             entity_proxy_shape::CAPSULE => ProxyShape::Capsule,
             _ => return Err(CommandError::InvalidField),
         };
+        let mass = f32::from(u16::from_le_bytes([payload[at + 54], payload[at + 55]])) / 10.0;
         proxies.push(EntityProxy {
+            mass,
             entity: read_u32(payload, at + 48),
             center: DVec3::new(
                 read_f64(payload, at),
@@ -1290,7 +1292,9 @@ mod tests {
         bytes.extend(f32s(&speed));
         bytes.extend_from_slice(&entity.to_le_bytes());
         bytes.push(shape);
-        bytes.extend_from_slice(&[0u8; 3]);
+        // Réservé, puis la masse en hectogrammes : l'entité 42 pèse 80 kg, les autres sont de masse infinie.
+        bytes.push(0);
+        bytes.extend_from_slice(&(if entity == 42 { 800u16 } else { 0 }).to_le_bytes());
         assert_eq!(bytes.len(), EntityProxyDesc::BYTES);
         bytes
     }
@@ -1358,6 +1362,7 @@ mod tests {
                     half_extents: [0.3, 0.9, 0.3],
                     velocity: Vec3::new(1.0, -2.0, 0.5),
                     shape: ProxyShape::Capsule,
+                    mass: 80.0,
                 },
                 EntityProxy {
                     entity: 7,
@@ -1365,6 +1370,7 @@ mod tests {
                     half_extents: [0.45, 0.25, 0.7],
                     velocity: Vec3::ZERO,
                     shape: ProxyShape::Box,
+                    mass: 0.0,
                 },
             ]
         );
