@@ -14,6 +14,9 @@ rapport porte les deux verdicts, que cette campagne relit :
 Un client simulé dans le serveur de GameTests ne peut pas avoir son monde prédit (un contexte natif par processus,
 R-450, précision 6c d'ADR-168) : d'où deux processus, et une campagne hors de la CI, qui ouvre une fenêtre de jeu.
 
+Avec --recharge, le serveur recharge les definitions pendant la conduite — le véhicule remplacé par un autre, deux fois
+plus lourd — et le client juge ce qu'il en suit (verdict RECHARGE, ADR-175 D5).
+
 Usage : python tools/campagne/prediction.py [--reglage LATENCE:GIGUE ...]   (JAVA_HOME doit désigner un JDK 17)
 Défaut : 100 ms par sens et 20 ms de gigue (un aller-retour de 200 ms au moins, celui de T-413), puis 50:20.
 Le véhicule est celui de l'essai, `axion:test/vehicule`, sauf `AXION_ESSAI_VEHICULE` dans l'environnement.
@@ -53,7 +56,7 @@ def arreter(processus: subprocess.Popen) -> None:
     processus.wait(timeout=60)
 
 
-def essai(latence: int, gigue: int, film: bool = False) -> dict[str, str]:
+def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False) -> dict[str, str]:
     """Joue un essai à deux processus ; rend le verdict de chaque test, ou lève RuntimeError."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     vehicule = os.environ.get("AXION_ESSAI_VEHICULE", "axion:test/vehicule").rsplit("/", 1)[-1]
@@ -66,6 +69,9 @@ def essai(latence: int, gigue: int, film: bool = False) -> dict[str, str]:
         for fichier in ("axion-common.toml", "axion-client.toml", "axion-server.toml"):
             (dossier / fichier).unlink(missing_ok=True)
     environnement = dict(os.environ, AXION_ESSAI_PREDICTION="1")
+    environnement.pop("AXION_ESSAI_RECHARGE", None)
+    if recharge:
+        environnement["AXION_ESSAI_RECHARGE"] = "1"
     if film:
         # Le serveur d'un essai filmé met le temps au clair ; le client filme (Tournage, tools/film/encoder.py).
         environnement["AXION_ESSAI_FILM"] = "1"
@@ -83,7 +89,8 @@ def essai(latence: int, gigue: int, film: bool = False) -> dict[str, str]:
             time.sleep(1)
         with open(SORTIES / f"client-{nom}.log", "w", encoding="utf-8") as sortie:
             commande = [str(GRADLE), ":axion-mod:runEssaiClientPrediction", f"-PessaiLatence={latence}",
-                        f"-PessaiGigue={gigue}"] + (["-PessaiFilm"] if film else [])
+                        f"-PessaiGigue={gigue}"] + (["-PessaiFilm"] if film else []) + (
+                            ["-PessaiRecharge", "-PessaiProlonger=3"] if recharge else [])
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
         if client.returncode != 0:
@@ -103,7 +110,7 @@ def essai(latence: int, gigue: int, film: bool = False) -> dict[str, str]:
         if (ESSAI / releve).exists():
             (SORTIES / f"{releve[:-4]}-{nom}.csv").write_bytes((ESSAI / releve).read_bytes())
     verdicts = {}
-    for test in VERDICTS:
+    for test in ("RECHARGE",) if recharge else VERDICTS:
         ligne = next((l for l in lignes if l.startswith(test + " : ")), None)
         if ligne is None:
             raise RuntimeError(f"{test} absent du rapport")
@@ -117,13 +124,15 @@ def main() -> int:
                         help="délai d'un sens et gigue du relais, en millisecondes (répétable)")
     parser.add_argument("--film", action="store_true",
                         help="filmer l'essai : le client tourne, tools/film/encoder.py fait le MP4")
+    parser.add_argument("--recharge", action="store_true",
+                        help="recharger les definitions pendant la conduite (ADR-175 D5) ; seul le verdict RECHARGE compte")
     arguments = parser.parse_args()
     reglages = [tuple(int(x) for x in r.split(":")) for r in (arguments.reglage or ["100:20", "50:20"])]
     echecs = 0
     for latence, gigue in reglages:
         print(f"--- {latence} ms par sens, gigue de 0 à {gigue} ms", flush=True)
         try:
-            verdicts = essai(latence, gigue, arguments.film)
+            verdicts = essai(latence, gigue, arguments.film, arguments.recharge)
         except RuntimeError as faute:
             print(f"ÉCHEC : {faute}")
             echecs += 1

@@ -101,6 +101,15 @@ public final class EssaiPrediction {
      */
     private static final boolean REMORQUE = "1".equals(System.getenv("AXION_ESSAI_REMORQUE"));
 
+    /**
+     * ADR-175 D5, ADR-168 : sous {@code AXION_ESSAI_RECHARGE=1}, le serveur recharge les definitions pendant que le
+     * client conduit — la sienne, remplacée par {@link #REMPLACEE} deux fois plus lourde ; le client, sous
+     * {@code -Daxion.essai.recharge}, juge ce qu'il en suit (verdict {@code RECHARGE}).
+     */
+    private static final boolean RECHARGE = "1".equals(System.getenv("AXION_ESSAI_RECHARGE"));
+    private static final boolean RECHARGE_CLIENT = Boolean.getBoolean("axion.essai.recharge");
+    private static final String REMPLACEE = "axion:test/vehicule_remplace";
+
     /** Les rapports passés avant d'accélérer : la première d'une boîte manuelle, qui part au neutre. */
     private static final int RAPPORTS = Integer.getInteger("axion.essai.rapports", 0);
 
@@ -143,8 +152,46 @@ public final class EssaiPrediction {
         private static AxionEntity remorque;
         private static boolean cordePosee;
         private static boolean assis;
+        /** Les ticks où le conducteur a accéléré, avant le rechargement. */
+        private static int conduit;
 
         private Serveur() {}
+
+        /** Recharge les definitions : {@link #VEHICULE} disparaît, {@link #REMPLACEE} le remplace, deux fois plus lourde. */
+        private static void recharger() {
+            dev.axion.lifecycle.AxionRuntime runtime = RuntimeAccess.get();
+            dev.axion.asset.AssetSource courantes = dev.axion.content.RegisteredContent.source(
+                    dev.axion.api.content.ContentKind.DEFINITION);
+            String ancien = "axion:axion/definitions/test/vehicule.json";
+            String nouveau = "axion:axion/definitions/test/vehicule_remplace.json";
+            dev.axion.asset.AssetSource remplacee = new dev.axion.asset.AssetSource() {
+                @Override
+                public List<String> list() {
+                    List<String> chemins = new ArrayList<>(courantes.list());
+                    chemins.remove(ancien);
+                    chemins.add(nouveau);
+                    return chemins;
+                }
+
+                @Override
+                public byte[] read(String chemin) throws IOException {
+                    if (!chemin.equals(nouveau)) {
+                        return courantes.read(chemin);
+                    }
+                    com.google.gson.JsonObject definition = com.google.gson.JsonParser.parseString(
+                            new String(courantes.read(ancien), StandardCharsets.UTF_8)).getAsJsonObject();
+                    definition.addProperty("schema", 7);
+                    definition.add("replaces", com.google.gson.JsonParser.parseString("[\"axion:test/vehicule\"]"));
+                    definition.getAsJsonObject("physics").addProperty("mass", 680.0);
+                    return definition.toString().getBytes(StandardCharsets.UTF_8);
+                }
+            };
+            dev.axion.net.ServerSnapshot avant = runtime.netSnapshot();
+            int acceptees = runtime.onDefinitionReload(remplacee);
+            dev.axion.forge.net.AxionNetwork.onRegistryReloaded(avant, runtime.netSnapshot());
+            LOGGER.info("[essai] definitions rechargées au volant : {} acceptées, {} {}", acceptees, REMPLACEE,
+                    runtime.definitions().get(REMPLACEE).isPresent() ? "présente" : "REFUSÉE");
+        }
 
         /**
          * Au début de chaque tick du serveur, avant celui des connexions où partent les paquets de la poignée de main :
@@ -256,6 +303,13 @@ public final class EssaiPrediction {
             if (!assis && vehicule.hasPhysicalBounds() && vehicule.reseat(conducteur, "conducteur")) {
                 assis = true;
                 LOGGER.info("[essai] {} est au volant", conducteur.getGameProfile().getName());
+            }
+            if (RECHARGE && assis && conduit >= 0) {
+                int auVolant = vehicule.seatOf(conducteur);
+                if (auVolant >= 0 && vehicule.seatInput(auVolant).throttle() > 0 && ++conduit == 20) {
+                    recharger();
+                    conduit = -1;
+                }
             }
             if (assis && serveur.getTickCount() % 20 == 0) {
                 long[] corrections = dev.axion.forge.net.EssaiReseau.corrections(conducteur.getUUID());
@@ -454,6 +508,11 @@ public final class EssaiPrediction {
             }
             ecartsDecodage.add(pire);
         }
+
+        /** Le premier tick où le client a vu son véhicule sous la definition qui le remplace ; -1 avant. */
+        private static int tickRemplacee = -1;
+        /** Les ticks laissés à la prédiction rouverte avant de juger ses corrections. */
+        private static final int REPRISE = 40;
 
         /** Ce que {@code VehicleControl.state()} a rendu au client, au tick 100. */
         private static String vueAuClient = "état non lu au client : aucune vue prédite";
@@ -817,6 +876,9 @@ public final class EssaiPrediction {
             }
             double[] predite = racine == null ? new double[] {Double.NaN, Double.NaN, Double.NaN} : racine.position();
             cumuls.add(new long[] {boucle.matches(), boucle.replays() + boucle.accepted()});
+            if (RECHARGE_CLIENT && tickRemplacee < 0 && REMPLACEE.equals(assembly.definitionId())) {
+                tickRemplacee = tick;
+            }
             if (tick == ATTENTE && racine != null && ClientPrediction.predicting()) {
                 poseAppui = predite.clone();
             }
@@ -873,6 +935,9 @@ public final class EssaiPrediction {
             rapport.add(t415(boucle));
             rapport.add(t416(boucle));
             rapport.add(vueAuClient);
+            if (RECHARGE_CLIENT) {
+                rapport.add(recharge(minecraft));
+            }
             long[] reglage = ClientPrediction.pacingAdjustments();
             rapport.add("cadence réglée par le client : " + reglage[0] + " tick(s) à deux entrées, " + reglage[1]
                     + " à aucune");
@@ -931,6 +996,28 @@ public final class EssaiPrediction {
             }
             fermerRelais();
             minecraft.stop();
+        }
+
+        /**
+         * {@return le verdict du rechargement au volant (ADR-175 D5)} Le client suit le remplacement, dessine le véhicule,
+         * rouvre son monde prédit sur la definition nouvelle, ne garde aucun proxy de l'ancienne, et ses corrections se
+         * resserrent une fois la reprise passée.
+         */
+        private static String recharge(Minecraft minecraft) {
+            String suivie = minecraft.player != null && minecraft.player.getVehicle() instanceof AxionEntity v
+                    ? v.definitionId() : "à pied";
+            String ouverte = ClientPrediction.openedDefinition();
+            int perimes = ClientPrediction.staleProxies();
+            int dessinees = dev.axion.forge.client.AxionRenderPass.lastFrame().withAsset();
+            double[] apres = ecarts.stream().filter(e -> tickRemplacee >= 0 && e[3] >= tickRemplacee + REPRISE)
+                    .mapToDouble(e -> e[0]).toArray();
+            double pire = java.util.Arrays.stream(apres).max().orElse(Double.NaN);
+            boolean reussi = REMPLACEE.equals(suivie) && REMPLACEE.equals(ouverte) && perimes == 0 && dessinees > 0
+                    && apres.length >= 10 && pire < 0.3;
+            return String.format(Locale.ROOT, "RECHARGE : %s — definition suivie %s au tick %d, monde prédit sur %s, %d"
+                    + " proxy(s) périmé(s), %d assembly(s) dessinée(s) avec asset ; %d correction(s) après la reprise,"
+                    + " pire écart %.4f m (au moins 10, sous 0,3 m)", reussi ? "réussi" : "ÉCHOUÉ", suivie, tickRemplacee,
+                    ouverte, perimes, dessinees, apres.length, pire);
         }
 
         /**

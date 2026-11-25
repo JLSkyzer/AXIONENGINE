@@ -39,7 +39,7 @@ import org.joml.Vector3d;
 final class ClientProxies {
 
     /** Un proxy d'assembly vivant dans le monde prédit : son handle est l'id de son entité. */
-    private record Proxy(AxionEntity entity, int rootNode) {}
+    private record Proxy(AxionEntity entity, int rootNode, String sha256) {}
 
     private final AxionRuntime runtime;
     private final long dimension;
@@ -64,6 +64,17 @@ final class ClientProxies {
      */
     boolean holds(int id) {
         return assemblies.containsKey(id);
+    }
+
+    /** {@return les proxies bâtis sur une definition qui n'est plus celle de leur assembly} */
+    int stale() {
+        return (int) assemblies.values().stream().filter(this::outdated).count();
+    }
+
+    /** Vrai si l'assembly d'un proxy se lit désormais sous un autre contenu de definition. */
+    private boolean outdated(Proxy proxy) {
+        return runtime.definitions().get(proxy.entity().definitionId())
+                .map(definition -> !definition.sha256().equals(proxy.sha256())).orElse(false);
     }
 
     /**
@@ -110,7 +121,7 @@ final class ClientProxies {
             out.createKinematicAssembly(other.getId(), PredictedWorld.GENERATION, dimension,
                     new double[] {other.getX(), other.getY(), other.getZ()},
                     new float[] {rotation.x(), rotation.y(), rotation.z(), rotation.w()}, definition.hash());
-            assemblies.put(other.getId(), new Proxy(other, summary.rootNode()));
+            assemblies.put(other.getId(), new Proxy(other, summary.rootNode(), definition.sha256()));
         }
         List<EntityProxySelector.Candidate> candidates = new ArrayList<>();
         for (Entity entity : level.getEntities((Entity) null, around, EntityPresenceBridge::eligible)) {

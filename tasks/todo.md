@@ -3894,8 +3894,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              - [x] reliure : variables et modificateurs vivants non migrés (`AxionEntity.rebind`, `AssemblyVariables`) ;
              - [x] reliure : variables et nodes non repris journalisés (`E-7012`) ;
              - [ ] `other_socket` d'une attache non renommé par une migration ;
-             - [x] après `replaces`, le client suit le remplacement (`DefinitionRegistry.current`) ; à jouer au banc client ;
-             - [ ] prédiction et proxies non remis à zéro quand la definition change (`ClientPrediction.tick`) ;
+             - [x] après `replaces`, le client suit le remplacement (`DefinitionRegistry.current`), joué à deux processus ;
+             - [x] prédiction et proxies au changement de definition : pas de défaut, joué à deux processus
+                   (`prediction.py --recharge`) ;
              - [x] un changement du seul modèle relie les assemblies.
            - Restes de CAP-12 et CAP-20 (cœur livré). Faits le 2026-11-25 : guide moteur (FR, EN), usure visible actée
              dans ADR-176, `energy.fuel` testé, GameTest de `/axion energy` (celui d'`Assembly.energy()` existait). Restent :

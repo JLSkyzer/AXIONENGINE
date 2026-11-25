@@ -69,6 +69,9 @@ public final class ClientPrediction {
     private static ClientProxies proxies;
     private static AxionEntity vehicle;
     private static int rootNode;
+    /** La definition sur laquelle {@link #world} a été ouvert, et l'empreinte de son contenu. */
+    private static String openedDefinition;
+    private static String openedSha;
     /** Le dernier pas du monde prédit. */
     private static PredictedWorld.Step lastStep;
     /** L'état du corps racine au dernier pas qui l'a rapporté : un corps endormi ne l'est plus. */
@@ -565,6 +568,16 @@ public final class ClientPrediction {
         return proxies == null ? new int[2] : new int[] {proxies.assemblyCount(), proxies.entityCount()};
     }
 
+    /** {@return la definition sur laquelle le monde prédit est ouvert, {@code null} sans} Les essais la lisent. */
+    public static String openedDefinition() {
+        return world == null ? null : openedDefinition;
+    }
+
+    /** {@return les proxies d'assemblies bâtis sur une definition qui n'est plus celle de leur assembly} */
+    public static int staleProxies() {
+        return proxies == null ? 0 : proxies.stale();
+    }
+
     /** {@return le véhicule prédit, {@code null} sans} */
     public static AxionEntity vehicle() {
         return vehicle;
@@ -819,6 +832,8 @@ public final class ClientPrediction {
                 new float[] {rotation.x(), rotation.y(), rotation.z(), rotation.w()}, definition.hash());
         vehicle = assembly;
         rootNode = summary.rootNode();
+        openedDefinition = definition.id();
+        openedSha = definition.sha256();
         lastStep = null;
         lastRoot = null;
         irreconcilable = false;
