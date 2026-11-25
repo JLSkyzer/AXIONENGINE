@@ -1148,7 +1148,13 @@ impl PhysicsWorld {
             state.slip_lat = slip_lat;
 
             // R-1070 : le matériau de la surface touchée multiplie le coefficient du pneu.
-            let material = self.collider_materials.get(&collider);
+            // ADR-180 D2 : sur un champ de hauteurs, le matériau de la cellule touchée.
+            let material = self
+                .cell_materials
+                .get(&collider)
+                .zip(self.inner.colliders.get(collider))
+                .map(|(cells, field)| cells.at(point - field.translation()))
+                .or_else(|| self.collider_materials.get(&collider).copied());
             drive.grounded = true;
             drive.load = load;
             // ADR-176 D4 : un pneu usé adhère moins ; l'usure agit ici, sur ce que le matériau laisse, et jamais sur la

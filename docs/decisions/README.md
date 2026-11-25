@@ -61,7 +61,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
-| [ADR-180](ADR-180.md) | Le matériau du sol sous chaque roue (CAP-20) | 2026-11-25 | proposé |
+| [ADR-180](ADR-180.md) | Le matériau du sol sous chaque roue (CAP-20) | 2026-11-25 | accepté |
 | [ADR-152](ADR-152.md) | Rapier 0.35.3 vendorisé et corrigé : moteurs et friction résolus avec les axes bloqués, impulsion publiée par joint | 2026-10-22 | accepté |
 | [ADR-151](ADR-151.md) | Les joints de M4 : une assembly porte plusieurs corps, reliés par les joints impulsionnels de Rapier ; schéma de definition 2, ABI 7 | 2026-10-22 | accepté |
 | [ADR-149](ADR-149.md) | Le matériau physique passe la frontière : une table DM-07 par la file de commandes, un index par collider et par tuile | 2026-10-17 | accepté |

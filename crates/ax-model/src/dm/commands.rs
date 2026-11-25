@@ -813,8 +813,10 @@ pub fn create_assembly_payload(
 ///
 /// Suivi **dans le même payload** de `box_count` boîtes `[f32; 6]`
 /// (`[minx, miny, minz, maxx, maxy, maxz]`), **relatives à l'origine de la section**
-/// (`section × 16`), en blocs quantifiés en 1/16. Toutes portent le matériau dominant
-/// de la section (R-643). `box_count == 0` retire la tuile de collision.
+/// (`section × 16`), en blocs quantifiés en 1/16. Avec `palette_count == 0`, toutes portent
+/// le matériau dominant de la section (R-643). Sinon (ADR-180 D1) suivent, après les boîtes,
+/// `palette_count` index de matériaux `u16` puis un rang `u8` par boîte dans cette palette.
+/// `box_count == 0` retire la tuile de collision.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SetWorldCollision {
@@ -827,8 +829,9 @@ pub struct SetWorldCollision {
     /// Index du matériau dominant (R-643) dans la table de la session (ADR-149), ou
     /// [`super::physics::NO_MATERIAL`].
     pub material: u16,
-    /// Réservé, à zéro.
-    pub _pad: u16,
+    /// Matériaux de la palette qui suit les boîtes (ADR-180), au plus
+    /// [`MAX_TILE_PALETTE`] ; 0 sans palette.
+    pub palette_count: u16,
     /// Réservé, à zéro.
     pub _reserved: u32,
 }
@@ -838,11 +841,16 @@ impl SetWorldCollision {
     pub const BYTES: usize = 32;
 }
 
+/// Matériaux au plus dans la palette d'une tuile (ADR-180 D1).
+pub const MAX_TILE_PALETTE: u16 = 16;
+
 /// En-tête de `SET_WORLD_HEIGHTFIELD` (C-38, R-641 ; ADR-117).
 ///
 /// Suivi **dans le même payload** de `rows × cols` hauteurs `f32`, en disposition
 /// ligne-major (`row` sur z, `col` sur x). Le champ couvre la section, centré sur le
-/// plan x-z ; la hauteur monde d'un sommet vaut `height × scale.y`.
+/// plan x-z ; la hauteur monde d'un sommet vaut `height × scale.y`. Avec
+/// `palette_count > 0` (ADR-180 D1) suivent `palette_count` index de matériaux `u16`, puis
+/// un rang `u8` par cellule, `(rows − 1) × (cols − 1)`, dans la même disposition.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SetWorldHeightfield {
@@ -857,8 +865,9 @@ pub struct SetWorldHeightfield {
     /// Index du matériau dominant (R-643) dans la table de la session (ADR-149), ou
     /// [`super::physics::NO_MATERIAL`].
     pub material: u16,
-    /// Réservé, à zéro.
-    pub _pad: u16,
+    /// Matériaux de la palette qui suit les hauteurs (ADR-180), au plus
+    /// [`MAX_TILE_PALETTE`] ; 0 sans palette.
+    pub palette_count: u16,
     /// Réservé, à zéro.
     pub _reserved: u32,
     /// Échelle `[x, y, z]` : étendue en blocs sur x et z, facteur de hauteur sur y.
@@ -1133,7 +1142,7 @@ mod tests {
         assert_eq!(offset_of!(SetWorldCollision, section), 8);
         assert_eq!(offset_of!(SetWorldCollision, box_count), 20);
         assert_eq!(offset_of!(SetWorldCollision, material), 24);
-        assert_eq!(offset_of!(SetWorldCollision, _pad), 26);
+        assert_eq!(offset_of!(SetWorldCollision, palette_count), 26);
         assert_eq!(offset_of!(SetWorldCollision, _reserved), 28);
 
         assert_eq!(size_of::<SetWorldHeightfield>(), SetWorldHeightfield::BYTES);
@@ -1143,7 +1152,7 @@ mod tests {
         assert_eq!(offset_of!(SetWorldHeightfield, rows), 20);
         assert_eq!(offset_of!(SetWorldHeightfield, cols), 24);
         assert_eq!(offset_of!(SetWorldHeightfield, material), 28);
-        assert_eq!(offset_of!(SetWorldHeightfield, _pad), 30);
+        assert_eq!(offset_of!(SetWorldHeightfield, palette_count), 30);
         assert_eq!(offset_of!(SetWorldHeightfield, _reserved), 32);
         assert_eq!(offset_of!(SetWorldHeightfield, scale), 36);
 

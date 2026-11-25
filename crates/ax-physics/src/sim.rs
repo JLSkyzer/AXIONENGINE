@@ -27,7 +27,9 @@ use crate::query::AssemblyRayHit;
 use crate::scheduler::{SimMode, Stage};
 use crate::world::attachments::attachment_refused;
 use crate::world::vehicles::{SurfaceMount, VehicleTelemetry, WheelMount, WheelState};
-use crate::world::{AttachEnd, AttachmentSpec, BodyReports, PhysicsWorld, WorldCounters};
+use crate::world::{
+    AttachEnd, AttachmentSpec, BodyReports, CellMaterials, PhysicsWorld, WorldCounters,
+};
 use ax_math::{DVec3, FloatingOrigin, Quat, Vec3};
 use ax_model::dm::attachments::Attach;
 use ax_model::dm::debug::overlay;
@@ -461,11 +463,35 @@ impl SimDriver {
         boxes: &[[f32; 6]],
         material: ContactMaterial,
     ) -> bool {
+        self.set_world_tile_palette(
+            dimension,
+            section,
+            boxes,
+            &[material],
+            &vec![0; boxes.len()],
+        )
+    }
+
+    /// [`set_world_tile`](Self::set_world_tile) à plusieurs matériaux (ADR-180 D1) : la boîte
+    /// de rang `i` porte `palette[ranks[i]]`. Les boîtes d'un même matériau se groupent
+    /// ensemble, dans l'ordre de la palette puis de la courbe de Morton : chaque collider garde
+    /// un seul matériau, que la roue et les impacts lisent comme avant.
+    pub fn set_world_tile_palette(
+        &mut self,
+        dimension: u64,
+        section: [i32; 3],
+        boxes: &[[f32; 6]],
+        palette: &[ContactMaterial],
+        ranks: &[u8],
+    ) -> bool {
         // Une tuile est remplacée en bloc : l'ancienne part d'abord.
         self.remove_world_tile(dimension, section);
 
         let mut parts = Vec::with_capacity(boxes.len());
-        for b in boxes {
+        for (b, &rank) in boxes.iter().zip(ranks) {
+            if usize::from(rank) >= palette.len() {
+                continue;
+            }
             let half = [
                 (b[3] - b[0]) * 0.5,
                 (b[4] - b[1]) * 0.5,
@@ -482,7 +508,7 @@ impl SimDriver {
                 (b[2] + b[5]) * 0.5,
             );
             parts.push((
-                morton_in_section(center),
+                (rank, morton_in_section(center)),
                 CompoundPart {
                     translation: center,
                     rotation: Quat::IDENTITY,
@@ -494,13 +520,14 @@ impl SimDriver {
             return false;
         }
         // Tri stable : à code égal, l'ordre d'arrivée — le résultat ne dépend que de
-        // l'entrée (R-1020).
+        // l'entrée (R-1020). Un matériau, une palette d'une entrée : l'ordre d'avant.
         parts.sort_by_key(|(code, _)| *code);
-        let mut parts = parts.into_iter().map(|(_, part)| part).peekable();
         let mut colliders = Vec::new();
-        while parts.peek().is_some() {
-            let group: Vec<CompoundPart> = parts.by_ref().take(MAX_COMPOUND_PARTS).collect();
-            colliders.push(tile_collider(group, material));
+        for run in parts.chunk_by(|(a, _), (b, _)| a.0 == b.0) {
+            for group in run.chunks(MAX_COMPOUND_PARTS) {
+                let group: Vec<CompoundPart> = group.iter().map(|(_, part)| part.clone()).collect();
+                colliders.push(tile_collider(group, palette[usize::from(run[0].0 .0)]));
+            }
         }
 
         let sim = self.dimension_mut(dimension);
@@ -521,6 +548,37 @@ impl SimDriver {
         self.tiles.insert((dimension, section), body);
         self.wake_vehicles_at_tile(dimension, section);
         true
+    }
+
+    /// Donne à un champ de hauteurs posé le matériau de chacune de ses cellules (ADR-180
+    /// D1, D2) : la roue lit celui de la cellule qu'elle touche. `cells` est en disposition
+    /// ligne-major, `(rows − 1) × (cols − 1)`. Sans effet sans tuile à cette place, ou d'un
+    /// nombre de cellules qui n'est pas le sien.
+    pub fn set_world_tile_cells(
+        &mut self,
+        dimension: u64,
+        section: [i32; 3],
+        rows: u32,
+        cols: u32,
+        scale: [f32; 3],
+        cells: Vec<ContactMaterial>,
+    ) {
+        let Some(&body) = self.tiles.get(&(dimension, section)) else {
+            return;
+        };
+        let (across, along) = (
+            cols.saturating_sub(1) as usize,
+            rows.saturating_sub(1) as usize,
+        );
+        if cells.len() != across * along {
+            return;
+        }
+        let Some(cells) = CellMaterials::new(across, [scale[0], scale[2]], cells) else {
+            return;
+        };
+        if let Some(sim) = self.dimensions.get_mut(&dimension) {
+            sim.world.set_cell_materials(body, cells);
+        }
     }
 
     /// Pose (ou remplace) une tuile de collision du monde sous forme de **champ de

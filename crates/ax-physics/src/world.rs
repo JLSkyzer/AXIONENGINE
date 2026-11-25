@@ -331,6 +331,8 @@ pub struct PhysicsWorld {
     /// roulement (D6). Consultée par clé, jamais itérée (R-1020) : la propagation suit l'ordre
     /// des colliders de `rapier`.
     collider_materials: HashMap<ColliderHandle, ContactMaterial>,
+    /// Les matériaux par cellule des champs de hauteurs du monde (ADR-180 D1).
+    cell_materials: HashMap<ColliderHandle, CellMaterials>,
     /// Les véhicules, dans leur ordre d'apparition (ADR-159).
     vehicles: Vec<vehicles::Vehicle>,
     /// Dernier état de sommeil connu de chaque corps dynamique, pour détecter les
@@ -581,6 +583,7 @@ impl PhysicsWorld {
             joints_restored: BTreeSet::new(),
             joints_reported_once: BTreeSet::new(),
             collider_materials: HashMap::new(),
+            cell_materials: HashMap::new(),
             vehicles: Vec::new(),
             sleep_state: HashMap::new(),
             events: Vec::new(),
@@ -2422,7 +2425,23 @@ impl PhysicsWorld {
             apply_contact(collider, material);
             refreshed += 1;
         }
+        for cells in self.cell_materials.values_mut() {
+            cells.refresh(table);
+        }
         refreshed
+    }
+
+    /// Donne à un champ de hauteurs du monde — un corps à un seul collider — les matériaux de
+    /// ses cellules (ADR-180 D1).
+    pub fn set_cell_materials(&mut self, body: BodyId, cells: CellMaterials) {
+        if let Some(&collider) = self
+            .inner
+            .bodies
+            .get(body.handle())
+            .and_then(|body| body.colliders().first())
+        {
+            self.cell_materials.insert(collider, cells);
+        }
     }
 
     /// Les matériaux de contact des colliders d'un corps, dans l'ordre de ses colliders.
@@ -3236,6 +3255,7 @@ impl PhysicsWorld {
         if let Some(body) = self.inner.bodies.get(id.handle()) {
             for collider in body.colliders() {
                 self.collider_materials.remove(collider);
+                self.cell_materials.remove(collider);
             }
         }
         self.inner.remove_body(id.handle()).is_some()
@@ -3601,6 +3621,52 @@ fn apply_contact(collider: &mut Collider, material: &ContactMaterial) {
     collider.set_restitution(material.restitution);
     collider.set_friction_combine_rule(solver_rule(material.friction_combine));
     collider.set_restitution_combine_rule(solver_rule(material.restitution_combine));
+}
+
+/// Les matériaux d'un champ de hauteurs du monde, cellule par cellule (ADR-180 D1).
+#[derive(Debug, Clone)]
+pub struct CellMaterials {
+    /// Cellules sur x.
+    across: usize,
+    /// Étendue sur x et z, en blocs ; le champ est centré sur son collider.
+    extent: [f32; 2],
+    /// Ligne-major : la ligne sur z, la colonne sur x.
+    cells: Vec<ContactMaterial>,
+}
+
+impl CellMaterials {
+    /// Les matériaux d'un champ de `across` colonnes, d'une étendue `extent` sur x et z ; `None`
+    /// si `cells` n'en remplit pas un nombre entier et non nul de lignes.
+    #[must_use]
+    pub fn new(across: usize, extent: [f32; 2], cells: Vec<ContactMaterial>) -> Option<Self> {
+        (across > 0 && !cells.is_empty() && cells.len().is_multiple_of(across)).then_some(Self {
+            across,
+            extent,
+            cells,
+        })
+    }
+
+    /// Le matériau de la cellule sous `local`, relatif au centre du champ ; hors de lui, celui
+    /// de la cellule de bord la plus proche.
+    pub(crate) fn at(&self, local: Vec3) -> ContactMaterial {
+        let along = self.cells.len() / self.across;
+        let index = |value: f32, extent: f32, count: usize| {
+            // Le transtypage sature : une valeur négative ou non finie tombe sur la cellule 0.
+            (((value / extent + 0.5) * count as f32).floor() as usize).min(count - 1)
+        };
+        let column = index(local.x, self.extent[0], self.across);
+        let row = index(local.z, self.extent[1], along);
+        self.cells[row * self.across + column]
+    }
+
+    /// Résout de nouveau chaque cellule d'après la table de la session (ADR-149 D1).
+    fn refresh(&mut self, table: &MaterialTable) {
+        for material in &mut self.cells {
+            if material.index != NO_MATERIAL {
+                *material = table.resolve(material.index);
+            }
+        }
+    }
 }
 
 /// Genre et état d'un corps pour ses plages de debug (`debug_body_flags`) : aucun

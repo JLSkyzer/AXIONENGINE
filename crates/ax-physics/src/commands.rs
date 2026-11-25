@@ -5,6 +5,7 @@
 //! little-endian, jamais par transtypage en place. C'est la couche FFI qui, elle,
 //! lit les structures DM en place ; ici on décode, on valide, on applique.
 
+use crate::body::ContactMaterial;
 use crate::forces::FluidEnvironment;
 use crate::proxies::{EntityProxy, ProxyShape};
 use crate::scheduler::SimMode;
@@ -17,7 +18,7 @@ use ax_model::dm::commands::{
     RemoveWorldTile, SetAssemblyPose, SetAssemblyState, SetDimensionEnv, SetEnergy,
     SetEntityProxies, SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSensor,
     SetSimMode, SetStateExport, SetVehicleInput, SetWear, SetWet, SetWheelTorques,
-    SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
+    SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader, MAX_TILE_PALETTE,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -471,10 +472,57 @@ fn apply_set_world_collision(driver: &mut SimDriver, payload: &[u8]) -> Result<(
     let section = read_section(payload, 8);
     let box_count = read_u32(payload, 20);
     let material = read_u16(payload, 24);
-    let boxes = read_boxes(payload, SetWorldCollision::BYTES, box_count)?;
-    let contact = driver.material(material);
-    driver.set_world_tile(dimension, section, &boxes, contact);
+    let palette_count = read_u16(payload, 26);
+    if box_count > MAX_WORLD_TILE_BOXES {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let after = SetWorldCollision::BYTES + box_count as usize * 24;
+    // Les boîtes d'abord : un corps trop court est une longueur fausse, quelle que soit la palette.
+    if payload.len() < after {
+        return Err(CommandError::BadPayloadLength);
+    }
+    let (palette, ranks) = read_palette(driver, payload, after, palette_count, box_count as usize)?;
+    let boxes = read_boxes(&payload[..after], SetWorldCollision::BYTES, box_count)?;
+    if palette.is_empty() {
+        let contact = driver.material(material);
+        driver.set_world_tile(dimension, section, &boxes, contact);
+    } else {
+        driver.set_world_tile_palette(dimension, section, &boxes, &palette, &ranks);
+    }
     Ok(())
+}
+
+/// La palette d'une tuile (ADR-180 D1), à partir de `at` : `count` index de matériaux, puis
+/// `entries` rangs ; vides sans palette. Le payload finit exactement après eux.
+fn read_palette(
+    driver: &SimDriver,
+    payload: &[u8],
+    at: usize,
+    count: u16,
+    entries: usize,
+) -> Result<(Vec<ContactMaterial>, Vec<u8>), CommandError> {
+    if count > MAX_TILE_PALETTE {
+        return Err(CommandError::InvalidField);
+    }
+    let expected = if count == 0 {
+        at
+    } else {
+        at + usize::from(count) * 2 + entries
+    };
+    if payload.len() != expected {
+        return Err(CommandError::BadPayloadLength);
+    }
+    if count == 0 {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let palette = (0..usize::from(count))
+        .map(|rank| driver.material(read_u16(payload, at + rank * 2)))
+        .collect();
+    let ranks = payload[at + usize::from(count) * 2..].to_vec();
+    if ranks.iter().any(|&rank| u16::from(rank) >= count) {
+        return Err(CommandError::InvalidField);
+    }
+    Ok((palette, ranks))
 }
 
 /// Décode `SET_WORLD_HEIGHTFIELD` (ADR-117) et pose la tuile champ de hauteurs.
@@ -487,6 +535,7 @@ fn apply_set_world_heightfield(driver: &mut SimDriver, payload: &[u8]) -> Result
     let rows = read_u32(payload, 20);
     let cols = read_u32(payload, 24);
     let material = read_u16(payload, 28);
+    let palette_count = read_u16(payload, 30);
     let scale = [
         read_f32(payload, 36),
         read_f32(payload, 40),
@@ -500,14 +549,16 @@ fn apply_set_world_heightfield(driver: &mut SimDriver, payload: &[u8]) -> Result
     }
     let count = rows as usize * cols as usize;
     let body = SetWorldHeightfield::BYTES;
-    if payload.len() != body + count * 4 {
+    let cells = (rows as usize - 1) * (cols as usize - 1);
+    if payload.len() < body + count * 4 {
         return Err(CommandError::BadPayloadLength);
     }
+    let (palette, ranks) = read_palette(driver, payload, body + count * 4, palette_count, cells)?;
     let mut heights = Vec::with_capacity(count);
     for i in 0..count {
         heights.push(read_f32(payload, body + i * 4));
     }
-    driver.set_world_tile_heightfield(
+    let posed = driver.set_world_tile_heightfield(
         dimension,
         section,
         rows,
@@ -516,6 +567,13 @@ fn apply_set_world_heightfield(driver: &mut SimDriver, payload: &[u8]) -> Result
         scale,
         driver.material(material),
     );
+    if posed && !palette.is_empty() {
+        let cells = ranks
+            .iter()
+            .map(|&rank| palette[usize::from(rank)])
+            .collect();
+        driver.set_world_tile_cells(dimension, section, rows, cols, scale, cells);
+    }
     Ok(())
 }
 
@@ -1061,6 +1119,63 @@ mod tests {
             driver.world_mut(0).unwrap().body_materials(tuile),
             vec![ContactMaterial::from_table(&sol, 1)]
         );
+    }
+
+    /// Le payload d'une tuile en boîtes à palette (ADR-180) : trois boîtes, la palette, les rangs.
+    fn tuile_a_palette(count: u16, palette: &[u16], ranks: &[u8]) -> Vec<u8> {
+        let mut payload = 0u64.to_le_bytes().to_vec();
+        payload.extend(section_bytes([0, 0, 0]));
+        payload.extend(3u32.to_le_bytes());
+        payload.extend(NO_MATERIAL.to_le_bytes());
+        payload.extend(count.to_le_bytes());
+        payload.extend(0u32.to_le_bytes());
+        for x in [0.0, 4.0, 8.0] {
+            payload.extend(f32s(&[x, 0.0, 0.0, x + 4.0, 1.0, 16.0]));
+        }
+        for index in palette {
+            payload.extend(index.to_le_bytes());
+        }
+        payload.extend(ranks);
+        payload
+    }
+
+    #[test]
+    fn adr180_chaque_boite_prend_le_materiau_de_son_rang() {
+        let mut driver = SimDriver::new();
+        let sols = [materiau(0.1), materiau(0.9), materiau(0.4)];
+        driver.set_physics_materials(&sols);
+        let payload = tuile_a_palette(2, &[1, 2], &[1, 0, 1]);
+        appliquer(&mut driver, opcode::SET_WORLD_COLLISION, &payload).unwrap();
+        let tuile = driver.world_tile_body(0, [0, 0, 0]).expect("tuile");
+        // Un collider par matériau, dans l'ordre de la palette.
+        assert_eq!(
+            driver.world_mut(0).unwrap().body_materials(tuile),
+            vec![
+                ContactMaterial::from_table(&sols[1], 1),
+                ContactMaterial::from_table(&sols[2], 2),
+            ]
+        );
+    }
+
+    #[test]
+    fn adr180_une_palette_hostile_est_refusee() {
+        let mut driver = SimDriver::new();
+        let rang_hors = tuile_a_palette(2, &[0, 1], &[0, 2, 0]);
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_WORLD_COLLISION, &rang_hors),
+            Err(CommandError::InvalidField)
+        );
+        let trop = tuile_a_palette(17, &[0; 17], &[0, 0, 0]);
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_WORLD_COLLISION, &trop),
+            Err(CommandError::InvalidField)
+        );
+        let tronquee = tuile_a_palette(2, &[0, 1], &[0, 1]);
+        assert_eq!(
+            appliquer(&mut driver, opcode::SET_WORLD_COLLISION, &tronquee),
+            Err(CommandError::BadPayloadLength)
+        );
+        assert_eq!(driver.world_tile_count(), 0);
     }
 
     #[test]

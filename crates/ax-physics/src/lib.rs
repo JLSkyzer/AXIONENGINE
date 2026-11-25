@@ -83,7 +83,8 @@ pub use sim::{AssemblyBody, AssemblyJoint, SavedBody, SavedJoint, SimDriver, Sim
 pub use world::state;
 pub use world::vehicles::{SurfaceMount, VehicleTelemetry, WheelMount, WheelState};
 pub use world::{
-    AttachEnd, AttachError, AttachmentSpec, BodyReports, PhysicsWorld, Pose, WorldCounters,
+    AttachEnd, AttachError, AttachmentSpec, BodyReports, CellMaterials, PhysicsWorld, Pose,
+    WorldCounters,
 };
 
 // §10.7 : les événements sont une structure DM figée dans `ax-model` ; on les

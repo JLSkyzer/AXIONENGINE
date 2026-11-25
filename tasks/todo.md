@@ -3911,6 +3911,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              ou le protocole demande un ADR accepté.
            - CAP-13, 33, 38, 56 : au-delà des défauts ci-dessus, banc client de l'échelle, de la pose debout et de l'œil ;
              API de siège promise par la grille d'ADR-177 ; grilles D7 d'ADR-175 (ouverte) et d'ADR-177 (jamais vérifiée).
+     - [ ] **ADR-180, le matériau sous chaque roue** (accepté le 2026-11-25, A31).
+           - [x] 14a (2026-11-25) — natif, ABI 36 : palette dans les deux commandes de tuile, boîtes groupées par matériau,
+                 matériau par cellule du champ de hauteurs lu par la roue.
+           - [ ] 14b — Java : palette et fusion par matériau, repli au-delà de 16 matériaux et de 4096 boîtes, champ de
+                 hauteurs par colonne ; R-643 amendé ; GameTest d'une route sur de l'herbe.
+           - [ ] 14c — la couche couvrante (`cover`), la première couche de neige.
+           - [ ] 14d — impacts sur champ de hauteurs ; mesure avant (commit `76250c51`) et après : construction des tuiles,
+                 nombre de boîtes, pas, mémoire.
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
            `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
            (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Restent : la mesure du
