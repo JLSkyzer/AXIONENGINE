@@ -65,11 +65,11 @@ ADR-172	ADR		7495	19	M12 — Optimisation client et serveur (amendement A22)
 ADR-173	ADR		7997	4	38.9 Registre des amendements postérieurs au gel
 ADR-174	ADR		4557	19	18.2 Échantillonnage et blending
 ADR-175	ADR		5320	6	22.2 Format NBT
-ADR-176	ADR		3324	15	12.4 Modèle de pneu
-ADR-177	ADR		2326	8	5.44 C-53 : Interaction & Sièges
+ADR-176	ADR		3324	17	12.4 Modèle de pneu
+ADR-177	ADR		2326	9	5.44 C-53 : Interaction & Sièges
 ADR-178	ADR		2321	13	5.44 C-53 : Interaction & Sièges
 ADR-179	ADR		2275	3	5.40 C-48 : Attachment System
-ADR-180	ADR		2090	3	5.30 C-38 : World Collision Provider
+ADR-180	ADR		2090	4	5.30 C-38 : World Collision Provider
 B-01	B	6590	5957	9	30.2 Ce qui est mesuré
 B-02	B	6591	6591	3	30.2 Ce qui est mesuré
 B-03	B	6592	6592	1	30.2 Ce qui est mesuré
@@ -187,7 +187,7 @@ CAP-16	CAP	8444	7998	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-17	CAP	8445	7420	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-18	CAP	8446	8446	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-19	CAP	8447	7420	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-20	CAP	8448	8000	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-20	CAP	8448	8000	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-21	CAP	8449	8449	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-22	CAP	8450	8450	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-23	CAP	8451	8451	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
@@ -573,7 +573,7 @@ R-632	R	2053	2053	1	5.26 C-34 : Joints & Constraints
 R-640	R	2087	2087	2	5.30 C-38 : World Collision Provider
 R-641	R	2088	2088	1	5.30 C-38 : World Collision Provider
 R-642	R	2089	2089	1	5.30 C-38 : World Collision Provider
-R-643	R	2090	2090	4	5.30 C-38 : World Collision Provider
+R-643	R	2090	2090	5	5.30 C-38 : World Collision Provider
 R-650	R	2098	2098	1	5.31 C-39 : Spatial Queries
 R-651	R	2099	2099	1	5.31 C-39 : Spatial Queries
 R-652	R	2100	2100	1	5.31 C-39 : Spatial Queries
@@ -696,7 +696,7 @@ R-1035	R	3248	3248	2	11.5 Cohérence dimensionnelle (référence normative)
 R-1036	R	3251	3251	1	11.5 Cohérence dimensionnelle (référence normative)
 R-1037	R	3254	3254	1	11.5 Cohérence dimensionnelle (référence normative)
 R-1038	R	3258	3258	2	11.5 Cohérence dimensionnelle (référence normative)
-R-1040	R	3204	3204	2	11.4 Mappage bloc → matériau
+R-1040	R	3204	3204	3	11.4 Mappage bloc → matériau
 R-1041	R	3205	3205	1	11.4 Mappage bloc → matériau
 R-1050	R	3291	3291	1	12.2 Modèle de roue
 R-1051	R	3292	3292	1	12.2 Modèle de roue
@@ -707,7 +707,7 @@ R-1061	R	3307	3307	1	12.3 Suspension
 R-1070	R	3323	3323	1	12.4 Modèle de pneu
 R-1071	R	3326	3324	2	12.4 Modèle de pneu
 R-1072	R	3324	3324	5	12.4 Modèle de pneu
-R-1073	R	3325	3325	2	12.4 Modèle de pneu
+R-1073	R	3325	3325	3	12.4 Modèle de pneu
 R-1080	R	3343	3343	1	12.5 Groupe motopropulseur
 R-1081	R	3344	3344	1	12.5 Groupe motopropulseur
 R-1082	R	3345	3345	1	12.5 Groupe motopropulseur
