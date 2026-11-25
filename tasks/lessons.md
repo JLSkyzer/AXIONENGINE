@@ -2650,3 +2650,17 @@ La caméra de côté regardant vers +Z a +X à sa gauche : numéroter les véhic
 
 **Règle.** Un état rangé par entité se range **par côté** (une table pour le client, une pour le serveur), ou par identité. Se demander,
 devant toute `Map<Entity, …>`, ce qu'un monde solo y met deux fois — les GameTests (serveur seul) ne le voient pas, un banc client oui.
+
+## 2026-11-25 | Ce qu'un véhicule porte le freinait ; le serveur « perdait » un support qu'il avait
+
+**Observé.** Essai réseau d'ADR-178 : un joueur debout, le véhicule fait 4,3 blocs en 20 s au lieu de 3,2 en 3 s. Puis « support perdu »
+au serveur à grande vitesse, alors que la sonde réussissait à chaque tick.
+
+**Cause.** Le proxy du joueur était posé là où le serveur le tient, en retard : il frottait contre ce qui le portait. Et vanilla simule un
+joueur serveur à chaque tick (`doTick`) puis le remet en place : cette simulation effaçait le support, rendait `onGround` faux, et l'essai
+relevait l'état entre elle et `ServerCarry`.
+
+**Règle.** Un état que la physique voit se pose **dans le repère de ce qui le porte, à sa pose du moment**. Au serveur, ne rien déduire du
+mouvement simulé d'un joueur. Un relevé de diagnostic se prend **après** le gestionnaire qui écrit l'état (priorité d'événement). Un
+essai qui compare avec un **témoin** (le véhicule seul) dit en un passage si c'est la charge qui gêne. Toute fonction éprouvée « au repos
+une seconde » reste non éprouvée en mouvement : l'essai long et rapide a trouvé trois défauts que bancs et GameTests laissaient passer.

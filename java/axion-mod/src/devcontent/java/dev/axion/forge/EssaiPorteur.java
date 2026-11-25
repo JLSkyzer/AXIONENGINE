@@ -98,6 +98,20 @@ public final class EssaiPorteur {
 
         private Serveur() {}
 
+        /**
+         * Le sol, en damier de quatre blocs pour que la vitesse se voie, posé dès le premier tick : posé à l'arrivée du joueur,
+         * sa lumière n'était pas encore calculée chez le client, et le film sortait noir.
+         */
+        private static void poserLeSol(ServerLevel monde) {
+            for (int x = 0; x < SOL_COTE; x++) {
+                for (int z = 0; z < SOL_COTE; z++) {
+                    boolean clair = (x / 4 + z / 4) % 2 == 0;
+                    monde.setBlockAndUpdate(new BlockPos(x, SOL_Y, z),
+                            (clair ? Blocks.SMOOTH_STONE : Blocks.GRAY_CONCRETE).defaultBlockState());
+                }
+            }
+        }
+
         /** @param event la fin d'un tick du serveur ; relevé après le transport (ServerCarry) */
         @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
         public static void mener(TickEvent.ServerTickEvent event) {
@@ -107,6 +121,7 @@ public final class EssaiPorteur {
             MinecraftServer serveur = event.getServer();
             if (debut == 0) {
                 debut = System.nanoTime();
+                poserLeSol(serveur.overworld());
             }
             if (System.nanoTime() - debut > DUREE_SERVEUR_S * 1_000_000_000L
                     || (joueur != null && joueur.hasDisconnected())) {
@@ -124,11 +139,6 @@ public final class EssaiPorteur {
                 monde.setWeatherParameters(20 * 60 * 20, 0, false, false);
                 monde.setDayTime(6000);
                 joueur = serveur.getPlayerList().getPlayers().get(0);
-                for (int x = 0; x < SOL_COTE; x++) {
-                    for (int z = 0; z < SOL_COTE; z++) {
-                        monde.setBlockAndUpdate(new BlockPos(x, SOL_Y, z), Blocks.SMOOTH_STONE.defaultBlockState());
-                    }
-                }
                 joueur.setGameMode(GameType.SURVIVAL);
                 joueur.teleportTo(monde, SOL_COTE / 2.0, SOL_Y + 1.0, SOL_COTE / 2.0 + 5.0, 180f, 15f);
                 try {
@@ -254,7 +264,7 @@ public final class EssaiPorteur {
             }
             if (FILM && tournage == null) {
                 minecraft.options.setCameraType(CameraType.THIRD_PERSON_BACK);
-                minecraft.player.setXRot(18f);
+                minecraft.player.setXRot(28f);
                 tournage = new Tournage(minecraft.gameDirectory.toPath().resolve("axion-film").resolve("images"),
                         "AXION ENGINE, ADR-178");
             }
