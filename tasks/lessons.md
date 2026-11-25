@@ -2687,3 +2687,17 @@ l'endormait avant de le résoudre.
 **Règle.** Devant un test intermittent, **enrichir d'abord le message d'échec** de tout ce qui départage les hypothèses : la première
 occurrence suivante les a toutes écartées sauf une. Puis balayer en natif **chaque pas** au lieu d'échantillonner (tous les 10 ticks ne
 voyait rien ; le défaut tenait dans un seul pas sur 239).
+
+
+## 2026-11-25 | Le D5 « intermittent » du banc de rendu n'était pas du bruit : deux assemblies naissaient l'une dans l'autre
+
+**Observé.** ADR-158 D5 échouait de temps en temps sur GitHub (client à 0,068 à 0,093 bloc de la sortie), jamais en local ; noté
+« bruit de CI » le 2026-11-24. Les positions écrites à l'échec ont montré que le serveur avait lui-même le joueur ailleurs, 0,37 bloc
+plus bas, et que la caisse reposait penchée de 32°.
+
+**Cause.** La caisse à deux sièges (cinq blocs de large) était posée au bout de la rangée des assemblies de derrière la caméra, à 2
+blocs de la dernière : son cube gauche naissait dedans. La pose de repos changeait d'une exécution à l'autre ; penchée, elle recevait le
+joueur à sa sortie.
+
+**Règle.** Dans une scène de banc, calculer l'emprise de ce qu'on pose et la tenir hors de celle des voisins. Un test intermittent
+s'instrumente jusqu'à voir la scène (poses, orientations), il ne se classe pas « bruit ».

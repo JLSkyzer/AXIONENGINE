@@ -823,7 +823,10 @@ public final class BancDeRendu {
             // propres poses de corps. Un cochon assis au serveur doit être chez le client au même endroit. Hors de
             // vue, au bout de la rangée de DERRIERE.
             serveur("poser le siège et son passager", s -> {
-                Vec3 ou = new Vec3(1.5 + 2 * DERRIERE.size(), surface + 0.25, 6.5);
+                // La caisse fait cinq blocs de large : posée au bout de la rangée, son cube gauche naissait dans la dernière
+                // assembly de DERRIERE, et elle reposait penchée d'une façon qui changeait d'une exécution à l'autre —
+                // la sortie de D5 tombait alors sur elle, et le joueur y glissait de quelques centimètres.
+                Vec3 ou = new Vec3(1.5 + 2 * DERRIERE.size() + 3, surface + 0.25, 6.5);
                 ObservateursDeTest.declarer(s.overworld(), ou);
                 siege = AssembliesDeTest.poser(s.overworld(), SIEGE, ou, IDENTITE);
                 passager = net.minecraft.world.entity.EntityType.PIG.create(s.overworld());
@@ -2510,6 +2513,10 @@ public final class BancDeRendu {
     private static void jugerSortieClient(Minecraft minecraft) {
         double horizontal = Math.hypot(minecraft.player.getX() - sortieAttendue.x, minecraft.player.getZ() - sortieAttendue.z);
         boolean vert = passagerAssis && horizontal < 0.05;
+        dev.axion.seat.SeatPlacement.Pose assise = siege.seatPose(1);
+        // Le quaternion de la caisse au repos : (0, 0, 0, 1) à plat.
+        String repos = assise == null ? "?" : String.format(Locale.ROOT, "(%.3f, %.3f, %.3f, %.3f)", assise.rotation()[0],
+                assise.rotation()[1], assise.rotation()[2], assise.rotation()[3]);
         // Un écart qu'on ne reproduit pas en local (0,068 à 0,093 sur GitHub, 0,001 ici) se diagnostique par ses positions :
         // le joueur, la sortie attendue, le siège au serveur et chez le client, le joueur au serveur.
         String positions = "";
@@ -2532,7 +2539,8 @@ public final class BancDeRendu {
         }
         RAPPORT.noter("ADR-158 D5", vert, String.format(Locale.ROOT,
                 "joueur assis : %s ; descendu au sneak, son client est à %.3f bloc, à l'horizontale, de la sortie que le"
-                        + " serveur a choisie (au plus 0,05)%s", passagerAssis, horizontal, positions));
+                        + " serveur a choisie (au plus 0,05) ; orientation de la caisse %s%s", passagerAssis, horizontal,
+                repos, positions));
     }
 
     private static void jugerSiegeClient(Minecraft minecraft) {
