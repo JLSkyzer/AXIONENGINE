@@ -69,8 +69,9 @@ leur vitesse, leurs corps, leurs attaches et leurs occupants. Le journal dit cha
 - **Comment** : l'état est repris tel qu'une sauvegarde le garde, mené de la révision de l'assembly à celle de la
   definition par tes `migrations`, puis lu contre la definition nouvelle, **par nom**. Ce qui n'existe plus est dit au
   journal et perdu ; ce qui est nouveau part de sa pose de repos.
-- **Les occupants** : chacun garde le siège qui porte le même nom, même s'il a changé de rang. Ceux dont le siège est
-  supprimé prennent ensuite les premiers libres, sans déloger personne ; sans place, ils sont éjectés (`NO_SEAT`).
+- **Les occupants** : chacun garde le siège qui porte le même nom — ou celui que la migration lui donne —, même s'il a
+  changé de rang. Ceux dont le siège est supprimé prennent ensuite les premiers libres, sans déloger personne ; sans
+  place, ils sont éjectés (`NO_SEAT`).
 - **Le rythme** : `content.rebind_per_tick` (4 par défaut) assemblies par tick. Les autres vivent, jusqu'à leur tour,
   entièrement sur la definition d'avant — jamais sur un mélange des deux.
 - **Un tick sans corps** : le corps natif est retiré puis recréé au tick suivant ; l'assembly n'a pas bougé.

@@ -152,6 +152,21 @@ class AssemblyParametersTest {
     }
 
     @Test
+    @DisplayName("ADR-175 D3 : d'une definition à la suivante, un modificateur suit le nouveau nom de son paramètre")
+    void repriseRenommee() {
+        AssemblyParameters avant = new AssemblyParameters(tuning());
+        avant.restore(List.of(new Modifier("turbo:boost", "moteur.ancien", Operation.ADD, 25)), AssemblyParameters.SAVE);
+        AssemblyParameters apres = new AssemblyParameters(tuning());
+        int couple = apres.tuning().indexOf(Parameters.ENGINE_TORQUE);
+        double base = apres.value(couple);
+        List<String> lignes = apres.adopt(avant,
+                nom -> nom.equals("moteur.ancien") ? Parameters.ENGINE_TORQUE : nom);
+        assertEquals(List.of(), lignes);
+        assertEquals(base + 25, apres.value(couple));
+        assertEquals(Parameters.ENGINE_TORQUE, apres.modifiers().get(0).parameter());
+    }
+
+    @Test
     @DisplayName("D3 : au plus 64 modificateurs posés ; le suivant est refusé et nommé")
     void plafond() {
         AssemblyParameters parametres = new AssemblyParameters(tuning());

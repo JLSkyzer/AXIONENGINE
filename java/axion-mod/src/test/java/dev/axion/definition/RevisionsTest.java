@@ -60,6 +60,21 @@ class RevisionsTest {
     }
 
     @Test
+    @DisplayName("D3 : le successeur d'un nom — les renommages d'une migration à la fois, un nom écrasé disparaît")
+    void successeurs() {
+        Revisions revisions = Revisions.of(definition("\"revision\": 3, \"migrations\": ["
+                + "{\"from\": 1, \"rename\": {\"variables\": {\"gauche\": \"droite\", \"droite\": \"gauche\","
+                + " \"neuf\": \"vieux\"}}}, {\"from\": 2, \"rename\": {\"variables\": {\"vieux\": \"dernier\"}}}]"));
+        List<String> noms = List.of("gauche", "droite", "neuf", "vieux", "autre");
+        assertEquals(Map.of("gauche", "droite", "droite", "gauche", "neuf", "dernier", "autre", "autre"),
+                revisions.successors("variables", 1, noms), "« vieux », écrasé par « neuf », ne revient pas");
+        assertEquals(Map.of("gauche", "gauche", "droite", "droite", "neuf", "neuf", "vieux", "dernier", "autre", "autre"),
+                revisions.successors("variables", 2, noms));
+        assertEquals(Map.of("gauche", "gauche"), revisions.successors("variables", 3, List.of("gauche")));
+        assertEquals(Map.of("autre", "autre"), revisions.successors("seats", 1, List.of("autre")));
+    }
+
+    @Test
     @DisplayName("D3 : une migration part d'une révision antérieure, une seule par révision ; un nouveau nom est valide et unique")
     void coherence() throws DefinitionException {
         lire(definition("\"revision\": 3, \"migrations\": [{\"from\": 1, \"rename\": {\"nodes\": {\"a\": \"b\"}}},"

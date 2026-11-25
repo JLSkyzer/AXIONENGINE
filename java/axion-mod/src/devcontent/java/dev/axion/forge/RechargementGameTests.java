@@ -250,6 +250,99 @@ public final class RechargementGameTests {
                 .thenSucceed();
     }
 
+    /** Le siège de test avec des variables, révision 1. */
+    private static final String SIEGE_NOMME = """
+            {
+              "schema": 7,
+              "asset": "axion:models/test/siege.gltf",
+              "kind": "rigid_object",
+              "variables": { "phare": { "type": "int", "min": 0, "max": 10, "persist": true },
+                             "klaxon": { "type": "bool" } },
+              "seats": [ { "name": "conducteur", "node": "siege_g", "role": "driver" },
+                         { "name": "passager", "node": "siege_d" } ]
+            }
+            """;
+
+    /** La révision 2 : les deux variables et le siège passager changent de nom, par une migration. */
+    private static final String SIEGE_RENOMME = """
+            {
+              "schema": 7,
+              "asset": "axion:models/test/siege.gltf",
+              "kind": "rigid_object",
+              "revision": 2,
+              "migrations": [ { "from": 1, "rename": {
+                  "variables": { "phare": "feux", "klaxon": "trompe" }, "seats": { "passager": "copilote" } } } ],
+              "variables": { "feux": { "type": "int", "min": 0, "max": 10, "persist": true },
+                             "trompe": { "type": "bool" } },
+              "seats": [ { "name": "conducteur", "node": "siege_g", "role": "driver" },
+                         { "name": "copilote", "node": "siege_d" } ]
+            }
+            """;
+
+    private static AssetSource avecLeSiege(AssetSource courantes, String definition) {
+        return new AssetSource() {
+            @Override
+            public List<String> list() {
+                return courantes.list();
+            }
+
+            @Override
+            public byte[] read(String path) throws IOException {
+                return CHEMIN_SIEGE.equals(path) ? definition.getBytes(StandardCharsets.UTF_8) : courantes.read(path);
+            }
+        };
+    }
+
+    /**
+     * ADR-175 D3 et D5 : les renommages d'une migration valent aussi à chaud. L'assembly vivante reprend ses variables —
+     * gardées ou non — et le siège de son occupant sous leurs nouveaux noms, comme une sauvegarde relue.
+     */
+    @GameTest(template = "test/plancher", batch = "rechargement_noms", timeoutTicks = 400)
+    public static void adr175_AChaudLesVariablesEtLeSiegeSuiventLeursNouveauxNoms(GameTestHelper helper) {
+        AxionRuntime runtime = RuntimeAccess.get();
+        helper.assertTrue(runtime != null && runtime.outcome() != null, "AXION n'est pas chargé");
+        AssetSource courantes = RegisteredContent.source(ContentKind.DEFINITION);
+        runtime.onDefinitionReload(avecLeSiege(courantes, SIEGE_NOMME));
+        net.minecraft.server.level.ServerPlayer joueur = SiegesGameTests.joueur(helper, "renomme");
+        AxionEntity[] assembly = {null};
+        dev.axion.definition.HeldDefinition[] avant = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(AxionEntities.held("axion:test/siege")
+                        .filter(held -> held.definition().root().has("variables")).isPresent(),
+                        "la révision 1 est compilée"))
+                .thenExecute(() -> assembly[0] = AssembliesDeTest.poser(
+                        helper, "axion:test/siege", new Vec3(4.5, DESSUS_DALLE, 4.5), new float[] {0f, 0f, 0f, 1f}))
+                .thenWaitUntil(() -> helper.assertTrue(assembly[0].hasPhysicalBounds() && assembly[0].held() != null,
+                        "l'assembly est simulée, sa definition tenue"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly[0].sit(joueur, 1), "le joueur s'assoit au siège passager");
+                    dev.axion.entity.AssemblyVariables variables = assembly[0].variables();
+                    variables.set(variables.declared().indexOf("phare"), 7, "essai");
+                    variables.set(variables.declared().indexOf("klaxon"), 1, "essai");
+                    avant[0] = assembly[0].held();
+                    runtime.onDefinitionReload(avecLeSiege(courantes, SIEGE_RENOMME));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(
+                        assembly[0].held() != avant[0] && assembly[0].hasPhysicalBounds(), "l'assembly est reliée"))
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    dev.axion.entity.AssemblyVariables variables = assembly[0].variables();
+                    int feux = variables.declared().indexOf("feux");
+                    int trompe = variables.declared().indexOf("trompe");
+                    double[] lu = {feux < 0 ? -1 : variables.get(feux), trompe < 0 ? -1 : variables.get(trompe)};
+                    int siege = assembly[0].seatOf(joueur);
+                    joueur.stopRiding();
+                    assembly[0].discard();
+                    // Les autres tests retrouvent les definitions enregistrées.
+                    runtime.onDefinitionReload(courantes);
+                    helper.assertTrue(lu[0] == 7 && lu[1] == 1,
+                            "les variables suivent leur nom : feux " + lu[0] + ", trompe " + lu[1]);
+                    helper.assertTrue(siege == 1, "le passager reste à son siège, renommé « copilote » : " + siege);
+                })
+                .thenSucceed();
+    }
+
     /** Combien d'assemblies le test de coût relie d'un coup. */
     private static final int POUR_LE_COUT = 24;
 

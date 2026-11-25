@@ -557,7 +557,23 @@ public final class AssemblyParameters {
      * @return une ligne par modificateur inactif ou écarté, à journaliser
      */
     public List<String> adopt(AssemblyParameters previous) {
-        return restore(previous.modifiers(), previous.entries.stream().map(entry -> entry.origin).toList());
+        return adopt(previous, java.util.function.UnaryOperator.identity());
+    }
+
+    /**
+     * Comme {@link #adopt(AssemblyParameters)}, d'une definition à la suivante par ses migrations (ADR-175 D3) : chaque
+     * modificateur vise le paramètre sous son nom nouveau.
+     *
+     * @param previous la table d'avant
+     * @param renamed le nom nouveau d'un paramètre d'avant
+     * @return une ligne par modificateur inactif ou écarté, à journaliser
+     */
+    public List<String> adopt(AssemblyParameters previous, java.util.function.UnaryOperator<String> renamed) {
+        List<Modifier> carried = previous.modifiers().stream()
+                .map(modifier -> new Modifier(modifier.cause(), renamed.apply(modifier.parameter()),
+                        modifier.operation(), modifier.amount()))
+                .toList();
+        return restore(carried, previous.entries.stream().map(entry -> entry.origin).toList());
     }
 
     private List<String> restore(List<Modifier> modifiers, List<String> origins) {

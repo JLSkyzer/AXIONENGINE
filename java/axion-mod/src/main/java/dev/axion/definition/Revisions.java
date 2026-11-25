@@ -124,4 +124,30 @@ public record Revisions(int revision, List<Migration> migrations, List<String> r
         return migrations.stream().filter(migration -> migration.from() >= saved && migration.from() < revision)
                 .toList();
     }
+
+    /**
+     * {@return pour chaque nom d'une catégorie tenu à la révision {@code saved}, le nom qu'il porte à celle-ci} Les
+     * migrations s'enchaînent ; dans l'une, les renommages valent tous à la fois, et un nom resté tel qu'un autre vient
+     * prendre disparaît : il n'a pas d'entrée. C'est ce qu'une migration fait aux clés d'un état sauvegardé.
+     *
+     * @param kind une catégorie de {@link #KINDS}
+     * @param saved la révision que les noms avaient
+     * @param names les noms tenus
+     */
+    public Map<String, String> successors(String kind, int saved, java.util.Collection<String> names) {
+        Map<String, String> current = new LinkedHashMap<>();
+        names.forEach(name -> current.put(name, name));
+        for (Migration step : chain(saved)) {
+            Map<String, String> table = step.of(kind);
+            java.util.Set<String> taken = new java.util.HashSet<>();
+            current.values().forEach(name -> {
+                if (table.containsKey(name)) {
+                    taken.add(table.get(name));
+                }
+            });
+            current.values().removeIf(name -> !table.containsKey(name) && taken.contains(name));
+            current.replaceAll((first, name) -> table.getOrDefault(name, name));
+        }
+        return current;
+    }
 }

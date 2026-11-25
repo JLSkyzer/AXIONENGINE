@@ -517,17 +517,33 @@ public final class AssemblyVariables {
      * @return les valeurs refusées, à journaliser
      */
     public List<String> adopt(AssemblyVariables previous) {
+        return adopt(previous, same(previous.names()), same(previous.seats));
+    }
+
+    /**
+     * Comme {@link #adopt(AssemblyVariables)}, d'une definition à la suivante par ses migrations (ADR-175 D3) : chaque
+     * variable et chaque siège d'avant se cherche sous le nom que {@code Revisions.successors} lui donne.
+     *
+     * @param previous la table d'avant
+     * @param variableNames pour chaque variable d'avant, son nom nouveau ; sans entrée, elle n'est pas reprise
+     * @param seatNames pour chaque siège d'avant, son nom nouveau ; sans entrée, sa case n'est pas reprise
+     * @return les valeurs refusées, à journaliser
+     */
+    public List<String> adopt(AssemblyVariables previous, Map<String, String> variableNames,
+            Map<String, String> seatNames) {
         List<String> refusals = new ArrayList<>();
         for (int old = 0; old < previous.size(); old++) {
             Variables.Variable before = previous.declared.get(old);
-            int index = declared.indexOf(before.name());
+            String name = variableNames.get(before.name());
+            int index = name == null ? -1 : declared.indexOf(name);
             if (index < 0 || before.perSeat() != declared.get(index).perSeat()) {
                 continue;
             }
             for (int slot = previous.base[old]; slot < previous.end(old); slot++) {
                 int target = base[index];
                 if (before.perSeat()) {
-                    int seat = seats.indexOf(previous.seats.get(slot - previous.base[old]));
+                    String seatName = seatNames.get(previous.seats.get(slot - previous.base[old]));
+                    int seat = seatName == null ? -1 : seats.indexOf(seatName);
                     if (seat < 0) {
                         continue;
                     }
@@ -542,6 +558,21 @@ public final class AssemblyVariables {
             }
         }
         return refusals;
+    }
+
+    /** {@return le nom de chaque variable déclarée, dans l'ordre de la definition} */
+    public List<String> names() {
+        List<String> names = new ArrayList<>(declared.size());
+        for (int i = 0; i < declared.size(); i++) {
+            names.add(declared.get(i).name());
+        }
+        return names;
+    }
+
+    private static Map<String, String> same(List<String> names) {
+        Map<String, String> same = new LinkedHashMap<>();
+        names.forEach(name -> same.put(name, name));
+        return same;
     }
 
     /**

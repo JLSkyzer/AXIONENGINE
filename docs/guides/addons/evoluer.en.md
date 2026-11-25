@@ -68,8 +68,9 @@ attachments and occupants. The log reports each rebind.
 - **How**: the state is taken as a save keeps it, carried from the assembly's revision to the definition's by your
   `migrations`, then read against the new definition, **by name**. What no longer exists is reported in the log and
   lost; what is new starts from its rest pose.
-- **Occupants**: each keeps the seat carrying the same name, even if its rank changed. Those whose seat was removed
-  then take the first free ones, without displacing anyone; with no room, they are ejected (`NO_SEAT`).
+- **Occupants**: each keeps the seat carrying the same name — or the one the migration gives it —, even if its rank
+  changed. Those whose seat was removed then take the first free ones, without displacing anyone; with no room, they
+  are ejected (`NO_SEAT`).
 - **Pace**: `content.rebind_per_tick` (4 by default) assemblies per tick. The others live, until their turn, entirely on
   the previous definition — never on a mix of both.
 - **One tick without a body**: the native body is removed then recreated on the next tick; the assembly has not moved.

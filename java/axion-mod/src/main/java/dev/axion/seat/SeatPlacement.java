@@ -102,8 +102,11 @@ public final class SeatPlacement {
      * @param old les sièges de la definition d'avant
      * @param fresh ceux de la nouvelle
      * @param occupants l'occupant de chaque ancien siège, {@link SeatOccupancy#FREE} ou {@link SeatOccupancy#LOST} sans
+     * @param names pour chaque ancien siège, le nom qu'il porte dans la definition nouvelle (ADR-175 D3) ; sans entrée,
+     *     il n'y existe plus
      */
-    public static SeatOccupancy remap(Seating old, Seating fresh, int[] occupants) {
+    public static SeatOccupancy remap(Seating old, Seating fresh, int[] occupants,
+            java.util.Map<String, String> names) {
         SeatOccupancy next = new SeatOccupancy(fresh.seats().size());
         int ranks = Math.min(occupants.length, old.seats().size());
         List<Integer> displaced = new ArrayList<>();
@@ -112,7 +115,7 @@ public final class SeatPlacement {
             if (occupant == SeatOccupancy.FREE || occupant == SeatOccupancy.LOST) {
                 continue;
             }
-            int seat = named(fresh, next, old.seats().get(rank).name());
+            int seat = named(fresh, next, names.get(old.seats().get(rank).name()));
             if (seat != SeatOccupancy.FREE) {
                 next.sit(occupant, seat);
             } else {

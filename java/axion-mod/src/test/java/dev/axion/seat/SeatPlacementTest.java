@@ -87,22 +87,38 @@ class SeatPlacementTest {
     void reliureParNom() {
         Seating avant = nommes("conducteur", "passager", "tireur");
         Seating apres = nommes("passager", "tireur", "arriere");
-        SeatOccupancy table = SeatPlacement.remap(avant, apres, new int[] {10, 20, SeatOccupancy.FREE});
+        SeatOccupancy table = SeatPlacement.remap(avant, apres, new int[] {10, 20, SeatOccupancy.FREE}, memes(avant));
         assertEquals(20, table.occupant(0), "« passager » garde son siège");
         assertEquals(10, table.occupant(1), "« conducteur » disparu : le premier libre");
         assertEquals(SeatOccupancy.FREE, table.occupant(2));
 
         // Un siège de trop : celui dont le siège n'existe plus reste debout, les autres gardent le leur.
-        SeatOccupancy court = SeatPlacement.remap(avant, nommes("tireur", "passager"), new int[] {10, 20, 30});
+        SeatOccupancy court = SeatPlacement.remap(avant, nommes("tireur", "passager"), new int[] {10, 20, 30},
+                memes(avant));
         assertEquals(30, court.occupant(0));
         assertEquals(20, court.occupant(1));
         assertEquals(SeatOccupancy.FREE, court.seatOf(10), "plus de place");
 
         // Un siège libre ou perdu n'a personne à déplacer.
         SeatOccupancy vide = SeatPlacement.remap(avant, apres,
-                new int[] {SeatOccupancy.LOST, SeatOccupancy.FREE, 30});
+                new int[] {SeatOccupancy.LOST, SeatOccupancy.FREE, 30}, memes(avant));
         assertEquals(30, vide.occupant(1));
         assertEquals(SeatOccupancy.FREE, vide.occupant(0));
+    }
+
+    @Test
+    @DisplayName("ADR-175 D3 : un siège renommé par la migration garde son occupant")
+    void reliureSiegeRenomme() {
+        SeatOccupancy table = SeatPlacement.remap(nommes("conducteur", "passager"), nommes("conducteur", "copilote"),
+                new int[] {SeatOccupancy.FREE, 20}, java.util.Map.of("conducteur", "conducteur", "passager", "copilote"));
+        assertEquals(20, table.occupant(1));
+        assertEquals(SeatOccupancy.FREE, table.occupant(0));
+    }
+
+    private static java.util.Map<String, String> memes(Seating sieges) {
+        java.util.Map<String, String> memes = new java.util.HashMap<>();
+        sieges.seats().forEach(siege -> memes.put(siege.name(), siege.name()));
+        return memes;
     }
 
     private static Seating nommes(String... noms) {

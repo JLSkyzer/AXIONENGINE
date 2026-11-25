@@ -548,30 +548,38 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         AuthoritativeThread.require();
         Seating old = seating();
         int[] seated = old == null ? new int[0] : entityData.get(SEATS).getIntArray(SEATS_KEY).clone();
+        int from = definitionRevision();
         CompoundTag snapshot = new CompoundTag();
         addAdditionalSaveData(snapshot);
+        // ADR-175 D3 : ce que l'instance garde vivant — variables, modificateurs — suit les mêmes renommages que le NBT.
+        reboundFrom = from;
         held = null;
         nodesRestored = false;
         // ADR-178 : les poses gardées pour porter sont celles de la definition d'avant.
         carryHistory.clear();
         readAdditionalSaveData(snapshot);
         Seating fresh = seating();
+        variables();
+        parameters();
         if (old != null && fresh != null) {
-            remapSeats(old, fresh, seated);
+            remapSeats(old, fresh, seated, from);
         }
+        reboundFrom = NOT_REBOUND;
     }
 
     /**
      * Les occupants gardent leur siège par nom à la reliure (ADR-175 D5) : ceux dont la definition ne déclare plus le
      * siège prennent ensuite les premiers libres ; sans place, ils sont éjectés ({@link SeatEjection.Cause#NO_SEAT}).
      */
-    private void remapSeats(Seating old, Seating fresh, int[] seated) {
+    private void remapSeats(Seating old, Seating fresh, int[] seated, int from) {
         java.util.Map<Integer, Entity> riders = new java.util.HashMap<>();
         getPassengers().forEach(passenger -> riders.put(passenger.getId(), passenger));
         // Une entrée sans passager (parti entre-temps) ne réserve aucun siège.
         int[] present = java.util.Arrays.stream(seated)
                 .map(id -> riders.containsKey(id) ? id : SeatOccupancy.FREE).toArray();
-        SeatOccupancy next = SeatPlacement.remap(old, fresh, present);
+        Map<String, String> names = revisions().successors("seats", from,
+                old.seats().stream().map(Seating.Seat::name).toList());
+        SeatOccupancy next = SeatPlacement.remap(old, fresh, present, names);
         List<Entity> lost = new ArrayList<>();
         for (int rank = 0; rank < present.length && rank < old.seats().size(); rank++) {
             Entity passenger = riders.get(present[rank]);
@@ -582,7 +590,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             int seat = next.seatOf(passenger.getId());
             if (seat == SeatOccupancy.FREE) {
                 lost.add(passenger);
-            } else if (!fresh.seats().get(seat).name().equals(name)) {
+                continue;
+            }
+            // Le nom que le joueur garde pour son retour est désormais celui de ce siège.
+            remember(passenger, fresh.seats().get(seat));
+            if (!fresh.seats().get(seat).name().equals(names.get(name))) {
                 LOGGER.info("AXION : assembly {}, reliure : le siège « {} » de {} n'existe plus ou est pris ; il est assis"
                         + " au siège « {} »", getUUID(), name, passenger.getName().getString(),
                         fresh.seats().get(seat).name());
@@ -611,6 +623,23 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /** {@return le document de la definition : celui que l'instance tient, sinon celui du registre, {@code null} : inerte} */
+    /** {@return la révision et les migrations de la definition que l'instance lit} */
+    private dev.axion.definition.Revisions revisions() {
+        Definition bound = document();
+        return bound == null ? dev.axion.definition.Revisions.NONE : dev.axion.definition.Revisions.of(bound.root());
+    }
+
+    /** {@return le nom d'un paramètre d'avant la reliure en cours, mené par les migrations ; inchangé hors d'elle} */
+    private String renamedParameter(String name) {
+        if (reboundFrom == NOT_REBOUND) {
+            return name;
+        }
+        for (dev.axion.definition.Revisions.Migration step : revisions().chain(reboundFrom)) {
+            name = step.of("parameters").getOrDefault(name, name);
+        }
+        return name;
+    }
+
     private Definition document() {
         dev.axion.definition.HeldDefinition tenue = held();
         return tenue != null ? tenue.definition() : inert ? null : AxionEntities.definitions().get(definitionId).orElse(null);
@@ -855,6 +884,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     private dev.axion.net.NodeStates nodeStates = dev.axion.net.NodeStates.NONE;
     /** Vrai une fois l'état gardé par nom relu contre la definition compilée (serveur). */
     private boolean nodesRestored;
+    /** La révision d'avant, le temps d'une reliure à chaud ({@link #rebind}) ; {@link #NOT_REBOUND} hors d'elle. */
+    private static final int NOT_REBOUND = -1;
+    private int reboundFrom = NOT_REBOUND;
 
     /**
      * {@return l'état des nodes que les actions de l'assembly ont changé (ADR-174 D3)} Au serveur, l'état que son NBT
@@ -1328,7 +1360,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             AssemblyVariables fresh = new AssemblyVariables(seating.variables(),
                     seating.seats().stream().map(Seating.Seat::name).toList());
             List<String> refusals = new ArrayList<>();
-            if (variables != null) {
+            if (variables != null && reboundFrom != NOT_REBOUND) {
+                refusals.addAll(fresh.adopt(variables,
+                        revisions().successors("variables", reboundFrom, variables.names()),
+                        revisions().successors("seats", reboundFrom, variables.seats())));
+            } else if (variables != null) {
                 refusals.addAll(fresh.adopt(variables));
             } else {
                 refusals.addAll(fresh.restore(AssemblyTags.variables(stored)));
@@ -1394,7 +1430,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             variedBy = held;
             variedVersion = held == null ? -1L : held.version();
             List<String> lines = parameters != null
-                    ? fresh.adopt(parameters)
+                    ? fresh.adopt(parameters, this::renamedParameter)
                     : fresh.restore(AssemblyTags.parameters(stored), dev.axion.entity.AssemblyParameters.SAVE);
             for (String line : lines) {
                 LOGGER.warn("AXION : E-7011 assembly {} — {}", getUUID(), line);
