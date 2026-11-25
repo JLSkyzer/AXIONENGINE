@@ -17,6 +17,9 @@ R-450, précision 6c d'ADR-168) : d'où deux processus, et une campagne hors de 
 Avec --recharge, le serveur recharge les definitions pendant la conduite — le véhicule remplacé par un autre, deux fois
 plus lourd — et le client juge ce qu'il en suit (verdict RECHARGE, ADR-175 D5).
 
+Avec --sol-mixte, les roues gauches passent un tronçon sur deux sur de la glace (ADR-180) : les verdicts T-415 et T-416
+valent sur ce sol, et le rapport dit les sections à plusieurs matériaux que le client coupe.
+
 Usage : python tools/campagne/prediction.py [--reglage LATENCE:GIGUE ...]   (JAVA_HOME doit désigner un JDK 17)
 Défaut : 100 ms par sens et 20 ms de gigue (un aller-retour de 200 ms au moins, celui de T-413), puis 50:20.
 Le véhicule est celui de l'essai, `axion:test/vehicule`, sauf `AXION_ESSAI_VEHICULE` dans l'environnement.
@@ -56,11 +59,12 @@ def arreter(processus: subprocess.Popen) -> None:
     processus.wait(timeout=60)
 
 
-def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False) -> dict[str, str]:
+def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
+          sol_mixte: bool = False) -> dict[str, str]:
     """Joue un essai à deux processus ; rend le verdict de chaque test, ou lève RuntimeError."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     vehicule = os.environ.get("AXION_ESSAI_VEHICULE", "axion:test/vehicule").rsplit("/", 1)[-1]
-    nom = f"{vehicule}-{latence}-{gigue}"
+    nom = f"{vehicule}-{latence}-{gigue}" + ("-mixte" if sol_mixte else "")
     for fichier in (JOURNAL_SERVEUR, RAPPORT):
         fichier.unlink(missing_ok=True)
     # Les défauts du dépôt, pas une configuration générée par un lancement d'avant : un budget de rejeu de 2 ms, resté
@@ -72,6 +76,9 @@ def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False) 
     environnement.pop("AXION_ESSAI_RECHARGE", None)
     if recharge:
         environnement["AXION_ESSAI_RECHARGE"] = "1"
+    environnement.pop("AXION_ESSAI_SOL_MIXTE", None)
+    if sol_mixte:
+        environnement["AXION_ESSAI_SOL_MIXTE"] = "1"
     if film:
         # Le serveur d'un essai filmé met le temps au clair ; le client filme (Tournage, tools/film/encoder.py).
         environnement["AXION_ESSAI_FILM"] = "1"
@@ -126,13 +133,15 @@ def main() -> int:
                         help="filmer l'essai : le client tourne, tools/film/encoder.py fait le MP4")
     parser.add_argument("--recharge", action="store_true",
                         help="recharger les definitions pendant la conduite (ADR-175 D5) ; seul le verdict RECHARGE compte")
+    parser.add_argument("--sol-mixte", action="store_true",
+                        help="roues gauches sur la glace un tronçon sur deux (ADR-180)")
     arguments = parser.parse_args()
     reglages = [tuple(int(x) for x in r.split(":")) for r in (arguments.reglage or ["100:20", "50:20"])]
     echecs = 0
     for latence, gigue in reglages:
         print(f"--- {latence} ms par sens, gigue de 0 à {gigue} ms", flush=True)
         try:
-            verdicts = essai(latence, gigue, arguments.film, arguments.recharge)
+            verdicts = essai(latence, gigue, arguments.film, arguments.recharge, arguments.sol_mixte)
         except RuntimeError as faute:
             print(f"ÉCHEC : {faute}")
             echecs += 1

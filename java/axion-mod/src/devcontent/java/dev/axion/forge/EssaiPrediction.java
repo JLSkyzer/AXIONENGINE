@@ -102,6 +102,13 @@ public final class EssaiPrediction {
     private static final boolean REMORQUE = "1".equals(System.getenv("AXION_ESSAI_REMORQUE"));
 
     /**
+     * ADR-180, l'essai à deux processus sur un sol à deux matériaux : sous {@code AXION_ESSAI_SOL_MIXTE=1}, la moitié
+     * gauche de la piste est en glace tassée un tronçon de huit blocs sur deux ; les roues gauches y passent, les droites
+     * restent sur la pierre. Le rapport dit combien de sections de la piste le client coupe à plusieurs matériaux.
+     */
+    private static final boolean SOL_MIXTE = "1".equals(System.getenv("AXION_ESSAI_SOL_MIXTE"));
+
+    /**
      * ADR-175 D5, ADR-168 : sous {@code AXION_ESSAI_RECHARGE=1}, le serveur recharge les definitions pendant que le
      * client conduit — la sienne, remplacée par {@link #REMPLACEE} deux fois plus lourde ; le client, sous
      * {@code -Daxion.essai.recharge}, juge ce qu'il en suit (verdict {@code RECHARGE}).
@@ -241,7 +248,9 @@ public final class EssaiPrediction {
                 conducteur = serveur.getPlayerList().getPlayers().get(0);
                 for (int x = 0; x < 16; x++) {
                     for (int z = 0; z < SOL_LONGUEUR; z++) {
-                        monde.setBlockAndUpdate(new BlockPos(x, SOL_Y, z), Blocks.STONE.defaultBlockState());
+                        boolean glace = SOL_MIXTE && x < 8 && Math.floorMod(Math.floorDiv(z, 8), 2) == 1;
+                        monde.setBlockAndUpdate(new BlockPos(x, SOL_Y, z),
+                                (glace ? Blocks.PACKED_ICE : Blocks.STONE).defaultBlockState());
                     }
                 }
                 conducteur.teleportTo(monde, 8.0, SOL_Y + 1.0, SOL_LONGUEUR - 4.0, 180f, 0f);
@@ -973,6 +982,7 @@ public final class EssaiPrediction {
                     ensemble[3]));
             rapport.add("proxies posés au plus : " + proxiesAssemblies + " assembly(s), " + proxiesEntites
                     + " entité(s) vanilla");
+            rapport.add(solVuAuClient(minecraft));
             rapport.addAll(banc());
             Path dossier = minecraft.gameDirectory.toPath();
             try {
@@ -996,6 +1006,29 @@ public final class EssaiPrediction {
             }
             fermerRelais();
             minecraft.stop();
+        }
+
+        /** {@return combien de sections de la piste le client coupe à plusieurs matériaux, par ses correspondances} */
+        private static String solVuAuClient(Minecraft minecraft) {
+            if (minecraft.level == null) {
+                return "sol au client : monde fermé";
+            }
+            dev.axion.lifecycle.AxionRuntime runtime = RuntimeAccess.get();
+            long dimension = dev.axion.world.DimensionId.of(minecraft.level.dimension().location().toString());
+            ForgeWorldCollisionSource source = new ForgeWorldCollisionSource(
+                    id -> id == dimension ? minecraft.level : null, runtime::blockMaterials,
+                    runtime::physicsMaterialIndex);
+            int melangees = 0;
+            int sections = 0;
+            for (int z = 0; z < SOL_LONGUEUR; z += 16) {
+                var forme = source.tileOf(dimension, 0, SOL_Y >> 4, z >> 4).collision();
+                sections++;
+                if (forme instanceof dev.axion.world.WorldCollisionSource.CollisionShape.Boxes boites
+                        && boites.palette().length > 0) {
+                    melangees++;
+                }
+            }
+            return "sol au client : " + melangees + " section(s) de la piste à plusieurs matériaux sur " + sections;
         }
 
         /**
