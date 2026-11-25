@@ -3924,8 +3924,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  défaut trouvé et corrigé : les chocs des paires à plusieurs variétés valaient zéro (ADR-149).
            - [x] 14e (2026-11-25) — essai à deux processus sur un sol à deux matériaux (`prediction.py --sol-mixte`) ;
                  grille D7 d'ADR-180 écrite.
-           - [ ] Grille d'ADR-180, ouverts : test combiné mouillé/usure sur cellules ; matériau sous la roue à l'API et à
-                 l'écran (ABI, donc ADR — question à Killian) ; constructeur Java de correspondances ; coût.
+           - [ ] Grille d'ADR-180, ouverts : matériau sous la roue à l'API et à l'écran (ABI, donc ADR — question à
+                 Killian) ; constructeur Java de correspondances ; coût. Test combiné mouillé/usure fait le 2026-11-25.
            - [ ] Coût du sol : profiler la construction des tuiles et le surplus de colliders du monde plat, puis réduire
                  (question posée à Killian le 2026-11-25).
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,

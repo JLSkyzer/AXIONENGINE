@@ -867,6 +867,16 @@ fn freiner(desc: VehicleDesc, friction: f32) -> (f32, f32) {
 /// Une berline sur un champ de hauteurs plat à deux cellules, l'une à gauche de l'autre, d'adhérences `gauche` et
 /// `droite`, freinée à fond depuis 20 m/s pendant une seconde : son cap, positif à gauche.
 fn cap_apres_freinage_sur_deux_sols(gauche: f32, droite: f32) -> f32 {
+    cap_apres_freinage(contact(gauche), contact(droite), 0.0, 0.0)
+}
+
+/// Le même essai avec les matériaux des deux cellules, sur une route mouillée de `mouille`, les pneus usés de `usure`.
+fn cap_apres_freinage(
+    gauche: ContactMaterial,
+    droite: ContactMaterial,
+    mouille: f32,
+    usure: f32,
+) -> f32 {
     let mut world = monde();
     let sol = world
         .add_assembly(
@@ -887,7 +897,7 @@ fn cap_apres_freinage_sur_deux_sols(gauche: f32, droite: f32) -> f32 {
             }],
         )
         .expect("champ");
-    let cellules = CellMaterials::new(2, [80.0, 800.0], vec![contact(gauche), contact(droite)]);
+    let cellules = CellMaterials::new(2, [80.0, 800.0], vec![gauche, droite]);
     world.set_cell_materials(sol, cellules.expect("cellules"));
     let v = poser(
         &mut world,
@@ -898,6 +908,10 @@ fn cap_apres_freinage_sur_deux_sols(gauche: f32, droite: f32) -> f32 {
     );
     conduire(&mut world, VehicleInput::NONE);
     avancer(&mut world, 0.5);
+    assert!(world.set_vehicle_wet(ASSEMBLY, mouille));
+    for roue in 0..QUATRE.len() {
+        assert!(world.set_wheel_wear(ASSEMBLY, roue, usure));
+    }
     world.apply_impulse(v, Vec3::NEG_Z * MASSE * 20.0, Vec3::ZERO, false);
     world.advance(TICK);
     conduire(&mut world, entree(0.0, 1.0, 0.0));
@@ -914,6 +928,24 @@ fn adr180_la_roue_lit_le_materiau_de_la_cellule_qu_elle_touche() {
     assert!(egal.abs() < 0.02, "sol égal : {egal} rad");
     assert!(droite < -0.1, "adhérent à droite : {droite} rad");
     assert!(gauche > 0.1, "adhérent à gauche : {gauche} rad");
+}
+
+#[test]
+fn adr180_le_mouille_et_l_usure_s_appliquent_au_materiau_de_la_cellule() {
+    // Même adhérence au sec des deux côtés ; mouillée, la cellule de gauche n'en garde qu'un cinquième.
+    let glissante = ContactMaterial {
+        wet: 0.2,
+        ..contact(1.0)
+    };
+    let sec = cap_apres_freinage(glissante, contact(1.0), 0.0, 0.0);
+    let mouille = cap_apres_freinage(glissante, contact(1.0), 1.0, 0.0);
+    let use_et_mouille = cap_apres_freinage(glissante, contact(1.0), 1.0, 1.0);
+    assert!(sec.abs() < 0.02, "au sec : {sec} rad");
+    assert!(mouille < -0.1, "mouillé, adhérent à droite : {mouille} rad");
+    assert!(
+        use_et_mouille < -0.1,
+        "mouillé et usé, adhérent à droite : {use_et_mouille} rad"
+    );
 }
 
 #[test]
