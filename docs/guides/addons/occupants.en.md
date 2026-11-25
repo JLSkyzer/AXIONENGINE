@@ -62,11 +62,14 @@ writes `joueur_large.glb` (4-pixel arms) and `joueur_fin.glb` (3-pixel arms) int
   (`hat`, `jacket`, `right_sleeve`, `left_sleeve`, `right_pants`, `left_pants`).
 - **Three poses**, one single-frame clip each: `stand`, `sneak` and `sit` (the mount pose). They come from the game's `setupAnim`, not
   from a drawing.
-- **Put on a seat**: parent the mannequin's root node to your model's `SEAT` node, with a null transform, and play the `sit` clip. The
-  origin of the player's entity is then **0.35 m below the node** — Minecraft's mount offset —, where the server puts it. It looks
-  towards `-Z`, AXION's front.
-- **To match the model and the player**: put the mannequin on the seat and scale the model (first convention), or multiply the
-  mannequin's scale by your `scale` (second convention) and read on it where the head and the eye fall.
+- **Put on a seat**: parent the mannequin's root node (`joueur_large` or `joueur_fin`) to your model's `SEAT` node **without
+  touching its position, rotation or scale**: they now read in the seat's frame (in Blender, after `Ctrl+P`, use `Alt+P` ›
+  *Clear Parent Inverse*). Play the `sit` clip. The origin of the player's entity is then **0.35 m below the node** — Minecraft's mount
+  offset —, where the server puts it. It looks towards `-Z`, AXION's front.
+- **To match the model and the player**: put the mannequin on the seat and scale the model (first convention). For the second one,
+  insert an empty node between the two: child of the `SEAT`, with no offset or rotation, scaled by your `scale`, and parent of the
+  mannequin's root; then read on it where the head and the eye fall. **Do not scale the root itself**: in the `sit` pose its origin is
+  1.06 m above the seat, and the mannequin would grow around that point, not around the seat as in the game.
 - **Its texture** is neutral, in a skin's layout (64 × 64), tinted by part so you can find your way: no Mojang texture.
 - **It never diverges from the game**: `./gradlew genMannequin` writes it from the game's model, and the render bench compares every
   vertex of both files, in the three poses, with what the game draws (1 mm), then the seated player with the origin that the seated

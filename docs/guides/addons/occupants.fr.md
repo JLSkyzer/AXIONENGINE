@@ -62,11 +62,14 @@ axion-cli mannequin mannequin
   (`hat`, `jacket`, `right_sleeve`, `left_sleeve`, `right_pants`, `left_pants`).
 - **Trois poses**, un clip d'une image chacun : `stand` (debout), `sneak` (accroupi) et `sit` (assis, la pose de monture). Elles viennent du
   `setupAnim` du jeu, pas d'un dessin.
-- **Posé sur un siège** : donne pour parent au nœud racine du mannequin le node `SEAT` de ton modèle, transformation nulle, et joue le
-  clip `sit`. L'origine de l'entité du joueur est alors **sous le node de 0,35 m** — le décalage de monture de Minecraft —, là où le
-  serveur le met. Il regarde vers `-Z`, l'avant d'AXION.
-- **Pour accorder le modèle et le joueur** : mets le mannequin sur le siège et agrandis le modèle (première convention), ou multiplie
-  l'échelle du mannequin par ton `scale` (seconde convention) et lis sur lui où tombent la tête et l'œil.
+- **Posé sur un siège** : donne pour parent au nœud racine du mannequin (`joueur_large` ou `joueur_fin`) le node `SEAT` de ton
+  modèle, **sans toucher à sa position, sa rotation ni son échelle** : elles se lisent désormais dans le repère du siège (dans Blender,
+  après `Ctrl+P`, fais `Alt+P` › *Clear Parent Inverse*). Joue le clip `sit`. L'origine de l'entité du joueur est alors **sous le node de
+  0,35 m** — le décalage de monture de Minecraft —, là où le serveur le met. Il regarde vers `-Z`, l'avant d'AXION.
+- **Pour accorder le modèle et le joueur** : mets le mannequin sur le siège et agrandis le modèle (première convention). Pour la
+  seconde, intercale un node vide entre les deux : enfant du `SEAT`, à position et rotation nulles, d'échelle ton `scale`, et parent de la
+  racine du mannequin ; lis alors sur lui où tombent la tête et l'œil. **Ne change pas l'échelle de la racine elle-même** : en pose `sit`,
+  son origine est 1,06 m au-dessus du siège, et le mannequin grandirait autour de ce point, pas autour du siège comme dans le jeu.
 - **Sa texture** est neutre, au format d'un skin (64 × 64), teintée par partie pour qu'on s'y repère : aucune texture de Mojang.
 - **Il ne diverge jamais du jeu** : `./gradlew genMannequin` l'écrit depuis le modèle du jeu, et le banc de rendu compare chaque sommet des
   deux fichiers, aux trois poses, à celui que le jeu dessine (1 mm), puis le joueur assis à l'origine que le mannequin assis pose sous le
