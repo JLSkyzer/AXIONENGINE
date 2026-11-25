@@ -23,7 +23,8 @@ import net.minecraftforge.fml.common.Mod;
  *
  * <p><b>Les joueurs.</b> Un joueur envoie ses positions : le serveur ne les calcule pas, il les <b>juge</b>. Son client le porte à la
  * pose qu'il <b>dessine</b>, en retard de son aller-retour et du délai d'interpolation ; le serveur cherche donc le support dans les
- * poses qu'il a gardées (la dernière seconde), à partir du retard estimé, par une sonde sous ses pieds de
+ * poses qu'il a gardées (la dernière seconde), à partir du retard estimé — l'aller-retour mesuré sur les snapshots acquittés, la
+ * latence de vanilla avant le premier —, par une sonde sous ses pieds de
  * {@code net.carry_tolerance}. Trouvé, le déplacement du support à ce retard entre dans la position du joueur <b>et</b> dans les
  * références de vanilla ({@code firstGood}, {@code lastGood}), si bien que le mouvement que le joueur annonce ensuite se lit comme le
  * sien ; sa collision se juge contre l'assembly à la même pose ; et il n'est pas compté comme volant. Sans support, rien ne change :
@@ -31,6 +32,9 @@ import net.minecraftforge.fml.common.Mod;
  *
  * <p><b>Les autres entités</b>, que le serveur déplace lui-même : leur support vient de leur collision (D2), et leur déplacement
  * suit la pose du tick, au plus {@code physics.carry_max_entities} par assembly.
+ *
+ * <p>Dans les deux cas, la place de l'entité dans le corps se retient : la physique voit une entité portée <b>là où elle est sur
+ * son support aujourd'hui</b> ({@link EntityPresenceBridge#candidateOf}), d'où l'ordre : avant le pas de la simulation.
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ServerCarry {
@@ -46,8 +50,8 @@ public final class ServerCarry {
 
     private ServerCarry() {}
 
-    /** @param event la fin d'un tick du serveur */
-    @SubscribeEvent(priority = EventPriority.LOWEST)
+    /** @param event la fin d'un tick du serveur ; avant le pas de la simulation, qui est au dernier rang */
+    @SubscribeEvent(priority = EventPriority.LOW)
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || AssemblyIndex.total() == 0) {
             return;
@@ -77,17 +81,20 @@ public final class ServerCarry {
 
     /** Un joueur : son support se cherche dans les poses gardées, puis il est porté et ses références suivent. */
     private static void carryPlayer(ServerPlayer player, List<AxionEntity> assemblies) {
-        if (player.isSpectator() || player.isPassenger() || player.noPhysics || !player.isAlive() || !player.onGround()
-                || player.connection == null) {
+        // « Au sol » n'est pas demandé : à chaque tick, vanilla fait bouger le joueur dans sa propre simulation puis le remet
+        // (doTick), contre la pose du moment tant qu'il n'a pas de support — l'exiger le perdait pour de bon à grande vitesse.
+        // La sonde fait foi.
+        if (player.isSpectator() || player.isPassenger() || player.noPhysics || !player.isAlive()
+                || player.getAbilities().flying || player.isFallFlying() || player.connection == null) {
             CarrySupports.clear(player);
             return;
         }
         double tolerance = AxionEntities.carryTolerance();
-        int estimate = (int) Math.round((player.latency + AxionEntities.interpolationDelayMillis()) / TICK_MILLIS);
-        CarrySupports.Support held = CarrySupports.of(player);
-        if (held != null && held.lag() >= 0) {
-            estimate = held.lag();
-        }
+        // La latence de vanilla se mesure toutes les quinze secondes, et vaut zéro à la connexion : l'aller-retour des
+        // snapshots d'AXION, lui, se mesure à chaque acquittement. Un retard trouvé n'est jamais gardé contre la mesure.
+        double measured = dev.axion.forge.net.AxionNetwork.roundTripTicks(player.getUUID());
+        double roundTrip = measured >= 0.0 ? measured : player.latency / TICK_MILLIS;
+        int estimate = (int) Math.round(roundTrip + AxionEntities.interpolationDelayMillis() / TICK_MILLIS);
         AABB box = player.getBoundingBox();
         List<AxionEntity> near = new ArrayList<>(assemblies.size());
         for (AxionEntity assembly : assemblies) {
@@ -128,6 +135,7 @@ public final class ServerCarry {
         double dy = world[1] - player.getY();
         double dz = world[2] - player.getZ();
         player.setPos(world[0], world[1], world[2]);
+        keep(player, BodyFrame.toLocal(now, body, world[0], world[1], world[2]));
         player.connection.firstGoodX += dx;
         player.connection.firstGoodY += dy;
         player.connection.firstGoodZ += dz;
@@ -163,6 +171,15 @@ public final class ServerCarry {
             double[] local = BodyFrame.toLocal(before, support.body(), entity.getX(), entity.getY(), entity.getZ());
             double[] world = BodyFrame.toWorld(now, support.body(), local);
             entity.setPos(world[0], world[1], world[2]);
+            support.place(BodyFrame.toLocal(now, support.body(), world[0], world[1], world[2]));
+        }
+    }
+
+    /** Retient la place d'une entité portée dans le corps qui la porte. */
+    private static void keep(Entity entity, double[] local) {
+        CarrySupports.Support support = CarrySupports.of(entity);
+        if (support != null) {
+            support.place(local);
         }
     }
 

@@ -7,7 +7,9 @@ package dev.axion.physics;
  * <p>Le balayage — ce que la boîte heurte en premier — vient d'un {@link Sweeper} ; la classe en fait un déplacement :
  * jusqu'au contact, puis ce qui reste, privé de sa part qui entre dans la surface, jusqu'à quatre fois ; puis, si
  * l'entité est au sol et butée à l'horizontale, la marche (les {@code 0,6} bloc de vanilla), tentée comme lui : monter,
- * avancer, redescendre, et garder le meilleur des deux déplacements. Le déplacement rendu n'est jamais plus long que
+ * avancer, redescendre, et garder le meilleur des deux déplacements. Sur une surface qui se marche ({@link #WALKABLE}), ce
+ * qui descend s'y arrête sans glisser : une assembly qui penche ne se vide pas de ce qu'elle porte. Le déplacement rendu n'est
+ * jamais plus long que
  * celui qu'on demande, et laisse un jeu de {@link #SKIN} bloc au contact : une boîte posée ne s'enfonce pas d'un tick
  * à l'autre.
  */
@@ -15,6 +17,9 @@ public final class BoxSlide {
 
     /** Le jeu laissé au contact, en blocs : de quoi ne pas démarrer le tick suivant dans la surface. */
     public static final double SKIN = 1.0e-4;
+
+    /** La normale verticale à partir de laquelle une surface se marche : plus raide que 45°, une boîte n'y tient pas. */
+    public static final double WALKABLE = 0.7;
 
     /** Le nombre de glissements enchaînés d'un déplacement : un sol, un mur, un angle, et un dernier. */
     public static final int MAX_ITERATIONS = 4;
@@ -99,6 +104,10 @@ public final class BoxSlide {
             rx *= left;
             ry *= left;
             rz *= left;
+            // La gravité ne fait pas glisser sur ce qui se marche ; un pas vers le haut d'une pente la monte encore.
+            if (hit.ny() >= WALKABLE && ry < 0.0) {
+                ry = 0.0;
+            }
             double into = rx * hit.nx() + ry * hit.ny() + rz * hit.nz();
             if (into < 0.0) {
                 rx -= into * hit.nx();

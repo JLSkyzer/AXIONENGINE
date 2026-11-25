@@ -1,0 +1,404 @@
+package dev.axion.forge;
+
+import dev.axion.AxionMod;
+import dev.axion.api.vehicle.DriverInput;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.DisconnectedScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * ADR-178, l'essai à deux processus du portage (CAP-14) : un vrai serveur dédié, qui juge les positions de son joueur comme en
+ * ligne (« moved wrongly », « moved too quickly », expulsion « en train de voler »), un vrai client, une latence injectée par un
+ * {@link RelaisLatence}. Le joueur, en survie, est debout sur un véhicule que le serveur conduit en cercle. Inerte sans ses
+ * propriétés ; le contenu de développement ne part jamais dans le mod livré.
+ *
+ * <ul>
+ *   <li>Le serveur ({@code runServer}), sous {@code AXION_ESSAI_PORTEUR=1}, pose un sol en altitude, le véhicule, lâche le joueur
+ *       au-dessus, puis conduit {@value #CONDUITE} ticks. Il s'arrête quand le joueur part, ou au bout de
+ *       {@link #DUREE_SERVEUR_S} secondes.</li>
+ *   <li>Le client ({@code runEssaiClientPorteur}), sous {@code -Daxion.essai.porteur=<délai d'un sens, ms>}, se connecte par le
+ *       relais, relève {@value #MESURE} ticks de portage dès que le véhicule part, écrit {@code rapport-porteur.txt}, puis
+ *       s'arrête. Sous {@code -Daxion.essai.film}, il se filme à la troisième personne.</li>
+ * </ul>
+ */
+public final class EssaiPorteur {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("AXION essai");
+
+    private static final boolean SERVEUR = "1".equals(System.getenv("AXION_ESSAI_PORTEUR"));
+    private static final long DELAI_MS = Long.getLong("axion.essai.porteur", -1L);
+    private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
+
+    private static final int DUREE_SERVEUR_S = 300;
+    private static final String HOTE = "127.0.0.1";
+    private static final int PORT = 25599;
+    private static final int PORT_RELAIS = 25600;
+
+    private static final int SOL_Y = 200;
+    private static final int SOL_COTE = 64;
+    private static final String VEHICULE = "axion:test/vehicule";
+
+    /** Les ticks de conduite du serveur : vingt secondes, cinq fois les 80 ticks de l'expulsion « en train de voler ». */
+    private static final int CONDUITE = 400;
+    /** Les ticks que le client relève, dès que le véhicule part ; moins que la conduite, pour finir avant le freinage. */
+    private static final int MESURE = 360;
+    /** La commande de conduite, témoin compris : à mi-gaz, en cercle large. */
+    private static final DriverInput CONDUIRE = new DriverInput(0.5, 0, 0.45, 0, 0, 1);
+
+    /** Ce que la mesure exige : porté, resté à sa place, sur un vrai trajet. */
+    private static final double PORTE_MIN = 0.95;
+    private static final double DERIVE_MAX = 0.35;
+    private static final double PARCOURS_MIN = 10.0;
+
+    private EssaiPorteur() {
+        throw new AssertionError("classe utilitaire, non instanciable");
+    }
+
+    /** Le serveur : le sol, le véhicule, le joueur dessus, la conduite, puis l'arrêt. */
+    @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
+    public static final class Serveur {
+
+        /** Ticks laissés au client pour charger, avant que le joueur soit lâché sur le véhicule ; puis avant le départ. */
+        private static final int CHARGEMENT = 160;
+        private static final int POSE = 60;
+
+        private static long debut;
+        private static ServerPlayer joueur;
+        private static AxionEntity vehicule;
+        private static int tick;
+        private static int portes;
+        private static double parcours;
+        private static double parcoursSeul;
+        private static Vec3 avant;
+
+        private Serveur() {}
+
+        /** @param event la fin d'un tick du serveur ; relevé après le transport (ServerCarry) */
+        @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
+        public static void mener(TickEvent.ServerTickEvent event) {
+            if (!SERVEUR || event.phase != TickEvent.Phase.END) {
+                return;
+            }
+            MinecraftServer serveur = event.getServer();
+            if (debut == 0) {
+                debut = System.nanoTime();
+            }
+            if (System.nanoTime() - debut > DUREE_SERVEUR_S * 1_000_000_000L
+                    || (joueur != null && joueur.hasDisconnected())) {
+                LOGGER.info("[porteur] fin du serveur d'essai : porté {} ticks sur {} de conduite, parcours {} blocs", portes,
+                        Math.max(0, Math.min(tick - CHARGEMENT - POSE, CONDUITE)),
+                        String.format(Locale.ROOT, "%.1f", parcours));
+                serveur.halt(false);
+                return;
+            }
+            ServerLevel monde = serveur.overworld();
+            if (joueur == null) {
+                if (serveur.getPlayerList().getPlayers().isEmpty()) {
+                    return;
+                }
+                monde.setWeatherParameters(20 * 60 * 20, 0, false, false);
+                monde.setDayTime(6000);
+                joueur = serveur.getPlayerList().getPlayers().get(0);
+                for (int x = 0; x < SOL_COTE; x++) {
+                    for (int z = 0; z < SOL_COTE; z++) {
+                        monde.setBlockAndUpdate(new BlockPos(x, SOL_Y, z), Blocks.SMOOTH_STONE.defaultBlockState());
+                    }
+                }
+                joueur.setGameMode(GameType.SURVIVAL);
+                joueur.teleportTo(monde, SOL_COTE / 2.0, SOL_Y + 1.0, SOL_COTE / 2.0 + 5.0, 180f, 15f);
+                try {
+                    vehicule = AssembliesDeTest.poser(monde, VEHICULE,
+                            new Vec3(SOL_COTE / 2.0 + 0.5, SOL_Y + 1.3, SOL_COTE / 2.0 + 0.5),
+                            new float[] {0f, 0f, 0f, 1f});
+                } catch (IllegalStateException refus) {
+                    LOGGER.error("[porteur] ÉCHEC : véhicule non posé — {}", refus.getMessage());
+                    serveur.halt(false);
+                }
+                return;
+            }
+            tick++;
+            // Le témoin : le véhicule conduit seul, loin du joueur, avec la même commande, puis freiné.
+            if (tick >= 20 && tick < CHARGEMENT) {
+                var seul = ForgeAxionApi.view(vehicule).vehicle().orElseThrow();
+                seul.drive(tick < 80 ? CONDUIRE : new DriverInput(0, 1, 0, 0, 1, 0));
+                if (tick < 80) {
+                    if (avant != null) {
+                        parcoursSeul += vehicule.position().subtract(avant).horizontalDistance();
+                    }
+                    avant = vehicule.position();
+                } else if (tick == 80) {
+                    LOGGER.info(String.format(Locale.ROOT, "[porteur] témoin : seul, le véhicule a parcouru %.2f blocs en 60"
+                            + " ticks", parcoursSeul));
+                    avant = null;
+                }
+            }
+            if (tick == CHARGEMENT) {
+                joueur.teleportTo(monde, vehicule.getX(), vehicule.getY() + 2.5, vehicule.getZ(), 180f, 15f);
+                LOGGER.info("[porteur] joueur lâché au-dessus du véhicule");
+            }
+            int conduite = tick - CHARGEMENT - POSE;
+            if (conduite < 0) {
+                return;
+            }
+            var commande = ForgeAxionApi.view(vehicule).vehicle().orElseThrow();
+            if (conduite < CONDUITE) {
+                commande.drive(CONDUIRE);
+                CarrySupports.Support support = CarrySupports.of(joueur);
+                if (support != null && support.assembly() == vehicule) {
+                    portes++;
+                }
+                if (avant != null) {
+                    parcours += vehicule.position().subtract(avant).horizontalDistance();
+                }
+                avant = vehicule.position();
+                if (conduite % 40 == 0) {
+                    LOGGER.info(String.format(Locale.ROOT, "[porteur] conduite %d : %s, écart horizontal %.2f bloc, joueur à"
+                            + " %.2f au-dessus, véhicule à %.2f blocs parcourus", conduite, support == null ? "sans support"
+                                    : "corps " + support.body() + ", retard " + support.lag(),
+                            Math.hypot(joueur.getX() - vehicule.getX(), joueur.getZ() - vehicule.getZ()),
+                            joueur.getY() - vehicule.getY(), parcours));
+                }
+            } else {
+                commande.drive(new DriverInput(0, 1, 0, 0, 1, 0));
+            }
+        }
+    }
+
+    /** Le client : se connecter, se laisser porter, mesurer, se filmer, s'arrêter. */
+    @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
+    public static final class Client {
+
+        private static final int TENTATIVES_MAX = 3;
+        /** Ticks en jeu laissés pour que le véhicule porte le joueur et parte ; au-delà, l'essai échoue. */
+        private static final int ATTENTE_MAX = 900;
+
+        private static RelaisLatence relais;
+        private static Tournage tournage;
+        private static int tentatives;
+        private static boolean connecte;
+        private static boolean fini;
+        private static int enJeu;
+        private static int mesures;
+        private static int portes;
+        private static double derive;
+        private static double parcours;
+        private static double[] place;
+        private static int corps = -1;
+        private static AxionEntity porteur;
+        private static Vec3 avant;
+        private static final List<String> lignes = new ArrayList<>();
+
+        private Client() {}
+
+        /** @param event le tick du client */
+        @SubscribeEvent
+        public static void porter(TickEvent.ClientTickEvent event) {
+            if (DELAI_MS < 0 || fini || event.phase != TickEvent.Phase.END) {
+                return;
+            }
+            Minecraft minecraft = Minecraft.getInstance();
+            if (!connecte) {
+                if (FILM && tentatives == 0) {
+                    Tournage.reglerLesOptions(minecraft);
+                }
+                connecter(minecraft);
+                return;
+            }
+            if (minecraft.player == null || minecraft.level == null) {
+                return;
+            }
+            CarrySupports.Support support = CarrySupports.of(minecraft.player);
+            if (porteur == null) {
+                if (support != null) {
+                    Vec3 la = support.assembly().position();
+                    // Le départ : le véhicule qui porte le joueur s'est déplacé de plus de 5 cm en un tick.
+                    if (avant != null && la.subtract(avant).horizontalDistance() > 0.05 && support.local() != null) {
+                        porteur = support.assembly();
+                        corps = support.body();
+                        place = support.local();
+                        LOGGER.info("[porteur] client : le véhicule part, la mesure commence");
+                    }
+                    avant = la;
+                } else {
+                    avant = null;
+                }
+                if (++enJeu > ATTENTE_MAX) {
+                    echec(minecraft, "jamais porté par un véhicule qui part, en " + ATTENTE_MAX / 20 + " s");
+                }
+                return;
+            }
+            if (FILM && tournage == null) {
+                minecraft.options.setCameraType(CameraType.THIRD_PERSON_BACK);
+                minecraft.player.setXRot(18f);
+                tournage = new Tournage(minecraft.gameDirectory.toPath().resolve("axion-film").resolve("images"),
+                        "AXION ENGINE, ADR-178");
+            }
+            mesures++;
+            Vec3 la = porteur.position();
+            parcours += la.subtract(avant).horizontalDistance();
+            avant = la;
+            if (support != null && support.assembly() == porteur && support.local() != null) {
+                portes++;
+                double[] local = support.local();
+                if (support.body() == corps) {
+                    derive = Math.max(derive, Math.sqrt(Math.pow(local[0] - place[0], 2) + Math.pow(local[1] - place[1], 2)
+                            + Math.pow(local[2] - place[2], 2)));
+                }
+            }
+            if (mesures % 40 == 0) {
+                String ligne = String.format(Locale.ROOT, "tick %d : porté %d, dérive max %.3f bloc, parcours %.1f blocs",
+                        mesures, portes, derive, parcours);
+                lignes.add(ligne);
+                LOGGER.info("[porteur] client : {}", ligne);
+            }
+            if (mesures == MESURE) {
+                terminer(minecraft);
+            }
+        }
+
+        /** @param event la fin d'une image */
+        @SubscribeEvent
+        public static void filmer(TickEvent.RenderTickEvent event) {
+            if (!FILM || tournage == null || fini || event.phase != TickEvent.Phase.END || !tournage.imageAttendue()) {
+                return;
+            }
+            String legende = String.format(Locale.ROOT,
+                    "Un joueur debout sur un véhicule : serveur dédié, %d ms de latence par sens", DELAI_MS);
+            String valeurs = String.format(Locale.ROOT, "porté %d ticks sur %d   dérive max %.3f bloc   parcours %.1f blocs",
+                    portes, mesures, derive, parcours);
+            double secondes = (System.nanoTime() - tournage.debut()) / 1e9;
+            tournage.capturer(Minecraft.getInstance().getMainRenderTarget(), legende, valeurs,
+                    String.format(Locale.ROOT, "%.1f s", secondes));
+        }
+
+        /** @param event l'écran qui s'ouvre : une déconnexion fait échouer l'essai, sauf l'expiration de la connexion */
+        @SubscribeEvent
+        public static void deconnexion(ScreenEvent.Opening event) {
+            if (DELAI_MS < 0 || fini || !(event.getNewScreen() instanceof DisconnectedScreen ecran)) {
+                return;
+            }
+            net.minecraft.network.chat.Component raison = EssaiAddonsExiges.Client.raison(ecran);
+            boolean expiree = raison.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents cle
+                    && "disconnect.timeout".equals(cle.getKey());
+            if (mesures == 0 && tentatives < TENTATIVES_MAX && expiree) {
+                LOGGER.warn("[porteur] tentative de connexion {} expirée, nouvelle tentative", tentatives);
+                fermerRelais();
+                connecte = false;
+                event.setNewScreen(new TitleScreen());
+                return;
+            }
+            echec(Minecraft.getInstance(), "écran de déconnexion : " + ecran.getTitle().getString() + " — "
+                    + raison.getString().replace('\n', '|'));
+        }
+
+        private static void connecter(Minecraft minecraft) {
+            if (minecraft.getOverlay() != null || !(minecraft.screen instanceof TitleScreen titre)) {
+                return;
+            }
+            connecte = true;
+            tentatives++;
+            String adresse = HOTE + ":" + PORT;
+            if (DELAI_MS > 0) {
+                try {
+                    relais = new RelaisLatence(PORT_RELAIS, HOTE, PORT, DELAI_MS, 0L);
+                    adresse = HOTE + ":" + PORT_RELAIS;
+                } catch (IOException faute) {
+                    LOGGER.error("[porteur] relais de latence impossible : {}", faute.toString());
+                }
+            }
+            LOGGER.info("[porteur] connexion à {} ({} ms par sens)", adresse, DELAI_MS);
+            ConnectScreen.startConnecting(titre, minecraft, ServerAddress.parseString(adresse),
+                    new ServerData("essai-porteur", adresse, false), false);
+        }
+
+        private static void terminer(Minecraft minecraft) {
+            fini = true;
+            double part = (double) portes / mesures;
+            boolean vert = part >= PORTE_MIN && derive <= DERIVE_MAX && parcours >= PARCOURS_MIN;
+            lignes.add(String.format(Locale.ROOT, "%s : porté %d ticks sur %d (au moins %.0f %%), dérive max %.3f bloc (au plus"
+                    + " %.2f), parcours %.1f blocs (au moins %.0f), %d ms par sens, %d tentative(s)", vert ? "VERT" : "ROUGE",
+                    portes, mesures, PORTE_MIN * 100, derive, DERIVE_MAX, parcours, PARCOURS_MIN, DELAI_MS, tentatives));
+            ecrire(minecraft);
+            fermerLeFilm(minecraft, null);
+            arreter(minecraft);
+        }
+
+        private static void echec(Minecraft minecraft, String raison) {
+            fini = true;
+            lignes.add("ÉCHEC : " + raison);
+            ecrire(minecraft);
+            fermerLeFilm(minecraft, raison);
+            arreter(minecraft);
+        }
+
+        private static void ecrire(Minecraft minecraft) {
+            LOGGER.info("[porteur] {}", lignes.get(lignes.size() - 1));
+            try {
+                Files.write(minecraft.gameDirectory.toPath().resolve("rapport-porteur.txt"), lignes, StandardCharsets.UTF_8);
+            } catch (IOException faute) {
+                LOGGER.error("[porteur] rapport non écrit : {}", faute.toString());
+            }
+        }
+
+        private static void fermerLeFilm(Minecraft minecraft, String motif) {
+            if (tournage == null) {
+                return;
+            }
+            String faute = tournage.fermer();
+            faute = faute != null ? faute : motif;
+            String bilan = String.format(Locale.ROOT, "{\"images\": %d, \"uniques\": %d, \"echec\": %s}%n",
+                    tournage.images(), tournage.uniques(), faute == null ? "null" : "\"" + faute.replace('"', '\'') + "\"");
+            tournage = null;
+            Path chemin = minecraft.gameDirectory.toPath().resolve("axion-film").resolve("termine.json");
+            try {
+                Files.writeString(chemin, bilan, StandardCharsets.UTF_8);
+            } catch (IOException faute2) {
+                LOGGER.error("[porteur] bilan du film non écrit : {}", faute2.toString());
+            }
+        }
+
+        private static void arreter(Minecraft minecraft) {
+            if (minecraft.level != null) {
+                minecraft.level.disconnect();
+            }
+            fermerRelais();
+            minecraft.stop();
+        }
+
+        private static void fermerRelais() {
+            if (relais != null) {
+                try {
+                    relais.close();
+                } catch (IOException ignoree) {
+                    // Le relais se ferme avec le processus.
+                }
+                relais = null;
+            }
+        }
+    }
+}

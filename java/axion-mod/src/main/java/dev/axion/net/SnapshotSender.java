@@ -82,6 +82,11 @@ public final class SnapshotSender {
     private final double bytesPerTick;
     private final double burst;
     private final Map<Integer, Track> tracks = new HashMap<>();
+    /** Les derniers envois, par séquence : leur tick, pour mesurer l'aller-retour à l'acquittement (ADR-178). */
+    private final long[] sentAt = new long[WINDOW];
+    private final int[] sentSequence = new int[WINDOW];
+    private long lastTick;
+    private volatile double roundTrip = -1.0;
     private final Queue<String> journal = new ConcurrentLinkedQueue<>();
     private double tokens;
     private int sequence;
@@ -159,6 +164,7 @@ public final class SnapshotSender {
      * @return le message, ou {@code null} si rien n'est à envoyer
      */
     public byte[] tick(long serverTick, List<Candidate> candidates) {
+        lastTick = serverTick;
         tokens = Math.min(burst, tokens + bytesPerTick);
         List<Due> due = new ArrayList<>();
         for (Candidate candidate : candidates) {
@@ -220,6 +226,8 @@ public final class SnapshotSender {
         byte[] message = new SnapshotMessage(next, serverTick, SnapshotMessage.DESCRIPTOR_VERSION, entries).encode();
         tokens -= message.length;
         sequence = next;
+        sentSequence[next % WINDOW] = next;
+        sentAt[next % WINDOW] = serverTick;
         sentBytes += message.length;
         sentSnapshots++;
         for (Due d : sent) {
@@ -282,7 +290,13 @@ public final class SnapshotSender {
                     + ", le dernier envoyé est " + sequence).report("acquittement"));
             return;
         }
-        acked = Math.max(acked, ack.lastSequence());
+        int last = ack.lastSequence();
+        if (last > acked && sentSequence[Math.floorMod(last, WINDOW)] == last) {
+            // Lu au début du tick qui suit le dernier snapshot bâti ; lissé comme une latence.
+            double sample = lastTick + 1 - sentAt[Math.floorMod(last, WINDOW)];
+            roundTrip = roundTrip < 0 ? sample : roundTrip + 0.25 * (sample - roundTrip);
+        }
+        acked = Math.max(acked, last);
         for (int handle : ack.needFull()) {
             Track track = tracks.get(handle);
             if (track != null) {
@@ -298,6 +312,13 @@ public final class SnapshotSender {
      */
     public void forget(int handle) {
         tracks.remove(handle);
+    }
+
+    /**
+     * {@return l'aller-retour mesuré sur les snapshots acquittés, en ticks du serveur ; {@code -1} avant le premier}
+     */
+    public double roundTripTicks() {
+        return roundTrip;
     }
 
     /** {@return la séquence du dernier snapshot envoyé} */

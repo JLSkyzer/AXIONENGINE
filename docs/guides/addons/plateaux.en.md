@@ -7,7 +7,8 @@ the collision reads its colliders.
 ## What happens
 
 - **Collision** follows vanilla: the entity's box slides along the surface it hits, steps up a vanilla step (0.6 block) from the ground,
-  and rests on it "on ground".
+  and rests on it "on ground". On a walkable slope (less than 45°) you do not slide: a platform leaning in a turn does not empty
+  itself.
 - **The support** is born when a fall is stopped by a walkable surface (less than 45°), and dies when you jump, leave the edge or land on
   a block. You rest on one assembly at a time.
 - **Carrying**: the player stays at their place on the body that holds them, and turns with it. Leaving it in the air (jump, edge), they
@@ -16,7 +17,8 @@ the collision reads its colliders.
 - **Push**: an assembly moving into a player pushes them out, at 10 m/s at most (`physics.push_speed_max`), without putting them into a
   block: pinned against a wall, they stay against it and the client log says so. A player weighs 80 kg (`physics.player_proxy_mass`):
   what hits them keeps some momentum, instead of stopping dead as against a wall.
-- Other entities (mobs, items) are stopped and carried on the server.
+- Other entities (mobs, items) are stopped and carried on the server. While carried, they weigh like a player
+  (`physics.player_proxy_mass`): a loaded vehicle accelerates a little slower, without being stopped.
 
 ## An assembly that carries nothing
 
@@ -58,6 +60,7 @@ registrar.registerCarryListener(new CarryListener() {
 
 ## Good to know
 
-- Carrying a player has been tried in single player, creative and survival, over a ride of about a second. A dedicated server, two
-  players and a long ride have not been tried yet.
+- Carrying a player has been tried in single player, and on a dedicated server with one survival player: twenty seconds standing on a
+  vehicle driven in a circle up to about 9 m/s, with 100 ms of latency each way, without any server correction. Two players have not
+  been tried yet.
 - `carry` is declared in the definition: it cannot be changed assembly by assembly in game.

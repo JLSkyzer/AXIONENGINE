@@ -136,6 +136,40 @@ class BoxSlideTest {
         assertTrue(out[0] < 0.25, "sous un plafond de 1,9, la marche de 0,5 ne passe pas : " + out[0]);
     }
 
+    /** Un plan incliné de 20°, qui se marche : il monte vers -x ; la boîte repose dessus. */
+    private static final BoxSlide.Sweeper SLOPE = (box, mx, my, mz) -> {
+        double nx = Math.sin(Math.toRadians(20));
+        double ny = Math.cos(Math.toRadians(20));
+        return mx * nx + my * ny < -1e-12 ? new BoxSlide.Hit(0.0, nx, ny, 0.0) : null;
+    };
+
+    @Test
+    @DisplayName("la gravité ne fait pas glisser le long d'une pente qui se marche : une assembly qui penche ne se vide pas")
+    void onNeGlissePasSurUnePenteQuiSeMarche() {
+        double[] out = BoxSlide.slide(player(0, 0, 0), new double[] {0.0, -0.0784, 0.0}, SLOPE, 0.6, true);
+        assertEquals(0.0, out[0], 1e-12, "aucun déplacement de côté");
+        assertEquals(0.0, out[1], 1e-3, "elle reste posée");
+    }
+
+    @Test
+    @DisplayName("marcher vers le haut d'une pente la monte")
+    void onMonteUnePente() {
+        double[] out = BoxSlide.slide(player(0, 0, 0), new double[] {-0.1, -0.0784, 0.0}, SLOPE, 0.6, true);
+        assertTrue(out[0] < -0.08, "il avance : " + out[0]);
+        assertTrue(out[1] > 0.02, "et monte : " + out[1]);
+    }
+
+    @Test
+    @DisplayName("sur une pente trop raide pour se marcher, la boîte glisse vers le bas")
+    void unePenteRaideFaitGlisser() {
+        double nx = Math.sin(Math.toRadians(60));
+        double ny = Math.cos(Math.toRadians(60));
+        BoxSlide.Sweeper raide = (box, mx, my, mz) -> mx * nx + my * ny < -1e-12 ? new BoxSlide.Hit(0.0, nx, ny, 0.0)
+                : null;
+        double[] out = BoxSlide.slide(player(0, 0, 0), new double[] {0.0, -0.0784, 0.0}, raide, 0.6, true);
+        assertTrue(out[0] > 0.02 && out[1] < -0.01, "elle glisse : " + out[0] + ", " + out[1]);
+    }
+
     @Test
     @DisplayName("un déplacement nul ne bouge rien, et le résultat n'est jamais plus long que la demande")
     void jamaisPlusLong() {

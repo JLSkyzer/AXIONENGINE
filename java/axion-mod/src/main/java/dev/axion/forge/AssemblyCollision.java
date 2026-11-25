@@ -42,7 +42,7 @@ public final class AssemblyCollision {
     private AssemblyCollision() {}
 
     /** La normale à partir de laquelle une surface se marche : plus raide que 45°, l'entité n'y tient pas. */
-    static final double WALKABLE = 0.7;
+    static final double WALKABLE = BoxSlide.WALKABLE;
 
     /** Une assembly posée, prête à être balayée. */
     private record Placed(AxionEntity assembly, long key, double[] poses, int count) {}
@@ -87,16 +87,23 @@ public final class AssemblyCollision {
             CarrySupports.clear(entity);
             return null;
         }
-        AABB box = entity.getBoundingBox();
-        List<AxionEntity> near = AssemblyIndex.near(entity.level(), box.expandTowards(motion).inflate(0.25));
-        if (near.isEmpty()) {
-            CarrySupports.clear(entity);
-            return null;
-        }
         // ADR-178 D4 : un joueur du serveur se juge, son support compris, à la pose que son client dessine ; ses supports
-        // sont l'affaire de ServerCarry.
+        // sont l'affaire de ServerCarry, que rien ici n'efface.
         boolean serverPlayer = entity instanceof net.minecraft.server.level.ServerPlayer;
         CarrySupports.Support support = serverPlayer ? CarrySupports.of(entity) : null;
+        AABB box = entity.getBoundingBox();
+        List<AxionEntity> near = AssemblyIndex.near(entity.level(), box.expandTowards(motion).inflate(0.25));
+        if (support != null && !near.contains(support.assembly())) {
+            // La boîte de l'assembly d'aujourd'hui peut avoir quitté la place, en retard, de son joueur.
+            near = new ArrayList<>(near);
+            near.add(support.assembly());
+        }
+        if (near.isEmpty()) {
+            if (!serverPlayer) {
+                CarrySupports.clear(entity);
+            }
+            return null;
+        }
         List<Placed> placed = new ArrayList<>(near.size());
         for (AxionEntity assembly : near) {
             long key = assembly.collisionKey();
@@ -167,8 +174,8 @@ public final class AssemblyCollision {
     }
 
     /**
-     * Ce qui sort une entité d'une assembly qui avance dans elle (ADR-178 D5) : la plus courte sortie, bornée par
-     * {@code physics.push_speed_max}, puis arrêtée par les blocs — la poussée ne met personne dans un mur. Chez le client,
+     * Ce qui sort une entité d'une assembly qui avance dans elle (ADR-178 D5) : la plus courte sortie — vers le haut sur une
+     * surface qui se marche, pour ne pas faire glisser —, bornée par {@code physics.push_speed_max}, puis arrêtée par les blocs — la poussée ne met personne dans un mur. Chez le client,
      * pour le joueur local, qui est maître de sa position.
      *
      * @param entity l'entité
@@ -205,8 +212,13 @@ public final class AssemblyCollision {
                     poses.length / NativeBridge.COLLIDE_POSE, input, out);
             if (code == NativeBridge.OK && out[0] > 0.5 && out[2] > deepest) {
                 deepest = out[2];
-                double reach = Math.min(out[2], AxionEntities.pushSpeedMax() / 20.0);
-                push = new Vec3(out[3] * reach, out[4] * reach, out[5] * reach);
+                double most = AxionEntities.pushSpeedMax() / 20.0;
+                if (out[4] >= WALKABLE) {
+                    push = new Vec3(0.0, Math.min(out[2] / out[4], most), 0.0);
+                } else {
+                    double reach = Math.min(out[2], most);
+                    push = new Vec3(out[3] * reach, out[4] * reach, out[5] * reach);
+                }
             }
         }
         if (push == null) {

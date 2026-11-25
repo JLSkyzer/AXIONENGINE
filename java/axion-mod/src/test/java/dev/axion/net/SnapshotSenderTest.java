@@ -94,6 +94,22 @@ class SnapshotSenderTest {
     }
 
     @Test
+    @DisplayName("ADR-178 : l'acquittement d'un snapshot mesure l'aller-retour, en ticks")
+    void lAcquittementMesureLAllerRetour() {
+        SnapshotSender emetteur = new SnapshotSender(RATE_HZ, CAP);
+        assertEquals(-1.0, emetteur.roundTripTicks(), 0.0, "rien de mesuré sans acquittement");
+        assertNotNull(emetteur.tick(10, List.of(candidat(1, etat(1, 0, false)))));
+        emetteur.tick(15, List.of());
+        // L'acquittement du snapshot 1, lu au début du tick 16 : parti au tick 10.
+        emetteur.onAck(new AckMessage(1, List.of()));
+        assertEquals(6.0, emetteur.roundTripTicks(), 1e-9);
+        // Le même acquittement, répété, ne mesure rien de plus.
+        emetteur.tick(40, List.of());
+        emetteur.onAck(new AckMessage(1, List.of()));
+        assertEquals(6.0, emetteur.roundTripTicks(), 1e-9);
+    }
+
+    @Test
     @DisplayName("R-1661 : une entrée complète d'abord, puis des deltas sur la base acquittée, reconstitués au bit près")
     void desDeltasSurLaBaseAcquittee() {
         Liaison liaison = new Liaison(20, CAP);

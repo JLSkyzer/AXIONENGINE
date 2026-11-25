@@ -1,6 +1,7 @@
 package dev.axion.forge;
 
 import com.mojang.logging.LogUtils;
+import dev.axion.physics.BodyFrame;
 import dev.axion.physics.EntityProxySelector;
 import dev.axion.physics.SimCommandProvider;
 import dev.axion.physics.SimCommandStream;
@@ -90,7 +91,10 @@ public final class EntityPresenceBridge implements SimCommandProvider {
             Map<Integer, EntityProxySelector.Candidate> candidates = new LinkedHashMap<>();
             for (AABB search : searches.get(level)) {
                 for (Entity entity : level.getEntities((Entity) null, search, EntityPresenceBridge::eligible)) {
-                    candidates.putIfAbsent(entity.getId(), candidateOf(entity));
+                    EntityProxySelector.Candidate candidate = candidateOf(entity);
+                    if (candidate != null) {
+                        candidates.putIfAbsent(entity.getId(), candidate);
+                    }
                 }
             }
             List<SimCommandStream.EntityProxy> proxies =
@@ -145,8 +149,12 @@ public final class EntityPresenceBridge implements SimCommandProvider {
     }
 
     /**
-     * {@return l'entité en candidate : sa boîte, sa vitesse du dernier tick, vivante ou non} Le monde prédit du client la
-     * relève de même (ADR-168, précision 6c-C2).
+     * {@return l'entité en candidate : sa boîte, sa vitesse du dernier tick, vivante ou non ; {@code null} pour une entité portée
+     * quand {@code physics.player_proxy_mass} est nul} Le monde prédit du client la relève de même (ADR-168, précision 6c-C2).
+     *
+     * <p>Au serveur, une entité portée (ADR-178) se voit <b>là où elle est sur son support aujourd'hui</b>, à la vitesse de ce
+     * point du support, et elle pèse comme un joueur. La voir où le serveur la tient — un joueur y est en retard de son aller-retour
+     * —, ou de masse infinie, arrêtait ce qui la portait.
      *
      * @param entity l'entité
      */
@@ -156,10 +164,30 @@ public final class EntityPresenceBridge implements SimCommandProvider {
             (entity.getY() - entity.yo) * TICKS_PER_SECOND,
             (entity.getZ() - entity.zo) * TICKS_PER_SECOND
         };
+        AABB box = entity.getBoundingBox();
         // ADR-178 D6 : un joueur pèse ; le reste est un mur.
         double mass = entity instanceof net.minecraft.world.entity.player.Player ? AxionEntities.playerProxyMass() : 0.0;
+        CarrySupports.Support support = entity.level().isClientSide() ? null : CarrySupports.of(entity);
+        double[] local = support == null ? null : support.local();
+        if (local != null) {
+            double[] now = support.assembly().carryPoses(0);
+            double[] before = support.assembly().carryPoses(1);
+            if (now != null && before != null) {
+                // Ce qu'une assembly porte ne la heurte pas comme un mur : sans masse réglée, la physique ne le voit pas.
+                mass = AxionEntities.playerProxyMass();
+                if (mass <= 0.0) {
+                    return null;
+                }
+                double[] here = BodyFrame.toWorld(now, support.body(), local);
+                double[] was = BodyFrame.toWorld(before, support.body(), local);
+                box = box.move(here[0] - entity.getX(), here[1] - entity.getY(), here[2] - entity.getZ());
+                for (int axis = 0; axis < 3; axis++) {
+                    velocity[axis] = (here[axis] - was[axis]) * TICKS_PER_SECOND;
+                }
+            }
+        }
         return new EntityProxySelector.Candidate(
-                entity.getId(), boxOf(entity.getBoundingBox()), velocity, entity instanceof LivingEntity, mass);
+                entity.getId(), boxOf(box), velocity, entity instanceof LivingEntity, mass);
     }
 
     /**

@@ -3,6 +3,7 @@ package dev.axion.forge;
 import dev.axion.api.assembly.Assembly;
 import dev.axion.api.assembly.CarryListener;
 import dev.axion.api.attach.AttachResult;
+import dev.axion.api.vehicle.DriverInput;
 import dev.axion.content.ContentRegistry.ListenerEntry;
 import dev.axion.physics.BodyFrame;
 import java.util.ArrayList;
@@ -180,6 +181,78 @@ public final class CollisionGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-178 : ce qu'une assembly porte ne la freine pas plus que son poids. Trois véhicules partent ensemble, avec la même
+     * commande : l'un seul, un joueur debout sur le deuxième, un cochon sur le troisième ; les deux chargés parcourent au moins
+     * les six dixièmes de ce que parcourt le premier. Un proxy posé là où l'entité était, ou de masse infinie, les arrêtait.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 300)
+    public static void unVehiculeQuiPorteResteMobile(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity[] vehicules = new AxionEntity[3];
+        for (int i = 0; i < 3; i++) {
+            vehicules[i] = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                    new Vec3(3.0 + 5.0 * i, DESSUS_DALLE + 0.3, 12.5), IDENTITE);
+        }
+        Pig cochon = EntityType.PIG.create(helper.getLevel());
+        dev.axion.forge.net.JoueurSimule[] joueur = new dev.axion.forge.net.JoueurSimule[1];
+        Vec3[] depart = new Vec3[3];
+        helper.onEachTick(() -> {
+            if (joueur[0] != null && joueur[0].connecte()) {
+                joueur[0].tick();
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> {
+                    for (AxionEntity vehicule : vehicules) {
+                        helper.assertTrue(vehicule.hasPhysicalBounds(), "les véhicules sont simulés");
+                    }
+                })
+                .thenIdle(30)
+                .thenExecute(() -> {
+                    AxionEntity porte = vehicules[1];
+                    joueur[0] = dev.axion.forge.net.JoueurSimule.rejoindre(helper.getLevel(), "porte",
+                            porte.position().add(0.0, 2.5, 0.0));
+                    joueur[0].joueur().setGameMode(net.minecraft.world.level.GameType.SURVIVAL);
+                    joueur[0].joueur().move(MoverType.SELF, new Vec3(0.0, -3.0, 0.0));
+                    cochon.setNoAi(true);
+                    helper.getLevel().addFreshEntity(cochon);
+                    cochon.moveTo(vehicules[2].getX(), vehicules[2].getY() + 2.5, vehicules[2].getZ(), 0f, 0f);
+                    cochon.move(MoverType.SELF, new Vec3(0.0, -3.0, 0.0));
+                })
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    helper.assertTrue(CarrySupports.of(joueur[0].joueur()) != null, "le joueur est porté au départ");
+                    helper.assertTrue(CarrySupports.of(cochon) != null, "le cochon est porté au départ");
+                    for (int i = 0; i < 3; i++) {
+                        depart[i] = vehicules[i].position();
+                        ForgeAxionApi.view(vehicules[i]).vehicle().orElseThrow()
+                                .drive(new DriverInput(0.5, 0, 0, 0, 0, 1));
+                    }
+                })
+                .thenIdle(60)
+                .thenExecute(() -> {
+                    double[] parcours = new double[3];
+                    for (int i = 0; i < 3; i++) {
+                        parcours[i] = vehicules[i].position().subtract(depart[i]).horizontalDistance();
+                        ForgeAxionApi.view(vehicules[i]).vehicle().orElseThrow().drive(DriverInput.NONE);
+                    }
+                    boolean joueurPorte = CarrySupports.of(joueur[0].joueur()) != null;
+                    boolean cochonPorte = CarrySupports.of(cochon) != null;
+                    joueur[0].quitter();
+                    cochon.discard();
+                    String releve = String.format(java.util.Locale.ROOT, "seul %.2f, avec le joueur %.2f, avec le cochon"
+                            + " %.2f blocs ; porté à la fin : joueur %b, cochon %b", parcours[0], parcours[1], parcours[2],
+                            joueurPorte, cochonPorte);
+                    org.slf4j.LoggerFactory.getLogger("AXION essai").info("[porteur] GameTest : {}", releve);
+                    helper.assertTrue(parcours[0] >= 1.0, "le véhicule seul avance : " + releve);
+                    helper.assertTrue(parcours[1] >= 0.6 * parcours[0] && parcours[2] >= 0.6 * parcours[0],
+                            "ce qu'ils portent ne les arrête pas : " + releve);
+                    helper.assertTrue(joueurPorte && cochonPorte, "toujours portés : " + releve);
+                })
+                .thenSucceed();
+    }
+
     /** ADR-178 : dans un ensemble attaché (ADR-171), une entité est portée une fois, par le membre qu'elle touche. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 200)
     public static void unEnsembleAttachePorteParLeMembreTouche(GameTestHelper helper) {
@@ -236,6 +309,71 @@ public final class CollisionGameTests {
                     helper.assertTrue(helper.getLevel().noCollision(cochon,
                             cochon.getBoundingBox().move(poussee).deflate(1.0e-4)), "sans l'y mettre : " + poussee);
                     cochon.discard();
+                })
+                .thenSucceed();
+    }
+
+    /** ADR-178 D5 : sur une surface qui se marche, la poussée sort vers le haut : rien ne glisse de côté. */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 100)
+    public static void laPousseeSurUnePenteQuiSeMarcheSortVersLeHaut(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        double demi = Math.toRadians(20.0) / 2.0;
+        float[] penchee = {0f, 0f, (float) Math.sin(demi), (float) Math.cos(demi)};
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(8.5, DESSUS_DALLE + 5.0, 8.5), penchee);
+        Pig cochon = EntityType.PIG.create(helper.getLevel());
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds()
+                        && assembly.collisionPoses() != null, "l'assembly est simulée"))
+                .thenExecute(() -> {
+                    // Les pieds au milieu du dessus penché de la caisse : ses coins du côté haut y sont enfoncés.
+                    double[] dessus = BodyFrame.toWorld(assembly.collisionPoses(), 0, new double[] {0.0, 0.98, 0.0});
+                    cochon.moveTo(dessus[0], dessus[1], dessus[2], 0f, 0f);
+                    Vec3 poussee = AssemblyCollision.pushOut(cochon);
+                    helper.assertTrue(poussee != null && poussee.y > 0.01, "la caisse le sort vers le haut : " + poussee);
+                    helper.assertTrue(Math.hypot(poussee.x, poussee.z) < 1.0e-9, "sans le pousser de côté : " + poussee);
+                    cochon.discard();
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * ADR-178 D4 : « au sol » n'est pas demandé au serveur. Vanilla y fait tomber un joueur dans sa propre simulation, contre
+     * la pose du moment ; c'est la sonde qui dit s'il repose sur une assembly.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void unJoueurQueVanillaCroitEnLAirResteReconnu(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(8.5, DESSUS_DALLE, 8.5), IDENTITE);
+        dev.axion.forge.net.JoueurSimule[] joueur = new dev.axion.forge.net.JoueurSimule[1];
+        helper.onEachTick(() -> {
+            if (joueur[0] != null && joueur[0].connecte()) {
+                joueur[0].tick();
+                joueur[0].joueur().setOnGround(false);
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    joueur[0] = dev.axion.forge.net.JoueurSimule.rejoindre(helper.getLevel(), "en_l_air",
+                            new Vec3(assembly.getX(), assembly.getY() + 1.001, assembly.getZ()));
+                    joueur[0].joueur().setGameMode(net.minecraft.world.level.GameType.SURVIVAL);
+                })
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    CarrySupports.Support support = CarrySupports.of(joueur[0].joueur());
+                    // La simulation de vanilla, loin de la boîte d'aujourd'hui de l'assembly, n'efface rien : le support du
+                    // serveur est l'affaire de ServerCarry.
+                    var moi = joueur[0].joueur();
+                    moi.setPos(moi.getX() + 6.0, moi.getY(), moi.getZ());
+                    moi.move(MoverType.SELF, new Vec3(0.0, -0.0784, 0.0));
+                    helper.assertTrue(support == null || CarrySupports.of(moi) != null,
+                            "sa simulation ne le lui retire pas");
+                    joueur[0].quitter();
+                    helper.assertTrue(support != null && support.assembly() == assembly && support.lag() >= 0,
+                            "le serveur le porte : " + (support == null ? "sans support" : "retard " + support.lag()));
                 })
                 .thenSucceed();
     }

@@ -530,6 +530,17 @@ public final class AxionNetwork {
     }
 
     /**
+     * {@return l'aller-retour d'un joueur mesuré sur ses snapshots acquittés, en ticks ; {@code -1} sans mesure} Le portage au
+     * serveur (ADR-178 D4) en déduit le retard de ce que le client dessine.
+     *
+     * @param player identifiant du joueur
+     */
+    public static double roundTripTicks(UUID player) {
+        PlayerSync sync = SYNCS.get(player);
+        return sync == null ? -1.0 : sync.sender().roundTripTicks();
+    }
+
+    /**
      * Pose la synchronisation d'un joueur avant son entrée en jeu, à la place de celle que la configuration
      * donnerait : le harnais de joueurs simulés (ADR-150 D8) y serre le plafond de débit d'un seul joueur.
      *

@@ -117,8 +117,24 @@ minecraft {
                 // Le défaut ouvert de sa connexion (précision 6c-B) : chaque lecture et écriture de socket du serveur.
                 jvmArg "-XX:StartFlightRecording=filename=${rootProject.file('.runs/server/essai-reseau.jfr')},settings=${rootProject.file('tools/ci/essai_reseau.jfc')},dumponexit=true"
             }
+            // ADR-178, essai du portage (essaiClientPorteur) : son propre monde.
+            if (System.getenv('AXION_ESSAI_PORTEUR') == '1') {
+                args '--world', 'essai-porteur'
+            }
             // ADR-162 D9 : /axion dev reload, en développement.
             property 'axion.content.dev_reload', 'true'
+        }
+
+        essaiClientPorteur {
+            // ADR-178, essai à deux processus du portage (EssaiPorteur, contenu de développement) : ce client se connecte au
+            // serveur de runServer, lancé sous AXION_ESSAI_PORTEUR=1, par un relais qui retarde chaque sens de
+            // -PessaiLatence millisecondes (100 par défaut) ; il se tient sur le véhicule que le serveur conduit, mesure,
+            // écrit rapport-porteur.txt, puis s'arrête. -PessaiFilm le filme (tools/film/encoder.py fait le MP4).
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/essai-porteur')
+            property 'axion.essai.porteur', (project.findProperty('essaiLatence') ?: '100').toString()
+            property 'axion.essai.film', project.hasProperty('essaiFilm').toString()
+            property 'axion.souris.libre', 'true'
         }
 
         essaiClientAddons {
@@ -604,6 +620,14 @@ tasks.matching { it.name == 'runEssaiClientPrediction' }.configureEach {
     standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
     doFirst {
         clientSilencieux(rootProject.file('.runs/essai-prediction'))
+    }
+}
+
+// ADR-178 : le client de l'essai du portage, muet ; son serveur est runServer, sous AXION_ESSAI_PORTEUR=1.
+tasks.matching { it.name == 'runEssaiClientPorteur' }.configureEach {
+    standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/essai-porteur'))
     }
 }
 

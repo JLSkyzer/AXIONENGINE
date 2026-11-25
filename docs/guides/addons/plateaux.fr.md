@@ -7,7 +7,8 @@ se tient debout sur un plateau qui roule, un ascenseur monte ceux qu'il porte, u
 ## Ce qui se passe
 
 - **La collision** suit vanilla : la boîte de l'entité glisse le long de la surface heurtée, monte une marche de la hauteur de vanilla
-  (0,6 bloc) depuis le sol, et repose dessus « au sol ».
+  (0,6 bloc) depuis le sol, et repose dessus « au sol ». Sur une pente qu'on marche (moins de 45°), on ne glisse pas : un plateau qui
+  penche dans un virage ne se vide pas.
 - **Le support** naît quand une chute est arrêtée par une surface qu'on marche (à moins de 45°), meurt quand on saute, quand on quitte le
   bord ou qu'on se pose sur un bloc. On ne repose que sur une assembly à la fois.
 - **Le transport** : le joueur reste à sa place sur le corps qui le porte, et tourne avec lui. Quand il le quitte en l'air (saut, bord),
@@ -16,7 +17,8 @@ se tient debout sur un plateau qui roule, un ascenseur monte ceux qu'il porte, u
 - **La poussée** : une assembly qui avance dans un joueur l'en sort, à 10 m/s au plus (`physics.push_speed_max`), sans le mettre dans un
   bloc : coincé contre un mur, il reste contre le mur et le journal du client le dit. Un joueur pèse 80 kg
   (`physics.player_proxy_mass`) : ce qui le heurte garde de l'élan, au lieu de s'arrêter net comme contre un mur.
-- Les autres entités (mobs, objets) sont arrêtées et portées au serveur.
+- Les autres entités (mobs, objets) sont arrêtées et portées au serveur. Portées, elles pèsent comme un joueur
+  (`physics.player_proxy_mass`) : un véhicule chargé accélère un peu moins vite, sans être arrêté.
 
 ## Une assembly qui ne porte rien
 
@@ -58,6 +60,7 @@ registrar.registerCarryListener(new CarryListener() {
 
 ## À savoir
 
-- Le transport d'un joueur a été éprouvé en solo, en créatif et en survie, sur un trajet d'environ une seconde. Un serveur dédié, deux
-  joueurs et un long trajet ne l'ont pas encore été.
+- Le transport d'un joueur a été éprouvé en solo, et sur un serveur dédié avec un joueur en survie : vingt secondes debout sur un
+  véhicule conduit en cercle jusqu'à environ 9 m/s, 100 ms de latence dans chaque sens, sans correction du serveur. Deux joueurs ne
+  l'ont pas encore été.
 - `carry` se déclare dans la definition : il ne se change pas assembly par assembly en jeu.
