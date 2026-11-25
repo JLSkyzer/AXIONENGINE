@@ -89,9 +89,14 @@ public final class AttachesGameTests {
         });
         helper.runAfterDelay(22, () -> helper.succeedWhen(() -> {
             helper.assertTrue(posee[0], "ancrée");
+            // L'échec intermittent (maillon endormi, tension nulle) : le message dit de quoi trouver sa cause.
             helper.assertTrue(vue(maillon).attachments().list().isEmpty(),
                     "la corde de 50 N a rompu sous un maillon de 20 kg : " + vue(maillon).attachments().list()
-                            + " ; maillon à y " + maillon.position().y + ", endormi " + maillon.netSleeping());
+                            + " ; maillon à y " + maillon.position().y + ", endormi " + maillon.netSleeping()
+                            + ", son chunk tourne " + helper.getLevel().isPositionEntityTicking(maillon.blockPosition())
+                            + ", attaches en attente " + AttachmentRuntime.current().suspended(maillon)
+                            + ", palier du gouverneur " + AxionEntities.degradationLevel()
+                            + ", assemblies du monde " + AssemblyIndex.all(helper.getLevel()).size());
         }));
     }
 
