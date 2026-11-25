@@ -1,5 +1,8 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "cover": [
+    "minecraft:snow"
+  ],
   "default": "axion:stone",
   "by_tag": {
     "minecraft:logs": "axion:wood",

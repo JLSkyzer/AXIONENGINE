@@ -117,7 +117,8 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                     VoxelShape shape = overBudget ? null : state.getCollisionShape(level, pos);
                     if (shape != null && !shape.isEmpty()) {
                         // ADR-180 D1 : chaque bloc garde son matériau, résolu une fois par état.
-                        int material = stateMaterials.computeIfAbsent(state,
+                        BlockState covering = coveringAbove(level, mapping, pos);
+                        int material = stateMaterials.computeIfAbsent(covering == null ? state : covering,
                                 block -> indexOf(materialOf(mapping, block, fallback)));
                         materialBlocks.merge(material, 1, Integer::sum);
                         // La forme lue elle-même, et non le drapeau mis en cache par l'état :
@@ -204,6 +205,21 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         return new SectionTile(collision, fluidBoxes, fluidDensity);
     }
 
+    /**
+     * {@return le bloc couvrant posé sur {@code pos} (ADR-180 D3) : sans collision et déclaré couvrant par le mappage ;
+     * {@code null} sans} Il donne son matériau au bloc qu'il surmonte — la première couche de neige.
+     */
+    private static BlockState coveringAbove(Level level, BlockMaterials mapping, BlockPos pos) {
+        if (!mapping.hasCovers()) {
+            return null;
+        }
+        BlockPos above = pos.above();
+        BlockState state = level.getBlockState(above);
+        ResourceLocation id = state.isAir() ? null : ForgeRegistries.BLOCKS.getKey(state.getBlock());
+        return id != null && mapping.covers(id.toString()) && state.getCollisionShape(level, above).isEmpty()
+                ? state : null;
+    }
+
     /** {@return le contact qu'un état de bloc a dans le mappage, par son identifiant puis ses étiquettes} */
     private static BlockMaterials.Material materialOf(
             BlockMaterials mapping, BlockState state, BlockMaterials.Material fallback) {
@@ -275,7 +291,9 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                     pos.set(ox + x, oy + ly, oz + z);
                     BlockState state = level.getBlockState(pos);
                     if (!state.getCollisionShape(level, pos).isEmpty()) {
-                        cells[z * SIZE + x] = indexOf(materialOf(mapping, state, fallback));
+                        BlockState covering = coveringAbove(level, mapping, pos);
+                        cells[z * SIZE + x] = indexOf(
+                                materialOf(mapping, covering == null ? state : covering, fallback));
                         break;
                     }
                 }

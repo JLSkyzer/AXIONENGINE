@@ -39,8 +39,9 @@ matériau `axion:snow` (frottement 0,35, `wet` 1), comme n'importe quel bloc a s
 pas des mesures ; ton contenu déclare les siennes (voir [les matériaux](../MATERIALS.md)).
 
 **Le sol, bloc par bloc.** Chaque roue prend le matériau du bloc qu'elle touche ([ADR-180](../../decisions/ADR-180.md)) :
-une route sur de l'herbe adhère comme la route. La première couche de neige, qui n'a pas de collision, ne compte pas
-encore : la roue touche le bloc dessous.
+une route sur de l'herbe adhère comme la route. La première couche de neige, qui n'a pas de collision, couvre le bloc
+dessous de son matériau parce que le mappage des exemples la déclare `cover` ([les matériaux](../MATERIALS.md)) ; le tien
+déclare les siennes.
 
 ## Le lire
 

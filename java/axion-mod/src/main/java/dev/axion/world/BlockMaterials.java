@@ -42,6 +42,8 @@ public final class BlockMaterials {
     private final Map<String, Material> byBlock;
     private final Map<String, Material> byTag;
     private final Material fallback;
+    /** Les blocs sans collision dont le matériau couvre le bloc qu'ils surmontent (ADR-180 D3). */
+    private final java.util.Set<String> covers;
 
     /**
      * @param byBlock contact par identifiant de bloc exact
@@ -50,6 +52,19 @@ public final class BlockMaterials {
      */
     public BlockMaterials(
             Map<String, Material> byBlock, Map<String, Material> byTag, Material fallback) {
+        this(byBlock, byTag, fallback, java.util.Set.of());
+    }
+
+    /**
+     * @param byBlock contact par identifiant de bloc exact
+     * @param byTag contact par étiquette, dans l'ordre de priorité
+     * @param fallback contact par défaut
+     * @param covers les blocs couvrants (ADR-180 D3)
+     */
+    public BlockMaterials(
+            Map<String, Material> byBlock, Map<String, Material> byTag, Material fallback,
+            java.util.Set<String> covers) {
+        this.covers = java.util.Set.copyOf(covers);
         this.byBlock = Map.copyOf(byBlock);
         // L'ordre des étiquettes est la priorité : une copie qui le garde.
         this.byTag = Collections.unmodifiableMap(new LinkedHashMap<>(byTag));
@@ -80,6 +95,16 @@ public final class BlockMaterials {
             }
         }
         return fallback;
+    }
+
+    /** {@return vrai si un bloc se déclare couvrant (ADR-180 D3)} */
+    public boolean covers(String blockId) {
+        return covers.contains(blockId);
+    }
+
+    /** {@return vrai si le mappage déclare au moins un bloc couvrant} */
+    public boolean hasCovers() {
+        return !covers.isEmpty();
     }
 
     /** {@return le contact par défaut de ce mappage} */

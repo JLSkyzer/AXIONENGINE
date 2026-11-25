@@ -19,8 +19,10 @@ import java.util.TreeMap;
  * Mappages bloc → matériau physique, {@code axion/block_materials/**.json} qu'un mod enregistre (§11.4,
  * R-643, R-1040, R-1041, ADR-145 point 4).
  *
- * <p>Un fichier porte {@code schema} 1 et, chacun facultatif, {@code default}, {@code by_tag} et
- * {@code by_block}, qui nomment des matériaux du registre {@code axion:physics_material}. Les
+ * <p>Un fichier porte {@code schema} 1 ou 2 et, chacun facultatif, {@code default}, {@code by_tag} et
+ * {@code by_block}, qui nomment des matériaux du registre {@code axion:physics_material} ; au schéma 2 (ADR-180 D3),
+ * {@code cover}, la liste des blocs sans collision dont le matériau couvre le bloc qu'ils surmontent — réunie d'un
+ * fichier à l'autre. Les
  * fichiers se fusionnent dans l'ordre de leurs identifiants : une entrée d'un fichier plus tardif
  * remplace celle d'un plus précoce, ce que les notes disent ; {@code default} aussi. La priorité
  * des étiquettes est leur ordre de déclaration — fichier après fichier, et une étiquette reprise
@@ -41,10 +43,13 @@ public final class BlockMaterialMappings {
     /** Extension des mappages. */
     public static final String EXTENSION = ".json";
 
-    /** Seule version de format lue. */
+    /** La première version de format ; {@link #COVER_SCHEMA} ajoute {@code cover}. */
     public static final int SCHEMA = 1;
 
-    private static final Set<String> KEYS = Set.of("schema", "default", "by_tag", "by_block");
+    /** La version qui déclare les blocs couvrants (ADR-180 D3). */
+    public static final int COVER_SCHEMA = 2;
+
+    private static final Set<String> KEYS = Set.of("schema", "default", "by_tag", "by_block", "cover");
 
     private BlockMaterialMappings() {}
 
@@ -89,6 +94,7 @@ public final class BlockMaterialMappings {
         Map<String, String> origin = new LinkedHashMap<>();
         String fallback = null;
         String fallbackOrigin = null;
+        Set<String> covers = new java.util.LinkedHashSet<>();
         // ADR-165 D4 : le fichier de l'administrateur, s'il est là, passe après ceux des mods.
         List<String> ordered = new ArrayList<>(byId.values());
         if (ordered.remove(ServerOverrides.BLOCK_MAPPING_KEY)) {
@@ -120,13 +126,36 @@ public final class BlockMaterialMappings {
             }
             section(location, root, "by_tag", byTag, origin, materials, refusals, notes);
             section(location, root, "by_block", byBlock, origin, materials, refusals, notes);
+            covers(location, root, covers, refusals);
         }
 
         BlockMaterials mapping = new BlockMaterials(
                 contacts(byBlock, materials),
                 contacts(byTag, materials),
-                contact(fallback == null ? PhysicsMaterials.genericSteel() : materials.resolve(fallback)));
+                contact(fallback == null ? PhysicsMaterials.genericSteel() : materials.resolve(fallback)),
+                covers);
         return new Result(mapping, refusals, notes);
+    }
+
+    /** Réunit les blocs couvrants d'un fichier (ADR-180 D3) ; une entrée mal formée est refusée, nommée. */
+    private static void covers(String location, JsonObject root, Set<String> merged, List<String> refusals) {
+        JsonElement section = root.get("cover");
+        if (section == null) {
+            return;
+        }
+        if (!(section instanceof com.google.gson.JsonArray entries)) {
+            refusals.add("E-7001 " + location + " — $.cover : attendu une liste d'identifiants de blocs");
+            return;
+        }
+        for (int i = 0; i < entries.size(); i++) {
+            JsonElement value = entries.get(i);
+            if (value instanceof JsonPrimitive text && text.isString()
+                    && DefinitionRegistry.isId(text.getAsString())) {
+                merged.add(text.getAsString());
+            } else {
+                refusals.add("E-7001 " + location + " — $.cover[" + i + "] : attendu un identifiant <ns>:<chemin>");
+            }
+        }
     }
 
     /** Fusionne une section : une clé reprise remplace l'entrée et garde sa place. */
@@ -209,7 +238,7 @@ public final class BlockMaterialMappings {
         for (String key : root.keySet()) {
             if (!KEYS.contains(key)) {
                 throw DefinitionException.invalid(StrictJson.member("$", key),
-                        "champ inconnu ; admis : schema, default, by_tag, by_block");
+                        "champ inconnu ; admis : schema, default, by_tag, by_block, cover (schéma 2)");
             }
         }
         JsonElement schema = root.get("schema");
@@ -217,9 +246,13 @@ public final class BlockMaterialMappings {
             throw DefinitionException.invalid("$.schema", "champ obligatoire");
         }
         if (!(schema instanceof JsonPrimitive primitive) || !primitive.isNumber()
-                || primitive.getAsBigDecimal().compareTo(BigDecimal.valueOf(SCHEMA)) != 0) {
+                || primitive.getAsBigDecimal().compareTo(BigDecimal.valueOf(SCHEMA)) != 0
+                        && primitive.getAsBigDecimal().compareTo(BigDecimal.valueOf(COVER_SCHEMA)) != 0) {
             throw DefinitionException.unknownSchema("$.schema", "version " + schema
-                    + " inconnue, seule " + SCHEMA + " est lue");
+                    + " inconnue, lues : " + SCHEMA + " et " + COVER_SCHEMA);
+        }
+        if (root.has("cover") && primitive.getAsInt() < COVER_SCHEMA) {
+            throw DefinitionException.invalid("$.cover", "champ du schéma " + COVER_SCHEMA);
         }
         return root;
     }

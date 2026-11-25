@@ -173,16 +173,19 @@ public final class WorldTileBridge implements SimCommandProvider {
         return null;
     }
 
-    /** Un bloc changé invalide la section qui le contient. */
+    /**
+     * Un bloc changé invalide la section qui le contient, et celle du bloc qu'il surmonte : un bloc couvrant lui donne
+     * son matériau (ADR-180 D3).
+     */
     private void invalidateBlock(ServerLevel level, BlockPos pos) {
         long dim = DimensionId.of(level.dimension().location().toString());
-        SectionKey key =
-                new SectionKey(
-                        dim,
-                        WorldTileGeometry.sectionOfBlock(pos.getX()),
-                        WorldTileGeometry.sectionOfBlock(pos.getY()),
-                        WorldTileGeometry.sectionOfBlock(pos.getZ()));
-        enqueue(key);
+        for (int y : new int[] {pos.getY(), pos.getY() - 1}) {
+            enqueue(new SectionKey(
+                    dim,
+                    WorldTileGeometry.sectionOfBlock(pos.getX()),
+                    WorldTileGeometry.sectionOfBlock(y),
+                    WorldTileGeometry.sectionOfBlock(pos.getZ())));
+        }
     }
 
     /** Met une section en attente du tick, une seule fois tant qu'elle y est. */

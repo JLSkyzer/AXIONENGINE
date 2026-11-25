@@ -38,8 +38,8 @@ There is no weather rule for snow: the examples map `minecraft:snow`, `minecraft
 content declares its own (see [materials](../MATERIALS.en.md)).
 
 **The ground, block by block.** Each wheel takes the material of the block it touches ([ADR-180](../../decisions/ADR-180.md)):
-a road on grass grips like the road. The first snow layer, which has no collision, does not count yet: the wheel touches
-the block below.
+a road on grass grips like the road. The first snow layer, which has no collision, covers the block below with its
+material because the example mapping declares it `cover` ([materials](../MATERIALS.en.md)); yours declares its own.
 
 ## Reading it
 

@@ -134,7 +134,8 @@ class BlockMaterialMappingsTest {
     void formeDuFichier() {
         for (String[] cas : new String[][] {
             {"{\"default\": \"mymod:ice\"}", "E-7001", "$.schema : champ obligatoire"},
-            {"{\"schema\": 2}", "E-7003", "$.schema"},
+            {"{\"schema\": 3}", "E-7003", "$.schema"},
+            {"{\"schema\": 1, \"cover\": []}", "E-7001", "$.cover : champ du schéma 2"},
             {"{\"schema\": 1, \"blocks\": {}}", "E-7001", "$.blocks : champ inconnu"},
             {"[]", "E-7001", "un mappage bloc → matériau est un objet JSON"},
         }) {
@@ -144,6 +145,18 @@ class BlockMaterialMappingsTest {
             assertTrue(result.refusals().get(0).startsWith(cas[1] + " mymod:axion/block_materials/base.json")
                     && result.refusals().get(0).contains(cas[2]), result.refusals()::toString);
         }
+    }
+
+    @Test
+    @DisplayName("ADR-180 D3 : au schéma 2, les blocs couvrants de chaque fichier se réunissent ; une entrée mal formée se refuse seule")
+    void couvrants() {
+        BlockMaterialMappings.Result result = BlockMaterialMappings.load(new FakeSource()
+                .mapping("mymod:base", "{\"schema\": 2, \"cover\": [\"minecraft:snow\", 4]}")
+                .mapping("mymod:plus", "{\"schema\": 2, \"cover\": [\"mymod:poussiere\"]}"), MATERIALS);
+        assertEquals(1, result.refusals().size(), result.refusals()::toString);
+        assertTrue(result.refusals().get(0).contains("$.cover[1]"), result.refusals()::toString);
+        assertTrue(result.mapping().covers("minecraft:snow") && result.mapping().covers("mymod:poussiere"));
+        assertTrue(result.mapping().hasCovers() && !result.mapping().covers("minecraft:stone"));
     }
 
     @Test

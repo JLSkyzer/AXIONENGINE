@@ -205,6 +205,54 @@ public final class CollisionDuMondeGameTests {
     }
 
     /**
+     * ADR-180 D3 : la première couche de neige, sans collision, donne son matériau au bloc qu'elle couvre quand le
+     * mappage la dit couvrante — à travers la limite d'une section ; sans cette déclaration, elle ne compte pas.
+     */
+    @GameTest(template = "test/plancher")
+    public static void laPremiereCoucheDeNeigeCouvreSonBloc(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        long dimension = DimensionId.of(level.dimension().location().toString());
+        java.util.Map<String, BlockMaterials.Material> neige = java.util.Map.of(
+                "minecraft:snow", new BlockMaterials.Material("essai:neige", 0.35f, 0f));
+        BlockMaterials.Material pierre = new BlockMaterials.Material("essai:pierre", 0.9f, 0f);
+        ChunkPos chunk = new ChunkPos(helper.absolutePos(BlockPos.ZERO).offset(0, 0, -100_000));
+        level.getChunk(chunk.x, chunk.z);
+        int sectionY = SectionPos.blockToSectionCoord(level.getMaxBuildHeight()) - 4;
+        // La pierre au dernier niveau de la section, la neige au premier de celle du dessus.
+        int y = sectionY * SIZE + SIZE - 1;
+        for (int x = 0; x < 2; x++) {
+            BlockPos pos = new BlockPos(chunk.getMinBlockX() + x, y, chunk.getMinBlockZ());
+            level.setBlock(pos, Blocks.STONE.defaultBlockState(), Block.UPDATE_CLIENTS);
+        }
+        level.setBlock(new BlockPos(chunk.getMinBlockX(), y + 1, chunk.getMinBlockZ()),
+                Blocks.SNOW.defaultBlockState(), Block.UPDATE_CLIENTS);
+        for (boolean couvrante : new boolean[] {true, false}) {
+            BlockMaterials mapping = new BlockMaterials(neige, java.util.Map.of(), pierre,
+                    couvrante ? java.util.Set.of("minecraft:snow") : java.util.Set.of());
+            SectionTile tile = new ForgeWorldCollisionSource(id -> id == dimension ? level : null, () -> mapping,
+                    id -> "essai:neige".equals(id) ? 2 : 1).tileOf(dimension, chunk.x, sectionY, chunk.z);
+            if (!(tile.collision() instanceof CollisionShape.Boxes boites)) {
+                helper.fail("boîtes attendues");
+                return;
+            }
+            int[] vus = new int[2];
+            // Le matériau de la boîte qui couvre le milieu de chaque bloc : sans couverture, une seule les couvre.
+            for (int i = 0; i < boites.boxes().length; i++) {
+                float[] boite = boites.boxes()[i];
+                int porte = boites.palette().length == 0 ? boites.material() : boites.palette()[boites.ranks()[i]];
+                for (int x = 0; x < 2; x++) {
+                    if (boite[0] <= x + 0.5f && x + 0.5f <= boite[3] && boite[2] <= 0.5f && 0.5f <= boite[5]) {
+                        vus[x] = porte;
+                    }
+                }
+            }
+            helper.assertTrue(vus[0] == (couvrante ? 2 : 1) && vus[1] == 1,
+                    "couvrante " + couvrante + " : sous la neige " + vus[0] + ", à côté " + vus[1]);
+        }
+        helper.succeed();
+    }
+
+    /**
      * R-641 : une section trop découpée pour sa liste de boîtes passe en champ de hauteurs
      * conservateur. Des escaliers, deux boîtes chacun, empilés colonne par colonne jusqu'à une
      * hauteur propre à chaque colonne : quelque 6 400 boîtes, au-delà du plafond de 4 096. Chaque

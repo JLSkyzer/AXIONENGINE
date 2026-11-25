@@ -3916,7 +3916,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  matériau par cellule du champ de hauteurs lu par la roue.
            - [x] 14b (2026-11-25) — Java : palette et fusion par matériau, replis, champ de hauteurs par colonne ; R-643
                  amendé ; GameTest d'une bande de glace sur de la pierre.
-           - [ ] 14c — la couche couvrante (`cover`), la première couche de neige.
+           - [x] 14c (2026-11-25) — `cover` (correspondances au schéma 2), la première couche de neige.
            - [ ] 14d — impacts sur champ de hauteurs ; mesure avant (commit `76250c51`) et après : construction des tuiles,
                  nombre de boîtes, pas, mémoire.
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,

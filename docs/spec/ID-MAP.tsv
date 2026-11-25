@@ -69,7 +69,7 @@ ADR-176	ADR		3324	15	12.4 Modèle de pneu
 ADR-177	ADR		2326	8	5.44 C-53 : Interaction & Sièges
 ADR-178	ADR		2321	13	5.44 C-53 : Interaction & Sièges
 ADR-179	ADR		2275	3	5.40 C-48 : Attachment System
-ADR-180	ADR		2090	2	5.30 C-38 : World Collision Provider
+ADR-180	ADR		2090	3	5.30 C-38 : World Collision Provider
 B-01	B	6590	5957	9	30.2 Ce qui est mesuré
 B-02	B	6591	6591	3	30.2 Ce qui est mesuré
 B-03	B	6592	6592	1	30.2 Ce qui est mesuré
@@ -696,7 +696,7 @@ R-1035	R	3248	3248	2	11.5 Cohérence dimensionnelle (référence normative)
 R-1036	R	3251	3251	1	11.5 Cohérence dimensionnelle (référence normative)
 R-1037	R	3254	3254	1	11.5 Cohérence dimensionnelle (référence normative)
 R-1038	R	3258	3258	2	11.5 Cohérence dimensionnelle (référence normative)
-R-1040	R	3204	3204	1	11.4 Mappage bloc → matériau
+R-1040	R	3204	3204	2	11.4 Mappage bloc → matériau
 R-1041	R	3205	3205	1	11.4 Mappage bloc → matériau
 R-1050	R	3291	3291	1	12.2 Modèle de roue
 R-1051	R	3292	3292	1	12.2 Modèle de roue

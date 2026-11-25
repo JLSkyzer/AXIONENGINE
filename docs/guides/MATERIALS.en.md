@@ -61,6 +61,18 @@ order the file declares them: from the most specific to the most general —, ot
 replaces the earlier one, and the log says so. Each block keeps that contact in the world's collision
 tile (R-643).
 
+**Covering blocks** (schema 2, [ADR-180](../decisions/ADR-180.md)). A block without a collision — the first
+snow layer — is never touched: the wheel rolls on the block below. Name it in `cover` so that its material
+covers that block; the files' lists add up.
+
+```json
+{
+  "schema": 2,
+  "by_block": { "minecraft:snow": "mymod:snow" },
+  "cover": [ "minecraft:snow" ]
+}
+```
+
 ## On contact
 
 Each collider of an assembly takes the material of its **part** — the one whose `root_node` carries it;

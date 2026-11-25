@@ -61,6 +61,18 @@ dans l'ordre où le fichier les déclare : de la plus précise à la plus géné
 fichier plus tardif remplace la précédente, et le journal le dit. Chaque bloc garde ce contact dans
 la tuile de collision du monde (R-643).
 
+**Les blocs couvrants** (schéma 2, [ADR-180](../decisions/ADR-180.md)). Un bloc sans collision — la première
+couche de neige — ne se touche pas : la roue roule sur le bloc dessous. Nomme-le dans `cover` pour que son
+matériau couvre ce bloc ; les listes des fichiers se réunissent.
+
+```json
+{
+  "schema": 2,
+  "by_block": { "minecraft:snow": "monmod:neige" },
+  "cover": [ "minecraft:snow" ]
+}
+```
+
 ## Au contact
 
 Chaque collider d'une assembly prend le matériau de sa **part** — celle dont le `root_node` le porte ;
