@@ -491,9 +491,10 @@ public final class BancDeRendu {
     private static int chuteTickDepart;
     private static int chuteTickFin;
     /**
-     * ADR-150 D7 : la pose rendue de l'assembly lâchée, à chaque frame de sa chute — début de la frame en
-     * nanosecondes, hauteur, et mode de l'interpolation de 21.7 ({@code -1} : aucun, avant le premier
-     * snapshot).
+     * ADR-150 D7 : la pose rendue de l'assembly lâchée, à chaque frame de sa chute — l'heure à laquelle la pose est datée
+     * (celle de l'horloge de rendu), en nanosecondes, hauteur, mode de l'interpolation de 21.7 ({@code -1} : aucun, avant le
+     * premier snapshot), et début de la frame relevé par le banc. La vitesse se mesure avec la première : une pause entre
+     * les deux relevés, sur une machine lente, faisait passer 52 ms de chute pour 9,7 ms (CI du 2026-11-25).
      */
     private static final List<double[]> chuteRendue = new ArrayList<>();
     private static double[] duPackAvant;
@@ -1454,8 +1455,8 @@ public final class BancDeRendu {
             pendant("la chute", 6 * 20, mc -> {
                 if (mc.level.getEntity(chuteId) instanceof AxionEntity rendue) {
                     AxionEntity.RenderPose pose = rendue.renderPose(mc.getPartialTick());
-                    chuteRendue.add(new double[] {debutDeFramePrecedent, pose.y(),
-                        pose.mode() == null ? -1 : pose.mode().ordinal()});
+                    chuteRendue.add(new double[] {rendue.frameNanos(), pose.y(),
+                        pose.mode() == null ? -1 : pose.mode().ordinal(), debutDeFramePrecedent});
                 }
             });
             serveur("relever l'assembly lâchée chez le serveur", s -> {
@@ -2868,9 +2869,9 @@ public final class BancDeRendu {
         }
         double[] avant = chuteRendue.get(index - 1);
         double[] releve = chuteRendue.get(index);
-        return String.format(Locale.ROOT, " (pire à la frame %d : %.3f ms après la précédente, %.4f bloc, mode %d puis"
-                        + " %d)", index, (releve[0] - avant[0]) / 1e6, avant[1] - releve[1], (int) avant[2],
-                (int) releve[2]);
+        return String.format(Locale.ROOT, " (pire à la frame %d : poses à %.3f ms l'une de l'autre (débuts de frame à"
+                        + " %.3f ms), %.4f bloc, mode %d puis %d)", index, (releve[0] - avant[0]) / 1e6,
+                (releve[3] - avant[3]) / 1e6, avant[1] - releve[1], (int) avant[2], (int) releve[2]);
     }
 
     private static void jugerD7(Minecraft minecraft, net.minecraft.world.entity.Entity client) {

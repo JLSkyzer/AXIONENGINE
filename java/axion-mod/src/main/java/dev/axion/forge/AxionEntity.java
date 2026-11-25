@@ -3763,6 +3763,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return l'heure à laquelle {@link #renderPose} date la pose de l'image en cours, en nanosecondes ; {@code 0} avant le
+     * premier snapshot} Une mesure de ce qui est dessiné d'une image à l'autre se fait avec elle.
+     */
+    long frameNanos() {
+        return clock == null ? 0L : clock.frameNanos();
+    }
+
+    /**
      * Ignore la position que le suivi d'entité de Minecraft enverrait encore — à la première mise à
      * jour, après une impulsion : celle d'AXION arrive par les snapshots, au 1/1024 de bloc, et les deux
      * se disputeraient l'entité (ADR-150 D2). La position d'apparition, elle, est posée par Minecraft

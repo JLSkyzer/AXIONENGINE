@@ -2664,3 +2664,14 @@ relevait l'état entre elle et `ServerCarry`.
 mouvement simulé d'un joueur. Un relevé de diagnostic se prend **après** le gestionnaire qui écrit l'état (priorité d'événement). Un
 essai qui compare avec un **témoin** (le véhicule seul) dit en un passage si c'est la charge qui gêne. Toute fonction éprouvée « au repos
 une seconde » reste non éprouvée en mouvement : l'essai long et rapide a trouvé trois défauts que bancs et GameTests laissaient passer.
+
+## 2026-11-25 | Une vitesse « dessinée » de 58 m/s en CI : deux horodatages de la même image
+
+**Observé.** CI rouge sur `ADR-150 D7` : l'assembly lâchée dessinée à 58 m/s pour 10,85 au plus (0,566 bloc « en 9,7 ms »).
+
+**Cause.** La pose est datée par l'horloge de rendu (`RenderClock.onFrame`), le banc divisait par l'écart de ses propres
+`System.nanoTime()`, pris par un autre gestionnaire du même événement. Une pause entre les deux, sur une machine lente, comptait une
+chute de 52 ms pour 9,7 ms.
+
+**Règle.** Une vitesse se mesure avec **l'heure à laquelle la valeur est datée**, jamais avec un second horodatage pris à côté. Un
+verdict dont le chiffre est physiquement impossible accuse d'abord la mesure : le vérifier avant de toucher au code mesuré.
