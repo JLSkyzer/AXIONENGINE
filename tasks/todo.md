@@ -3929,6 +3929,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  Killian) ; constructeur Java de correspondances ; coût. Test combiné mouillé/usure fait le 2026-11-25.
            - [ ] Coût du sol : profiler la construction des tuiles et le surplus de colliders du monde plat, puis réduire
                  (question posée à Killian le 2026-11-25).
+     - [ ] **ADR-181, le matériau sous la roue à l'API** : proposé le 2026-11-25 (demande de Killian) ; attend son
+           acceptation (Q1 à Q3) avant tout code.
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
            `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
            (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Restent : la mesure du
