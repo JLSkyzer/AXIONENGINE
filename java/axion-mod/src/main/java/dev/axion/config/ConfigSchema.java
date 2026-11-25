@@ -1264,7 +1264,7 @@ public final class ConfigSchema {
                     new Domain(DomainKind.INT_RANGE, 1.0, 1200.0, List.of()),
                     false,
                     false,
-                    "Exceptions de suite d'un écouteur des sièges ou des interactions d'un mod qui le désactivent pour la session."),
+                    "Exceptions de suite d'un écouteur d'un mod (sièges, interactions, attaches) qui le désactivent pour la session."),
             new Option(
                     "content.rebind_per_tick",
                     Kind.INTEGER,

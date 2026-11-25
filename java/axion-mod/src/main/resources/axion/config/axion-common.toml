@@ -21,7 +21,7 @@ entity_damage = true
 wet_rise_seconds = 2.0            # 0.1..60.0
 wet_dry_seconds = 30.0            # 0.1..600.0
 player_carry = true
-carry_max_entities = 64          # 0..1024
+carry_max_entities = 64           # 0..1024
 player_proxy_mass = 80.0          # 0.0..6000.0
 push_speed_max = 10.0             # 0.0..100.0
 

@@ -191,7 +191,9 @@ registrar.registerAttachmentListener(new AttachmentListener() {
 });
 ```
 
-Il voit chaque attache du serveur, celles d'un joueur comme celles d'un autre mod.
+Il voit chaque attache du serveur, celles d'un joueur comme celles d'un autre mod. Une exception est journalisée en
+nommant ton mod et ne refuse rien ; `content.listener_strikes` exceptions de suite (20) désactivent l'écouteur pour la
+session (`E-1012`).
 
 ## 8. Les commandes
 

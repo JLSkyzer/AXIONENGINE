@@ -3902,7 +3902,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              annexe A.7 et A27 ; GameTests du contact et de la masse prédits, des réservoirs de remorque ; API ou commande
              d'humidité ; essai à deux clients ou report ; neige (décision de Killian) ; film du plein et jauge ; grille D7
              d'ADR-176.
-           - CAP-11 et CAP-34 non livrées : GameTest d'`AttachmentListener` et isolement des écouteurs ; test natif de la
+           - CAP-11 et CAP-34 non livrées (isolement d'`AttachmentListener` fait et testé le 2026-11-25) ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,
              canaux, sources) ; données d'addon synchronisées ; sections d'extension par pièce ; échelle par definition et

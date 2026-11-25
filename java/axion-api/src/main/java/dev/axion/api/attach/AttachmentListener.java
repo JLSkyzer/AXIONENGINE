@@ -10,7 +10,8 @@ import java.util.Optional;
  * pour les attaches que pose un joueur comme pour celles d'un autre mod.
  *
  * <p>Chaque méthode a un défaut : un écouteur ne redéfinit que ce qui l'intéresse. Une exception d'un écouteur est
- * journalisée en nommant son mod ; elle ne refuse rien.
+ * journalisée en nommant son mod ; elle ne refuse rien, et {@code content.listener_strikes} exceptions de suite le
+ * désactivent pour la session ({@code E-1012}).
  */
 @Experimental
 public interface AttachmentListener {

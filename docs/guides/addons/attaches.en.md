@@ -192,7 +192,9 @@ registrar.registerAttachmentListener(new AttachmentListener() {
 });
 ```
 
-It sees every attachment of the server, a player's as well as another mod's.
+It sees every attachment of the server, a player's as well as another mod's. An exception is logged naming your mod
+and refuses nothing; `content.listener_strikes` consecutive exceptions (20) disable the listener for the session
+(`E-1012`).
 
 ## 8. Commands
 

@@ -8016,7 +8016,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | `E-1004` | natif | double initialisation | refusé | défaut interne |
 | `E-1010` | forge | hook désactivé après 5 échecs | fonctionnalité réduite | consulter le log |
 | `E-1011` | véhicule | contrôleur de véhicule désactivé : `vehicle.controller_strikes` fautes consécutives, dépassements de `vehicle.controller_budget_ns` ou exceptions (ADR-167 D9) ; de même un widget du tableau de bord, vingt fautes au-delà de `hud.widget_budget_ns` (ADR-170 D6) | désactivé pour la session sur tous les véhicules, qui roulent sans ses sorties ou s'affichent sans lui ; le message le nomme ainsi que son mod | corriger le contrôleur ou le widget, ou relever le budget |
-| `E-1012` | contenu | écouteur des sièges ou des interactions d'un mod désactivé : `content.listener_strikes` exceptions de suite (ADR-174 D1, amendement A25) | désactivé pour la session ; les gestes ont lieu sans lui, le journal nomme son mod |
+| `E-1012` | contenu | écouteur d'un mod (sièges, interactions, attaches) désactivé : `content.listener_strikes` exceptions de suite (ADR-174 D1, amendement A25 ; attaches : précision d'ADR-171 du 2026-11-25) | désactivé pour la session ; les gestes ont lieu sans lui, le journal nomme son mod |
 | `E-1050` | arrêt | thread non terminé | abandon | rapporter avec le dump |
 | `E-2000` | runtime | panic capturée | opération annulée | rapporter |
 | `E-2001` | runtime | handle invalide | refusé | défaut interne |
@@ -8257,7 +8257,7 @@ animation = true ; attachments = true ; blocks = true
 [content]
 examples = false
 dev_reload = false                # /axion dev reload (ADR-162 D9, amendement A13)
-listener_strikes = 20             # 1..1200 ; écouteurs des sièges et des interactions d'un mod (ADR-174 D1, amendement A25)
+listener_strikes = 20             # 1..1200 ; écouteurs d'un mod : sièges, interactions, attaches (ADR-174 D1, amendement A25)
 rebind_per_tick = 4               # 1..256 ; assemblies vivantes reliées par tick à leur definition rechargée (ADR-175 D5)
 
 [integration.rustforgex]

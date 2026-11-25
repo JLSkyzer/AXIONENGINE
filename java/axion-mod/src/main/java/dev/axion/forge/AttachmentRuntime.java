@@ -191,6 +191,11 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         listeners = List.copyOf(registered);
     }
 
+    /** {@return les écouteurs publiés ; un essai les remet après avoir posé les siens} */
+    static List<ContentRegistry.AttachmentListenerEntry> publishedListeners() {
+        return listeners;
+    }
+
     /** {@return la distance où l'interaction {@code attach} cherche l'autre socket, sans la sienne} */
     public double snapDistance() {
         return snapDistance;
@@ -299,15 +304,15 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         }
         Assembly aView = ForgeAxionApi.view(a);
         Optional<Assembly> bView = b == null ? Optional.empty() : Optional.of(ForgeAxionApi.view(b));
+        String ownName = sa.name();
+        String otherName = sb == null ? null : sb.name();
+        String asked = kind;
         for (ContentRegistry.AttachmentListenerEntry entry : restoring ? List.<ContentRegistry.AttachmentListenerEntry>of()
                 : listeners) {
-            try {
-                if (!entry.listener().allow(aView, sa.name(), bView, sb == null ? null : sb.name(), kind)) {
-                    return refused(Status.REFUSED, "refusée par " + entry.modId());
-                }
-            } catch (RuntimeException | LinkageError failure) {
-                LOGGER.error("AXION : l'écouteur d'attaches de {} a levé ; l'attache n'est pas refusée",
-                        entry.modId(), failure);
+            // ADR-174 D1 : un écouteur qui lève ne refuse rien, et trop de fautes de suite le désactivent (E-1012).
+            if (!ContentListeners.call(entry.listener(), entry.modId(), "l'attache de " + ownName + " à juger",
+                    () -> entry.listener().allow(aView, ownName, bView, otherName, asked), true)) {
+                return refused(Status.REFUSED, "refusée par " + entry.modId());
             }
         }
         nextId++;
@@ -348,11 +353,10 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         pending.add(command);
         for (ContentRegistry.AttachmentListenerEntry entry : restoring ? List.<ContentRegistry.AttachmentListenerEntry>of()
                 : listeners) {
-            try {
-                entry.listener().attached(aView, sa.name(), bView, sb == null ? null : sb.name(), kind);
-            } catch (RuntimeException | LinkageError failure) {
-                LOGGER.error("AXION : l'écouteur d'attaches de {} a levé", entry.modId(), failure);
-            }
+            ContentListeners.call(entry.listener(), entry.modId(), "l'attache de " + ownName + " posée", () -> {
+                entry.listener().attached(aView, ownName, bView, otherName, asked);
+                return null;
+            }, null);
         }
         return AttachResult.ok();
     }
@@ -399,12 +403,12 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
         Optional<Assembly> bView = gone.b == null || gone.b.isRemoved() ? Optional.empty()
                 : Optional.of(ForgeAxionApi.view(gone.b));
         for (ContentRegistry.AttachmentListenerEntry entry : listeners) {
-            try {
-                entry.listener().detached(aView, gone.aSocket.name(), bView,
-                        gone.bSocket == null ? null : gone.bSocket.name(), cause);
-            } catch (RuntimeException | LinkageError failure) {
-                LOGGER.error("AXION : l'écouteur d'attaches de {} a levé", entry.modId(), failure);
-            }
+            ContentListeners.call(entry.listener(), entry.modId(), "l'attache de " + gone.aSocket.name() + " défaite",
+                    () -> {
+                        entry.listener().detached(aView, gone.aSocket.name(), bView,
+                                gone.bSocket == null ? null : gone.bSocket.name(), cause);
+                        return null;
+                    }, null);
         }
     }
 

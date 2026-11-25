@@ -101,6 +101,62 @@ public final class AttachesGameTests {
     }
 
     /**
+     * ADR-171 D4, comme les écouteurs d'ADR-174 D1 : un écouteur d'attaches qui lève est nommé, ne refuse rien, et
+     * {@code content.listener_strikes} exceptions de suite le désactivent pour la session ({@code E-1012}).
+     */
+    // Un lot à lui : les écouteurs sont ceux du serveur entier.
+    @GameTest(template = "test/plancher_16", batch = "attaches_ecouteur", timeoutTicks = 200)
+    public static void unEcouteurDAttachesQuiLeveEstIsoleEtDesactive(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity a = AssembliesDeTest.poser(helper, MAILLON, new Vec3(6.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        AxionEntity b = AssembliesDeTest.poser(helper, MAILLON, new Vec3(9.0, DESSUS_DALLE + 0.05, 8.0), DROIT);
+        int[] appels = {0};
+        dev.axion.api.attach.AttachmentListener fautif = new dev.axion.api.attach.AttachmentListener() {
+            @Override
+            public boolean allow(Assembly assembly, String socket, java.util.Optional<Assembly> other,
+                    String otherSocket, String kind) {
+                appels[0]++;
+                throw new IllegalStateException("essai : allow");
+            }
+
+            @Override
+            public void attached(Assembly assembly, String socket, java.util.Optional<Assembly> other,
+                    String otherSocket, String kind) {
+                appels[0]++;
+                throw new IllegalStateException("essai : attached");
+            }
+
+            @Override
+            public void detached(Assembly assembly, String socket, java.util.Optional<Assembly> other,
+                    String otherSocket, String cause) {
+                appels[0]++;
+                throw new IllegalStateException("essai : detached");
+            }
+        };
+        helper.runAfterDelay(20, () -> {
+            java.util.List<dev.axion.content.ContentRegistry.AttachmentListenerEntry> avant =
+                    AttachmentRuntime.publishedListeners();
+            AttachmentRuntime.publishListeners(java.util.List.of(
+                    new dev.axion.content.ContentRegistry.AttachmentListenerEntry("essai", fautif)));
+            ContentListeners.limit(2);
+            try {
+                attendu(helper, vue(a).attachments().attach("avant", vue(b), "arriere", "rope"),
+                        AttachResult.Status.ATTACHED);
+                vue(a).attachments().detach("avant");
+                attendu(helper, vue(a).attachments().attach("avant", vue(b), "arriere", "rope"),
+                        AttachResult.Status.ATTACHED);
+                helper.assertTrue(appels[0] == 2, "désactivé à la deuxième faute, il n'est plus appelé : " + appels[0]
+                        + " appel(s)");
+                vue(a).attachments().detach("avant");
+            } finally {
+                AttachmentRuntime.publishListeners(avant);
+                ContentListeners.limit((int) RuntimeAccess.get().outcome().config().getInt("content.listener_strikes"));
+            }
+            helper.succeed();
+        });
+    }
+
+    /**
      * ADR-171 Q9 (CAP-37) : un ensemble à portée d'un joueur garde chargés les chunks de tous ses membres — une remorque
      * ne reste pas seule au bord d'un chunk.
      */
