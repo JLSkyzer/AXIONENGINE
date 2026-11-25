@@ -3880,6 +3880,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            client) ; ouvertes CAP-12, 13, 14, 20, 33, 52, 53, 56. Ordre proposé : petites (43, 42, 45) ; un ADR
            « événements et déclencheurs » (02, 16, 11, 05, 04) ; 38 puis 33 ; 12 puis 20 ; 13, 56 puis 14 ; 53 avec
            C-77 ; 52 au gel de l'API.
+     - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
+           `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
+           (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Restent : la mesure du
+           client, les fréquences de sous-pas, une passe répétée avec joueurs, et l'ADR de l'extension du parallélisme
+           (déterminisme C-16) avant tout code.
      - [x] CAP-42 (2026-11-18) : `ContentCheck` dit non vérifiés, sans les refuser, les contrôleurs, widgets et
            paramètres d'addon dont le code ne se charge pas hors jeu (`VehicleExtensions.withoutCode()`).
      - [x] ADR-174, tranches 9a1 et 9a2 (2026-11-18) : schéma 7, `actions` d'une interaction (`hide_node`,
