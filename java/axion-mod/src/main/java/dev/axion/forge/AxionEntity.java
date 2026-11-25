@@ -2754,6 +2754,45 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
+     * {@return l'empreinte de la definition que le natif a compilée, la clé du balayage de collision (ADR-178 D1), ou
+     * {@code 0} sans definition compilée}
+     */
+    long collisionKey() {
+        Definition definition = document();
+        return definition == null || summaryHeld() == null ? 0L : definition.hash();
+    }
+
+    /**
+     * {@return la pose monde de chaque corps, à la queue leu leu : 7 valeurs chacun — position, rotation {@code xyzw}
+     * —, ou {@code null} si la definition n'est pas compilée ou si la pose d'un corps n'est pas connue (ADR-178 D1)}
+     * Au serveur, les états du dernier tick ; au client, la pose que le tick a prise de l'interpolation : celle que le
+     * joueur voit.
+     */
+    double[] collisionPoses() {
+        DefinitionCompiler.Summary summary = summaryHeld();
+        if (summary == null) {
+            return null;
+        }
+        List<SeatPlacement.BodyPose> bodies = bodyPoses(summary);
+        double[] poses = new double[bodies.size() * 7];
+        for (int rank = 0; rank < bodies.size(); rank++) {
+            SeatPlacement.BodyPose body = bodies.get(rank);
+            if (body == null) {
+                return null;
+            }
+            float[] q = body.rotation();
+            poses[rank * 7] = body.x();
+            poses[rank * 7 + 1] = body.y();
+            poses[rank * 7 + 2] = body.z();
+            poses[rank * 7 + 3] = q[0];
+            poses[rank * 7 + 4] = q[1];
+            poses[rank * 7 + 5] = q[2];
+            poses[rank * 7 + 6] = q[3];
+        }
+        return poses;
+    }
+
+    /**
      * {@return la pose monde de chaque corps, dans l'ordre de l'assembly ; {@code null} pour un corps dont
      * la pose n'est pas connue} Au serveur, les états du dernier tick ; au client, la pose que le tick a
      * prise de l'interpolation.

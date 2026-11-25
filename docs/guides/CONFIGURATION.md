@@ -42,6 +42,7 @@ alors ignorée (R-1830).
 | `entity_damage` | booléen | `true` | `true \| false` | non | oui | Un choc contre une assembly blesse les entités vivantes, comme une chute de même vitesse. |
 | `wet_rise_seconds` | flottant | `2.0` | `0.1..60.0` | non | oui | Secondes qu'un véhicule sous la pluie met à devenir tout à fait mouillé. |
 | `wet_dry_seconds` | flottant | `30.0` | `0.1..600.0` | non | oui | Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait. |
+| `player_carry` | booléen | `true` | `true \| false` | non | oui | Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté. |
 
 ### `[damage]`
 

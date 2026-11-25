@@ -94,6 +94,27 @@ public final class AxionEntities {
     /** Une boîte touche-t-elle un collider d'assembly (ADR-158 D5) ; sans runtime, aucune assembly. */
     private static volatile Boxes boxes = (dimension, box) -> false;
 
+    /** Le balayage d'une boîte contre une definition posée (ADR-178 D1) ; sans runtime, rien n'est heurté. */
+    private static volatile Collider collider = (definition, mode, poses, count, input, out) -> -1;
+
+    /** Les entités sont-elles arrêtées par les assemblies (ADR-178 D7) ? Faux sans runtime. */
+    private static volatile java.util.function.BooleanSupplier carry = () -> false;
+
+    /** Le balayage d'une boîte contre les colliders d'une definition posée, vu de l'entité. */
+    @FunctionalInterface
+    interface Collider {
+        /**
+         * @param definition empreinte de la definition
+         * @param mode balayage ou enfoncement
+         * @param poses la pose monde de chaque corps
+         * @param count le nombre de corps
+         * @param input la boîte, puis le déplacement
+         * @param out la réponse
+         * @return le code de l'ABI, négatif en cas d'erreur
+         */
+        int collide(long definition, int mode, double[] poses, int count, double[] input, double[] out);
+    }
+
     /** La boîte contre les colliders des assemblies, vue de l'entité. */
     @FunctionalInterface
     interface Boxes {
@@ -138,6 +159,8 @@ public final class AxionEntities {
         tunings = runtime::tuning;
         rays = runtime::raycastAssembly;
         boxes = runtime::boxTouchesAssembly;
+        collider = runtime::collideBox;
+        carry = runtime::playerCarry;
         inputTimeoutMillis = runtime::inputTimeoutMillis;
     }
 
@@ -234,6 +257,16 @@ public final class AxionEntities {
     /** {@return la boîte contre les colliders des assemblies} */
     static Boxes boxes() {
         return boxes;
+    }
+
+    /** {@return le balayage d'une boîte contre une definition posée (ADR-178 D1)} */
+    static Collider collider() {
+        return collider;
+    }
+
+    /** {@return vrai si les entités sont arrêtées par les assemblies, {@code physics.player_carry}} */
+    static boolean carry() {
+        return carry.getAsBoolean();
     }
 
     /** {@return le rayon contre les colliders d'une assembly} */

@@ -1393,6 +1393,28 @@ public final class AxionRuntime {
     }
 
     /**
+     * Balaie une boîte contre les colliders d'une definition posée (ADR-178 D1) ; sur le fil qui bouge l'entité.
+     *
+     * @param definition empreinte de la definition
+     * @param mode {@link dev.axion.bridge.NativeBridge#COLLIDE_SWEEP} ou {@link dev.axion.bridge.NativeBridge#COLLIDE_PENETRATION}
+     * @param poses la pose monde de chaque corps, 7 valeurs chacun
+     * @param poseCount le nombre de corps
+     * @param input la boîte, puis le déplacement : 9 valeurs
+     * @param out la réponse : 8 valeurs
+     * @return le code de l'ABI ; {@code -1} sans runtime natif, où aucune assembly n'existe
+     */
+    public int collideBox(long definition, int mode, double[] poses, int poseCount, double[] input, double[] out) {
+        return hasNativeRuntime()
+                ? dev.axion.bridge.NativeBridge.collideBox(outcome.context(), definition, mode, poses, poseCount, input, out)
+                : -1;
+    }
+
+    /** {@return vrai si les entités sont arrêtées par les assemblies : {@code physics.player_carry} (ADR-178 D7)} */
+    public boolean playerCarry() {
+        return hasNativeRuntime() && outcome.config().getBoolean("physics.player_carry");
+    }
+
+    /**
      * {@return la registry des definitions, vide avant tout rechargement} Celles que leur compilation
      * a refusées n'y sont plus (ADR-156 D5).
      */

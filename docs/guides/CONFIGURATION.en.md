@@ -42,6 +42,7 @@ ignored (R-1830).
 | `entity_damage` | boolean | `true` | `true \| false` | no | yes | A hit from an assembly hurts living entities, like a fall at the same speed. |
 | `wet_rise_seconds` | float | `2.0` | `0.1..60.0` | no | yes | Seconds a vehicle in the rain takes to become fully wet. |
 | `wet_dry_seconds` | float | `30.0` | `0.1..600.0` | no | yes | Seconds a wet vehicle, no longer in the rain, takes to dry out completely. |
+| `player_carry` | boolean | `true` | `true \| false` | no | yes | Entities and players are stopped by an assembly's colliders, and a player standing on one is carried. |
 
 ### `[damage]`
 

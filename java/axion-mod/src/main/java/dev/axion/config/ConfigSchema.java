@@ -250,6 +250,14 @@ public final class ConfigSchema {
                     true,
                     "Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait."),
             new Option(
+                    "physics.player_carry",
+                    Kind.BOOLEAN,
+                    true,
+                    new Domain(DomainKind.BOOLEAN, 0.0, 0.0, List.of()),
+                    false,
+                    true,
+                    "Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté."),
+            new Option(
                     "damage.enabled",
                     Kind.BOOLEAN,
                     true,

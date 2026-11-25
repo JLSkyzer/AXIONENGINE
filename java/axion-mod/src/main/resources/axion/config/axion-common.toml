@@ -20,6 +20,7 @@ entity_push = true
 entity_damage = true
 wet_rise_seconds = 2.0            # 0.1..60.0
 wet_dry_seconds = 30.0            # 0.1..600.0
+player_carry = true
 
 [damage]
 enabled = true

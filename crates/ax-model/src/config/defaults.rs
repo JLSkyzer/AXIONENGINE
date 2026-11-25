@@ -179,6 +179,10 @@ pub const COMMON: &[ConfigOption] = &[
     srv(f("physics.wet_dry_seconds", 30.0, 0.1, 600.0, "Secondes qu'un véhicule mouillé, plus sous la pluie, met à sécher tout à fait."))
         .en("Seconds a wet vehicle, no longer in the rain, takes to dry out completely."),
 
+    // ADR-178 D7 : un joueur, ou toute entité, ne traverse plus une assembly (CAP-14) ; faux rend le jeu d'avant.
+    srv(b("physics.player_carry", true, "Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté."))
+        .en("Entities and players are stopped by an assembly's colliders, and a player standing on one is carried."),
+
     // [damage]
     b("damage.enabled", true, "Active la chaîne de dommage : impacts, déformation, rupture, usure.")
         .en("Enables the damage chain: impacts, deformation, breakage, wear."),
