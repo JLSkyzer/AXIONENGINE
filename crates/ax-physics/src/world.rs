@@ -3625,7 +3625,7 @@ fn shape_forbids_dynamic(shape: &Shape) -> bool {
     }
 }
 
-fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
+pub(crate) fn shared_shape_of(shape: &Shape) -> Result<SharedShape, BodyError> {
     match shape {
         Shape::Cuboid {
             half_extents: [hx, hy, hz],

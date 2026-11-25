@@ -58,7 +58,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 33;
+    public static final int EXPECTED_ABI_VERSION = 34;
 
     /** Succès. */
     public static final int OK = 0;
@@ -176,6 +176,9 @@ public final class NativeBridge {
     static native int assemblyRaycast(long ctx, int index, int generation, double[] ray, double[] out);
 
     static native int boxTouchesAssembly(long ctx, long dimension, double[] box);
+
+    static native int collideBoxDefinition(
+            long ctx, long definition, int mode, double[] poses, int poseCount, double[] input, double[] out);
 
     static native int renderPrepare(long ctx, byte[] camera, float partialTick, long budgetNs, long[] out);
 
@@ -860,6 +863,51 @@ public final class NativeBridge {
         }
         CROSSINGS.increment();
         return boxTouchesAssembly(ctx, dimension, box);
+    }
+
+    /** Mode de {@link #collideBox} : balayer la boîte de son déplacement (ADR-178 D1). */
+    public static final int COLLIDE_SWEEP = 0;
+
+    /** Mode de {@link #collideBox} : l'enfoncement le plus profond de la boîte. */
+    public static final int COLLIDE_PENETRATION = 1;
+
+    /** Valeurs d'une pose de corps pour {@link #collideBox} : position (3), rotation {@code xyzw} (4). */
+    public static final int COLLIDE_POSE = 7;
+
+    /** Valeurs de l'entrée de {@link #collideBox} : le coin minimal, le coin maximal, puis le déplacement. */
+    public static final int COLLIDE_INPUT = 9;
+
+    /** Valeurs de la réponse de {@link #collideBox} : touché, corps, part ou profondeur, normale (3), deux réservées. */
+    public static final int COLLIDE_OUTPUT = 8;
+
+    /**
+     * Balaie une boîte alignée sur le monde contre les colliders d'une definition posée (ADR-178 D1, CAP-14), sans monde
+     * physique : le serveur la pose à son dernier tick, le client à la pose qu'il dessine. Lecture seule.
+     *
+     * @param ctx jeton de contexte
+     * @param definition empreinte de la definition, celle de sa compilation
+     * @param mode {@link #COLLIDE_SWEEP} ou {@link #COLLIDE_PENETRATION}
+     * @param poses la pose monde de chaque corps, dans l'ordre de la definition : {@link #COLLIDE_POSE} valeurs chacune
+     * @param poseCount le nombre de corps ; celui de la definition
+     * @param input {@link #COLLIDE_INPUT} valeurs : la boîte (min, max) en coordonnées monde, puis son déplacement
+     * @param out {@link #COLLIDE_OUTPUT} valeurs : touché (0 ou 1), corps, part du déplacement parcourue (ou profondeur),
+     *     normale du collider vers la boîte, deux à zéro
+     * @return {@link #OK} ; {@link #E_INVALID_HANDLE} pour une definition inconnue ; {@link #E_INVALID_BUFFER} si le
+     *     nombre de corps n'est pas celui de la definition ou si une valeur n'est pas finie
+     */
+    public static int collideBox(
+            long ctx, long definition, int mode, double[] poses, int poseCount, double[] input, double[] out) {
+        if (poses == null || poseCount <= 0 || poses.length < poseCount * COLLIDE_POSE) {
+            throw new IllegalArgumentException("une pose compte " + COLLIDE_POSE + " valeurs, par corps");
+        }
+        if (input == null || input.length < COLLIDE_INPUT) {
+            throw new IllegalArgumentException("l'entrée compte " + COLLIDE_INPUT + " valeurs");
+        }
+        if (out == null || out.length < COLLIDE_OUTPUT) {
+            throw new IllegalArgumentException("la réponse compte " + COLLIDE_OUTPUT + " valeurs");
+        }
+        CROSSINGS.increment();
+        return collideBoxDefinition(ctx, definition, mode, poses, poseCount, input, out);
     }
 
     // --- Cycle de rendu (IF-05, ADR-154) ------------------------------------

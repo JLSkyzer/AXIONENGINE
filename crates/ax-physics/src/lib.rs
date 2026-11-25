@@ -39,6 +39,7 @@
 
 mod activity;
 mod body;
+mod box_sweep;
 mod commands;
 mod config;
 mod debug;
@@ -58,6 +59,7 @@ pub use body::{
     BodyCollider, BodyError, BodyId, BodyKind, CombineRule, CompoundPart, ContactMaterial, Shape,
     ShapeConversionError,
 };
+pub use box_sweep::{penetration, sweep_box, BodyPose, BoxHit, BoxPenetration, PreparedBody};
 pub use commands::{
     apply_command_stream, create_assembly_payloads, payloads_of, CommandError, CommandOutcome,
 };

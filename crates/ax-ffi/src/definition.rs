@@ -100,6 +100,21 @@ pub(crate) struct CompiledDefinition {
     pub carriers: Vec<Vec<u32>>,
     /// Le véhicule qu'elle déclare (ADR-159).
     pub vehicle: Option<CompiledVehicle>,
+    /// Les colliders de chaque corps, formes construites, pour le balayage d'une boîte (ADR-178 D1) :
+    /// bâtis au premier appel, puis gardés avec la definition.
+    pub prepared: std::sync::OnceLock<Vec<ax_physics::PreparedBody>>,
+}
+
+impl CompiledDefinition {
+    /// Les colliders de chaque corps, prêts à servir, dans l'ordre des corps.
+    pub(crate) fn prepared_bodies(&self) -> &[ax_physics::PreparedBody] {
+        self.prepared.get_or_init(|| {
+            self.bodies
+                .iter()
+                .map(|body| ax_physics::PreparedBody::new(&body.colliders))
+                .collect()
+        })
+    }
 }
 
 /// Un véhicule compilé : sa description, et où chaque roue est montée.
@@ -485,6 +500,7 @@ fn finish(
         anatomy: prepared.anatomy,
         carriers: prepared.carriers,
         vehicle: None,
+        prepared: std::sync::OnceLock::new(),
     })
 }
 

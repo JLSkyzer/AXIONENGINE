@@ -83,7 +83,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 33;
+pub const AXION_ABI_VERSION: u32 = 34;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
@@ -2315,6 +2315,125 @@ pub unsafe extern "C" fn axion_box_touches_assembly(
                 unsafe { out.write(u32::from(touched)) };
                 AXION_OK
             }
+            Err(code) => code,
+        }
+    })
+}
+
+/// Mode de `axion_collide_box_definition` : balayer la boîte du déplacement (ADR-178 D1).
+pub const AXION_COLLIDE_SWEEP: u32 = 0;
+/// Mode de `axion_collide_box_definition` : l'enfoncement le plus profond de la boîte.
+pub const AXION_COLLIDE_PENETRATION: u32 = 1;
+/// Nombre de valeurs que lit `axion_collide_box_definition` pour une pose : position (3), rotation `xyzw` (4).
+pub const AXION_COLLIDE_POSE: usize = 7;
+/// Nombre de valeurs que lit `axion_collide_box_definition` pour la boîte (min, max) puis le déplacement.
+pub const AXION_COLLIDE_INPUT: usize = 9;
+/// Nombre de valeurs qu'`axion_collide_box_definition` écrit : touché (0 ou 1), corps, fraction ou profondeur,
+/// normale (3), puis deux réservées à zéro.
+pub const AXION_COLLIDE_OUTPUT: usize = 8;
+
+/// Balaie une boîte alignée sur le monde contre les colliders d'une definition **posée** (ADR-178 D1, CAP-14) :
+/// ce que la collision d'un joueur debout sur une assembly demande, sans monde physique, au serveur à la pose de
+/// son dernier tick et au client à celle qu'il dessine.
+///
+/// `poses` porte `pose_count` fois [`AXION_COLLIDE_POSE`] valeurs — la pose monde de chaque corps de la
+/// definition, dans son ordre — ; `input` porte [`AXION_COLLIDE_INPUT`] valeurs : le coin minimal, le coin maximal
+/// de la boîte, puis son déplacement. En mode [`AXION_COLLIDE_SWEEP`], `out` reçoit `1`, le rang du corps, la part du
+/// déplacement parcourue avant le contact, la normale (du collider vers la boîte) ; `0` partout si rien n'est
+/// heurté. En mode [`AXION_COLLIDE_PENETRATION`], le même, avec la profondeur à la place de la part, et la normale
+/// de la plus courte sortie. Lecture seule (R-650).
+///
+/// Rend `E-2001` pour une definition inconnue, `E-2002` si un pointeur est nul, si `pose_count` n'est pas le nombre
+/// de corps de la definition, si le mode est inconnu ou si une valeur n'est pas finie.
+///
+/// # Safety
+///
+/// `poses` doit désigner `pose_count × 7` `f64` lisibles, `input` neuf `f64` lisibles et `out` huit `f64`
+/// accessibles en écriture.
+#[no_mangle]
+pub unsafe extern "C" fn axion_collide_box_definition(
+    ctx: u64,
+    definition: u64,
+    mode: u32,
+    poses: *const f64,
+    pose_count: u32,
+    input: *const f64,
+    out: *mut f64,
+) -> i32 {
+    shielded(Some(ctx), || {
+        if poses.is_null() || input.is_null() || out.is_null() || pose_count == 0 {
+            return AXION_E_INVALID_BUFFER;
+        }
+        if mode != AXION_COLLIDE_SWEEP && mode != AXION_COLLIDE_PENETRATION {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let count = pose_count as usize;
+        // SAFETY: l'appelant garantit `pose_count × 7` valeurs lisibles, et neuf pour `input`.
+        let raw = unsafe { std::slice::from_raw_parts(poses, count * AXION_COLLIDE_POSE) };
+        let values = unsafe { std::slice::from_raw_parts(input, AXION_COLLIDE_INPUT) };
+        if raw.iter().chain(values).any(|value| !value.is_finite()) {
+            return AXION_E_INVALID_BUFFER;
+        }
+        let placed: Vec<ax_physics::BodyPose> = raw
+            .chunks_exact(AXION_COLLIDE_POSE)
+            .map(|chunk| ax_physics::BodyPose {
+                position: DVec3::new(chunk[0], chunk[1], chunk[2]),
+                rotation: Quat::from_xyzw(
+                    chunk[3] as f32,
+                    chunk[4] as f32,
+                    chunk[5] as f32,
+                    chunk[6] as f32,
+                )
+                .normalize(),
+            })
+            .collect();
+        let min = DVec3::new(values[0], values[1], values[2]);
+        let max = DVec3::new(values[3], values[4], values[5]);
+        let motion = Vec3::new(values[6] as f32, values[7] as f32, values[8] as f32);
+        let answer = context::with(ctx, false, |session| {
+            let compiled = session.definition(definition)?;
+            let bodies = compiled.prepared_bodies();
+            if bodies.len() != count {
+                return Some(Err(AXION_E_INVALID_BUFFER));
+            }
+            let mut result = [0.0f64; AXION_COLLIDE_OUTPUT];
+            if mode == AXION_COLLIDE_SWEEP {
+                if let Some(hit) = ax_physics::sweep_box(bodies, &placed, min, max, motion) {
+                    result = [
+                        1.0,
+                        hit.body as f64,
+                        f64::from(hit.fraction),
+                        f64::from(hit.normal.x),
+                        f64::from(hit.normal.y),
+                        f64::from(hit.normal.z),
+                        0.0,
+                        0.0,
+                    ];
+                }
+            } else if let Some(hit) = ax_physics::penetration(bodies, &placed, min, max) {
+                result = [
+                    1.0,
+                    hit.body as f64,
+                    f64::from(hit.depth),
+                    f64::from(hit.normal.x),
+                    f64::from(hit.normal.y),
+                    f64::from(hit.normal.z),
+                    0.0,
+                    0.0,
+                ];
+            }
+            Some(Ok(result))
+        });
+        match answer {
+            Ok(Some(Ok(result))) => {
+                // SAFETY: l'appelant garantit AXION_COLLIDE_OUTPUT valeurs accessibles en écriture.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(result.as_ptr(), out, AXION_COLLIDE_OUTPUT)
+                };
+                AXION_OK
+            }
+            Ok(Some(Err(code))) => code,
+            Ok(None) => AXION_E_INVALID_HANDLE,
             Err(code) => code,
         }
     })

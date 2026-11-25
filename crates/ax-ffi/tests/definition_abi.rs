@@ -24,10 +24,11 @@ use ax_model::dm::physics::{BodyDesc, ColliderDesc, ColliderShape};
 use ax_model::dm::scene::{name_hash, NodeDesc, NONE_U16, NONE_U32, NO_PARENT};
 use axion_native::abi::{
     axion_asset_load, axion_asset_unload, axion_buffer_acquire, axion_buffer_release,
-    axion_definition_compile, axion_definition_remove, axion_init, axion_last_error,
-    axion_shutdown, AxionBufferInfo, AXION_E_INVALID_BUFFER, AXION_E_INVALID_HANDLE, AXION_OK,
-    AXION_SECTION_ANIM, AXION_SECTION_NODE, AXION_SECTION_PHYS, AXION_SECTION_SKEL,
-    AXION_SIDE_SERVER,
+    axion_collide_box_definition, axion_definition_compile, axion_definition_remove, axion_init,
+    axion_last_error, axion_shutdown, AxionBufferInfo, AXION_COLLIDE_OUTPUT,
+    AXION_COLLIDE_PENETRATION, AXION_COLLIDE_POSE, AXION_COLLIDE_SWEEP, AXION_E_INVALID_BUFFER,
+    AXION_E_INVALID_HANDLE, AXION_OK, AXION_SECTION_ANIM, AXION_SECTION_NODE, AXION_SECTION_PHYS,
+    AXION_SECTION_SKEL, AXION_SIDE_SERVER,
 };
 
 static CONTEXTE: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -348,4 +349,126 @@ fn adr156_une_definition_se_compile_s_inscrit_se_refuse_et_se_retire_par_l_abi()
     assert_eq!(code, AXION_OK);
     assert_eq!(unsafe { axion_asset_unload(ctx, asset) }, AXION_OK);
     assert_eq!(unsafe { axion_shutdown(ctx) }, AXION_OK, "arrêt équilibré");
+}
+
+/// Demande à l'ABI de balayer une boîte contre la definition `hash`, posée en un corps : le code, et les huit valeurs.
+fn collision(
+    ctx: u64,
+    hash: u64,
+    mode: u32,
+    poses: &[f64],
+    boite_et_deplacement: [f64; 9],
+) -> (i32, [f64; AXION_COLLIDE_OUTPUT]) {
+    let mut sortie = [f64::NAN; AXION_COLLIDE_OUTPUT];
+    let code = unsafe {
+        axion_collide_box_definition(
+            ctx,
+            hash,
+            mode,
+            poses.as_ptr(),
+            u32::try_from(poses.len() / AXION_COLLIDE_POSE).unwrap(),
+            boite_et_deplacement.as_ptr(),
+            sortie.as_mut_ptr(),
+        )
+    };
+    (code, sortie)
+}
+
+#[test]
+fn adr178_une_boite_se_balaie_contre_les_colliders_d_une_definition_posee() {
+    let _contexte = CONTEXTE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut ctx = 0u64;
+    assert_eq!(
+        unsafe { axion_init(std::ptr::null(), 0, AXION_SIDE_SERVER, &raw mut ctx) },
+        AXION_OK
+    );
+    let asset = load(
+        ctx,
+        AXION_SECTION_NODE | AXION_SECTION_PHYS | AXION_SECTION_ANIM | AXION_SECTION_SKEL,
+    )
+    .expect("chargement");
+    let (code, _) = compile(ctx, 10, asset, &definition(Vec::new(), &[]));
+    assert_eq!(code, AXION_OK);
+
+    // Un corps à (100, 64, -20), sans rotation : sa boîte du node « porte » est à x = 102, dessus à y = 64,25.
+    let pose = [100.0, 64.0, -20.0, 0.0, 0.0, 0.0, 1.0];
+    // Un joueur, pieds à 66, au-dessus de la porte, qui tombe de 4 blocs : le contact est à 66 − 64,25 = 1,75.
+    let (code, sortie) = collision(
+        ctx,
+        10,
+        AXION_COLLIDE_SWEEP,
+        &pose,
+        [101.7, 66.0, -20.3, 102.3, 67.8, -19.7, 0.0, -4.0, 0.0],
+    );
+    assert_eq!(code, AXION_OK, "{}", last_error(ctx));
+    assert_eq!(sortie[0], 1.0, "touché : {sortie:?}");
+    assert_eq!(sortie[1], 0.0, "le seul corps");
+    assert!((sortie[2] - 1.75 / 4.0).abs() < 1e-4, "part {}", sortie[2]);
+    assert!(
+        (sortie[4] - 1.0).abs() < 1e-4,
+        "la normale monte : {sortie:?}"
+    );
+
+    // À côté, rien n'est touché : zéro partout.
+    let (code, sortie) = collision(
+        ctx,
+        10,
+        AXION_COLLIDE_SWEEP,
+        &pose,
+        [105.0, 66.0, -20.3, 105.6, 67.8, -19.7, 0.0, -4.0, 0.0],
+    );
+    assert_eq!((code, sortie[0]), (AXION_OK, 0.0));
+
+    // L'enfoncement : pieds à 64,05, la boîte entre de 0,2 dans la porte.
+    let (code, sortie) = collision(
+        ctx,
+        10,
+        AXION_COLLIDE_PENETRATION,
+        &pose,
+        [101.7, 64.05, -20.3, 102.3, 65.85, -19.7, 0.0, 0.0, 0.0],
+    );
+    assert_eq!(code, AXION_OK);
+    assert_eq!(sortie[0], 1.0);
+    assert!((sortie[2] - 0.2).abs() < 1e-3, "profondeur {}", sortie[2]);
+    assert!(sortie[4] > 0.99, "sortie vers le haut : {sortie:?}");
+
+    // Les refus : une definition inconnue, un nombre de corps faux, un mode inconnu, une valeur non finie, un pointeur nul.
+    let boite = [101.7, 66.0, -20.3, 102.3, 67.8, -19.7, 0.0, -4.0, 0.0];
+    assert_eq!(
+        collision(ctx, 99, AXION_COLLIDE_SWEEP, &pose, boite).0,
+        AXION_E_INVALID_HANDLE
+    );
+    let deux = [pose, pose].concat();
+    assert_eq!(
+        collision(ctx, 10, AXION_COLLIDE_SWEEP, &deux, boite).0,
+        AXION_E_INVALID_BUFFER,
+        "la definition n'a qu'un corps"
+    );
+    assert_eq!(
+        collision(ctx, 10, 7, &pose, boite).0,
+        AXION_E_INVALID_BUFFER
+    );
+    let mut fautive = boite;
+    fautive[7] = f64::NAN;
+    assert_eq!(
+        collision(ctx, 10, AXION_COLLIDE_SWEEP, &pose, fautive).0,
+        AXION_E_INVALID_BUFFER
+    );
+    let code = unsafe {
+        axion_collide_box_definition(
+            ctx,
+            10,
+            AXION_COLLIDE_SWEEP,
+            std::ptr::null(),
+            1,
+            boite.as_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(code, AXION_E_INVALID_BUFFER);
+
+    assert_eq!(unsafe { axion_asset_unload(ctx, asset) }, AXION_OK);
+    assert_eq!(unsafe { axion_shutdown(ctx) }, AXION_OK);
 }

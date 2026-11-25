@@ -40,13 +40,14 @@ use crate::abi::{
     axion_abi_version, axion_assembly_raycast, axion_asset_cancel, axion_asset_compile,
     axion_asset_diagnostics, axion_asset_geometry, axion_asset_load, axion_asset_materials,
     axion_asset_poll, axion_asset_texture, axion_asset_unload, axion_asset_warnings,
-    axion_box_touches_assembly, axion_buffer_acquire, axion_buffer_release, axion_debug_fill,
-    axion_definition_compile, axion_definition_remove, axion_det_profile, axion_init,
-    axion_last_error, axion_metrics_export, axion_net_compress, axion_net_decompress,
-    axion_render_debug, axion_render_prepare, axion_render_release, axion_shutdown,
-    axion_sim_cancel, axion_sim_collect, axion_sim_submit, AxionBufferInfo, AxionCollectResult,
-    AxionDetProfile, AxionRenderResult, AXION_BOX_INPUT, AXION_E_INVALID_BUFFER, AXION_OK,
-    AXION_RAY_INPUT, AXION_RAY_OUTPUT,
+    axion_box_touches_assembly, axion_buffer_acquire, axion_buffer_release,
+    axion_collide_box_definition, axion_debug_fill, axion_definition_compile,
+    axion_definition_remove, axion_det_profile, axion_init, axion_last_error, axion_metrics_export,
+    axion_net_compress, axion_net_decompress, axion_render_debug, axion_render_prepare,
+    axion_render_release, axion_shutdown, axion_sim_cancel, axion_sim_collect, axion_sim_submit,
+    AxionBufferInfo, AxionCollectResult, AxionDetProfile, AxionRenderResult, AXION_BOX_INPUT,
+    AXION_COLLIDE_INPUT, AXION_COLLIDE_OUTPUT, AXION_COLLIDE_POSE, AXION_E_INVALID_BUFFER,
+    AXION_OK, AXION_RAY_INPUT, AXION_RAY_OUTPUT,
 };
 use ax_model::dm::handle::Handle;
 
@@ -206,6 +207,11 @@ fn register(vm: &JavaVM) -> Result<(), jni::errors::Error> {
             name: "boxTouchesAssembly".into(),
             sig: "(JJ[D)I".into(),
             fn_ptr: jni_box_touches_assembly as *mut c_void,
+        },
+        NativeMethod {
+            name: "collideBoxDefinition".into(),
+            sig: "(JJI[DI[D[D)I".into(),
+            fn_ptr: jni_collide_box_definition as *mut c_void,
         },
         NativeMethod {
             name: "assemblyRaycast".into(),
@@ -1023,6 +1029,66 @@ extern "system" fn jni_box_touches_assembly(
     }
 }
 
+/// `NativeBridge.collideBoxDefinition(long, long, int, double[], int, double[], double[])` (ADR-178 D1).
+///
+/// Lit les poses des corps (7 valeurs chacun) et l'entrée (la boîte, puis le déplacement), et écrit la réponse dans
+/// `out` : touché, corps, part ou profondeur, normale. Rend `0` ou un code d'erreur négatif.
+extern "system" fn jni_collide_box_definition(
+    env: JNIEnv,
+    _class: JClass,
+    ctx: jlong,
+    definition: jlong,
+    mode: jint,
+    poses: JDoubleArray,
+    pose_count: jint,
+    input: JDoubleArray,
+    out: JDoubleArray,
+) -> jint {
+    if poses.is_null() || input.is_null() || out.is_null() || pose_count <= 0 {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let count = pose_count as usize;
+    let wanted = count * AXION_COLLIDE_POSE;
+    let lengths = (
+        env.get_array_length(&poses),
+        env.get_array_length(&input),
+        env.get_array_length(&out),
+    );
+    let (Ok(poses_length), Ok(input_length), Ok(out_length)) = lengths else {
+        return AXION_E_INVALID_BUFFER;
+    };
+    if usize::try_from(poses_length).map_or(true, |length| length < wanted)
+        || usize::try_from(input_length).map_or(true, |length| length < AXION_COLLIDE_INPUT)
+        || usize::try_from(out_length).map_or(true, |length| length < AXION_COLLIDE_OUTPUT)
+    {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let mut placed = vec![0.0f64; wanted];
+    let mut values = [0.0f64; AXION_COLLIDE_INPUT];
+    if env.get_double_array_region(&poses, 0, &mut placed).is_err()
+        || env.get_double_array_region(&input, 0, &mut values).is_err()
+    {
+        return AXION_E_INVALID_BUFFER;
+    }
+    let mut answer = [0.0f64; AXION_COLLIDE_OUTPUT];
+    // SAFETY: `placed`, `values` et `answer` sont des tampons locaux de la taille que l'ABI lit et écrit.
+    let code = unsafe {
+        axion_collide_box_definition(
+            ctx as u64,
+            definition as u64,
+            mode as u32,
+            placed.as_ptr(),
+            pose_count as u32,
+            values.as_ptr(),
+            answer.as_mut_ptr(),
+        )
+    };
+    if code == AXION_OK && env.set_double_array_region(&out, 0, &answer).is_err() {
+        return AXION_E_INVALID_BUFFER;
+    }
+    code
+}
+
 /// `NativeBridge.assemblyRaycast(long, int, int, double[], double[])` (ADR-158 D2).
 ///
 /// Lit le rayon de `ray` — origine monde, direction, portée — et écrit l'impact dans `out` :
@@ -1230,6 +1296,7 @@ mod tests {
             ("definitionRemove", "(JJ)I"),
             ("assemblyRaycast", "(JII[D[D)I"),
             ("boxTouchesAssembly", "(JJ[D)I"),
+            ("collideBoxDefinition", "(JJI[DI[D[D)I"),
             ("debugFill", "(JJJDDDI[J)I"),
             ("renderDebug", "(JJI[J)I"),
         ];
