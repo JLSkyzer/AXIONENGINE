@@ -3907,7 +3907,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              prononcer. Faits : annexe A.7 et A27 à jour, la neige (ADR-180 14c), le mouillé lu par `/axion wear`
              (ADR-181, 2026-11-26).
            - [ ] [ADR-182](../docs/decisions/ADR-182.md) — les types d'énergie (essence, diesel, électrique, hybride ;
-             CAP-76, M5, demandé par Killian le 2026-11-26) : proposé, à accepter (Q1 à Q6) avant tout code.
+             CAP-76, M5, demandé par Killian le 2026-11-26) : **accepté** le 2026-11-26 (Q1 à Q6 comme recommandé),
+             A33. Tranches : 14a réserves typées (en cours) → 14b moteur électrique → 14c hybride → 14d exemples,
+             guides, preuves, clôture D7.
            - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`) ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,

@@ -1,6 +1,6 @@
 # Index du cahier des charges AXION ENGINE
 
-Genere par `tools/spec/spec_index.py`. Source : `docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8663 lignes).
+Genere par `tools/spec/spec_index.py`. Source : `docs/spec/AXIONENGINE_Cahier_des_Charges_v1.0.md` (8665 lignes).
 
 Le CDC est **gele (FROZEN)** et constitue la source de verite unique.
 Il ne doit jamais etre lu en entier : lire la plage de lignes de la
@@ -442,7 +442,7 @@ grep -P '^C-42	' docs/spec/ID-MAP.tsv
 | `7518,7525p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;M14 — Release 1.0.0 |
 | `7526,7572p` | 47 | &nbsp;&nbsp;&nbsp;&nbsp;37.3 Definition of Done |
 | `7573,7582p` | 10 | &nbsp;&nbsp;&nbsp;&nbsp;37.4 Sévérités |
-| `7583,8011p` | 429 | PARTIE 38 : CRITÈRES D'ACCEPTATION ET AUDIT FINAL |
+| `7583,8012p` | 430 | PARTIE 38 : CRITÈRES D'ACCEPTATION ET AUDIT FINAL |
 | `7585,7675p` | 91 | &nbsp;&nbsp;&nbsp;&nbsp;38.1 Checklist principale de la V1.0 |
 | `7676,7699p` | 24 | &nbsp;&nbsp;&nbsp;&nbsp;38.2 Critères de correction (bloquants) — identifiants `AC-xx` |
 | `7700,7716p` | 17 | &nbsp;&nbsp;&nbsp;&nbsp;38.3 Critères de performance — identifiants `PF-xx` |
@@ -459,20 +459,20 @@ grep -P '^C-42	' docs/spec/ID-MAP.tsv
 | `7922,7940p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Tests ajoutés |
 | `7941,7948p` | 8 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ADR modifiés |
 | `7949,7966p` | 18 | &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Vérification de non-régression |
-| `7967,8011p` | 45 | &nbsp;&nbsp;&nbsp;&nbsp;38.9 Registre des amendements postérieurs au gel |
-| `8012,8511p` | 500 | ANNEXES |
-| `8014,8062p` | 49 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.1 — Codes d'erreur |
-| `8063,8090p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.2 — Index des invariants |
-| `8091,8337p` | 247 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.3 — Configuration complète (référence normative) |
-| `8338,8374p` | 37 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9) |
-| `8375,8397p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
-| `8398,8419p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
-| `8420,8511p` | 92 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160) |
-| `8512,8663p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
-| `8514,8536p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
-| `8537,8552p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
-| `8553,8591p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
-| `8592,8610p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
-| `8611,8616p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
-| `8617,8630p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
-| `8631,8663p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |
+| `7967,8012p` | 46 | &nbsp;&nbsp;&nbsp;&nbsp;38.9 Registre des amendements postérieurs au gel |
+| `8013,8513p` | 501 | ANNEXES |
+| `8015,8063p` | 49 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.1 — Codes d'erreur |
+| `8064,8091p` | 28 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.2 — Index des invariants |
+| `8092,8338p` | 247 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.3 — Configuration complète (référence normative) |
+| `8339,8375p` | 37 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9) |
+| `8376,8398p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.5 — Limitations connues de la V1.0 |
+| `8399,8420p` | 22 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.6 — Glossaire complémentaire |
+| `8421,8513p` | 93 | &nbsp;&nbsp;&nbsp;&nbsp;ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160) |
+| `8514,8665p` | 152 | FINAL V1.0 IMPLEMENTATION CONTRACT |
+| `8516,8538p` | 23 | &nbsp;&nbsp;&nbsp;&nbsp;1. Confirmations formelles |
+| `8539,8554p` | 16 | &nbsp;&nbsp;&nbsp;&nbsp;2. Boucle de travail obligatoire |
+| `8555,8593p` | 39 | &nbsp;&nbsp;&nbsp;&nbsp;3. Interdictions absolues |
+| `8594,8612p` | 19 | &nbsp;&nbsp;&nbsp;&nbsp;4. Obligations |
+| `8613,8618p` | 6 | &nbsp;&nbsp;&nbsp;&nbsp;5. Autonomie de décision |
+| `8619,8632p` | 14 | &nbsp;&nbsp;&nbsp;&nbsp;6. Gestion de l'incertitude |
+| `8633,8665p` | 33 | &nbsp;&nbsp;&nbsp;&nbsp;7. Critère final |

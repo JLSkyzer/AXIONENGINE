@@ -8004,6 +8004,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A30 | 2026-11-25 | ADR-179, accepté par Killian, Q1 comme recommandé (tenu le 2026-11-25) | 22.2 : `axion:atts` garde `other_rev`, la révision à laquelle le socket de l'autre est nommé ; R-692 : le nom suit les migrations de l'autre ; schéma NBT inchangé (6) |
 | A31 | 2026-11-25 | ADR-180, accepté par Killian, Q1 à Q3 comme recommandé (en cours, tranche par tranche ; 14a le 2026-11-25 : la frontière native, ABI 36 ; 14b le même jour : R-643, la palette envoyée par le serveur et le client ; 14c : R-1040, schéma 2 des correspondances, `cover` ; 14d : la mesure, puis les contacts des corps sur champ de hauteurs, R-643) | 5.30 et C-38 : palette d'au plus 16 matériaux par tuile dans `SET_WORLD_COLLISION` et `SET_WORLD_HEIGHTFIELD` ; la roue lit le matériau qu'elle touche ; R-643 amendé à la tranche 14b |
 | A32 | 2026-11-26 | ADR-181, accepté par Killian, Q1 à Q3 comme recommandé | R-1074 : le matériau touché dans le rapport de roue (ABI 37, `SIM_OUT` au schéma 8), `WheelView.surface()`, `/axion wear` ; aucun changement de protocole ni de sauvegarde |
+| A33 | 2026-11-26 | ADR-182, accepté par Killian, Q1 à Q6 comme recommandé (tranche par tranche) | ANNEXE A.7 : CAP-76, affectée à M5 ; chaque tranche (14a à 14d) précise 12.5, 23.2, 23.4, 21.5, 22.2 et A.4 |
 
 ---
 
@@ -8503,6 +8504,7 @@ ses trouvailles s'ajoutent ici.
 | CAP-73 | Campagne de performance serveur : TPS sous charge réelle (assemblies, joueurs, attaches, corps actifs), part du thread principal, mémoire native et Java, débit réseau ; chaque amélioration mesurée avant et après, aucun chiffre inventé ; prolonge CAP-53 (ADR-172) | M12 |
 | CAP-74 | Campagne de performance client : FPS et temps d'image, rendu (lots, instanciation, LOD, culling), interpolation et prédiction, mémoire GPU et RAM, chargement des assets, sous shaders comme sans (ADR-172) | M12 |
 | CAP-75 | Changer de manière : pour chaque goulot mesuré, « faut-il le faire autrement ? » — autre algorithme, autre découpage entre threads ou entre natif et Java, autre fréquence (CAP-53) — et pas seulement plus vite ; rien n'est retiré pour raison de coût (ADR-172) | M12 |
+| CAP-76 | Types d'énergie : réserves nommées et typées (un plein du mauvais type refusé, débit de recharge borné, réserve sans moteur), motorisation électrique avec récupération au freinage, motorisations multiples — hybride parallèle et prolongateur d'autonomie (ADR-182, demande de Killian) | M5 |
 
 Hors périmètre, par décision de Killian du 2026-11-10 : construire en jeu des véhicules ou des objets à partir
 de blocs de Minecraft. AXION importe des modèles 3D (ADR-160 D2).
