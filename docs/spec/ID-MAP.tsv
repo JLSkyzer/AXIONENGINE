@@ -44,10 +44,10 @@ ADR-025	ADR	7178	7178	2	ADR-025 — Système d'attache entre assemblies
 ADR-026	ADR	7182	6816	4	ADR-026 — Chemins accélérés GL 4.x optionnels sur une base GL 3.3
 ADR-123	ADR		7988	1	38.9 Registre des amendements postérieurs au gel
 ADR-134	ADR		7989	1	38.9 Registre des amendements postérieurs au gel
-ADR-137	ADR		8490	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-ADR-143	ADR		8490	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+ADR-137	ADR		8492	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+ADR-143	ADR		8492	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 ADR-150	ADR		5106	2	21.3 Handshake
-ADR-156	ADR		8479	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+ADR-156	ADR		8481	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 ADR-159	ADR		785	5	3.4 DM-04 : Mesh et vertex
 ADR-160	ADR		146	19	0.4 Identifiants normatifs
 ADR-161	ADR		7994	1	38.9 Registre des amendements postérieurs au gel
@@ -72,6 +72,8 @@ ADR-179	ADR		2275	3	5.40 C-48 : Attachment System
 ADR-180	ADR		2090	5	5.30 C-38 : World Collision Provider
 ADR-181	ADR		3326	3	12.4 Modèle de pneu
 ADR-182	ADR		3348	14	12.5 Groupe motopropulseur
+ADR-183	ADR		8021	1	38.9 Registre des amendements postérieurs au gel
+ADR-184	ADR		8022	1	38.9 Registre des amendements postérieurs au gel
 B-01	B	6604	5971	9	30.2 Ce qui est mesuré
 B-02	B	6605	6605	3	30.2 Ce qui est mesuré
 B-03	B	6606	6606	1	30.2 Ce qui est mesuré
@@ -159,7 +161,7 @@ C-67	C	2445	373	8	5.54 C-67 : Debug Renderer
 C-68	C	2453	162	12	5.55 C-68 : Déformation GPU
 C-69	C	2459	374	13	5.56 C-69 : Décalques & états de surface (rendu)
 C-70	C	2465	365	5	5.57 C-70 : API publique
-C-71	C	2469	365	10	5.58 C-71 : Commandes
+C-71	C	2469	365	11	5.58 C-71 : Commandes
 C-72	C	2496	365	6	5.59 C-72 : Benchmark Harness
 C-73	C	2500	366	5	5.60 C-73 : Overlay diagnostics
 C-74	C	2508	366	6	5.61 C-74 : CLI `axion-cli`
@@ -170,82 +172,82 @@ C-80	C	2574	375	10	5.65 C-80 : Ombres AXION
 C-81	C	2580	375	10	5.66 C-81 : Sonde d'environnement & IBL synthétique
 C-82	C	2586	376	12	5.67 C-82 : Occlusion culling logiciel
 C-83	C	2592	376	10	5.68 C-83 : Effets intégrés (tone mapping, SSR)
-CAP-01	CAP	8447	7997	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-02	CAP	8448	7997	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-03	CAP	8449	8002	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-04	CAP	8450	8010	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-05	CAP	8451	8012	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-06	CAP	8452	8452	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-07	CAP	8453	8453	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-08	CAP	8454	8454	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-09	CAP	8455	8455	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-10	CAP	8456	3416	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-11	CAP	8457	3416	5	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-12	CAP	8458	8014	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-13	CAP	8459	8015	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-14	CAP	8460	2321	16	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-15	CAP	8461	8008	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-16	CAP	8462	8012	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-17	CAP	8463	7434	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-18	CAP	8464	8464	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-19	CAP	8465	7434	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-20	CAP	8466	8014	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-21	CAP	8467	8467	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-22	CAP	8468	8468	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-23	CAP	8469	8469	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-24	CAP	8470	8470	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-25	CAP	8471	8471	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-26	CAP	8472	8472	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-27	CAP	8473	8473	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-28	CAP	8474	8474	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-29	CAP	8475	8475	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-30	CAP	8476	8476	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-31	CAP	8477	8477	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-32	CAP	8478	7993	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-33	CAP	8479	8013	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-34	CAP	8480	8002	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-35	CAP	8481	2087	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-36	CAP	8482	8009	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-37	CAP	8483	2020	7	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-38	CAP	8484	8013	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-39	CAP	8485	8002	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-40	CAP	8486	7999	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-41	CAP	8487	8487	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-42	CAP	8488	5497	5	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-43	CAP	8489	7996	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-44	CAP	8490	8010	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-45	CAP	8491	8011	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-46	CAP	8492	7999	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-47	CAP	8493	8493	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-48	CAP	8494	8001	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-49	CAP	8495	8001	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-50	CAP	8496	8000	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-51	CAP	8497	7999	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-52	CAP	8498	8498	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-53	CAP	8499	8499	6	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-54	CAP	8500	8500	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-55	CAP	8501	8501	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-56	CAP	8502	2520	6	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-57	CAP	8503	8503	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-58	CAP	8504	8504	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-59	CAP	8505	8505	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-60	CAP	8506	7435	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-61	CAP	8507	7283	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-62	CAP	8508	8508	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-63	CAP	8509	8509	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-64	CAP	8510	7435	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-65	CAP	8511	7527	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-66	CAP	8512	8512	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-67	CAP	8513	8513	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-68	CAP	8514	8514	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-69	CAP	8515	8515	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-70	CAP	8516	8516	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-71	CAP	8517	7527	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-72	CAP	8518	942	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-73	CAP	8519	8519	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-74	CAP	8520	8520	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-75	CAP	8521	7514	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-76	CAP	8522	8020	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-01	CAP	8449	7997	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-02	CAP	8450	7997	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-03	CAP	8451	8002	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-04	CAP	8452	8010	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-05	CAP	8453	8012	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-06	CAP	8454	8454	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-07	CAP	8455	8455	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-08	CAP	8456	8456	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-09	CAP	8457	8457	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-10	CAP	8458	3416	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-11	CAP	8459	3416	6	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-12	CAP	8460	8014	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-13	CAP	8461	8015	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-14	CAP	8462	2321	17	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-15	CAP	8463	8008	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-16	CAP	8464	8012	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-17	CAP	8465	7434	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-18	CAP	8466	8466	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-19	CAP	8467	7434	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-20	CAP	8468	8014	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-21	CAP	8469	8469	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-22	CAP	8470	8470	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-23	CAP	8471	8471	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-24	CAP	8472	8472	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-25	CAP	8473	8473	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-26	CAP	8474	8474	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-27	CAP	8475	8475	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-28	CAP	8476	8476	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-29	CAP	8477	8477	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-30	CAP	8478	8478	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-31	CAP	8479	8479	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-32	CAP	8480	7993	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-33	CAP	8481	8013	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-34	CAP	8482	8002	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-35	CAP	8483	2087	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-36	CAP	8484	8009	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-37	CAP	8485	2020	7	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-38	CAP	8486	8013	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-39	CAP	8487	8002	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-40	CAP	8488	7999	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-41	CAP	8489	8489	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-42	CAP	8490	5497	5	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-43	CAP	8491	7996	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-44	CAP	8492	8010	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-45	CAP	8493	8011	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-46	CAP	8494	7999	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-47	CAP	8495	8495	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-48	CAP	8496	8001	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-49	CAP	8497	8001	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-50	CAP	8498	8000	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-51	CAP	8499	7999	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-52	CAP	8500	8500	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-53	CAP	8501	8501	6	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-54	CAP	8502	8502	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-55	CAP	8503	8503	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-56	CAP	8504	2520	6	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-57	CAP	8505	8505	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-58	CAP	8506	8506	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-59	CAP	8507	8507	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-60	CAP	8508	7435	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-61	CAP	8509	7283	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-62	CAP	8510	8510	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-63	CAP	8511	8511	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-64	CAP	8512	7435	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-65	CAP	8513	7527	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-66	CAP	8514	8514	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-67	CAP	8515	8515	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-68	CAP	8516	8516	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-69	CAP	8517	8517	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-70	CAP	8518	8518	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-71	CAP	8519	7527	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-72	CAP	8520	942	4	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-73	CAP	8521	8521	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-74	CAP	8522	8522	1	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-75	CAP	8523	7514	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-76	CAP	8524	8020	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 DM-01	DM	690	690	1	3.1 DM-01 : identifiants
 DM-02	DM	709	709	1	3.2 DM-02 : Transform
 DM-03	DM	719	719	1	3.3 DM-03 : Node
@@ -277,7 +279,7 @@ E-2000	E		1439	2	4.9 IF-07 : erreurs et panics
 E-2001	E		705	2	3.1 DM-01 : identifiants
 E-2002	E		1342	3	4.4 IF-02 : mémoire partagée et anneaux de transfert
 E-2003	E		1455	2	4.10 Propriété et durée de vie
-E-2004	E		8044	1	ANNEXE A.1 — Codes d'erreur
+E-2004	E		8046	1	ANNEXE A.1 — Codes d'erreur
 E-2010	E		717	2	3.2 DM-02 : Transform
 E-2020	E		850	2	3.6 DM-06 : Collider
 E-2030	E		922	3	3.8 DM-08 : BodyDesc et BodyState
@@ -301,11 +303,11 @@ E-3040	E		851	1	3.6 DM-06 : Collider
 E-3050	E		942	1	3.9 DM-09 : Assembly
 E-3060	E		956	2	3.10 DM-10 : Skeleton et Animation
 E-4001	E		2390	2	5.50 C-63 : Matériaux & Shaders
-E-4002	E		8060	1	ANNEXE A.1 — Codes d'erreur
+E-4002	E		8062	1	ANNEXE A.1 — Codes d'erreur
 E-5001	E		5141	2	21.4 Paquets
-E-5002	E		8062	1	ANNEXE A.1 — Codes d'erreur
-E-6001	E		8063	1	ANNEXE A.1 — Codes d'erreur
-E-6002	E		8064	1	ANNEXE A.1 — Codes d'erreur
+E-5002	E		8064	1	ANNEXE A.1 — Codes d'erreur
+E-6001	E		8065	1	ANNEXE A.1 — Codes d'erreur
+E-6002	E		8066	1	ANNEXE A.1 — Codes d'erreur
 E-7001	E		1897	2	5.20 C-27 : Definitions data-driven
 E-7002	E		2969	2	9.2 États de node (SM-03)
 E-7003	E		5756	2	23.4 Schéma de Definition (normatif)
@@ -358,25 +360,25 @@ IF-05	IF	1396	1396	1	4.7 IF-05 : cycle de rendu
 IF-06	IF	1418	1418	1	4.8 IF-06 : assets, particules, structure
 IF-07	IF	1437	1437	2	4.9 IF-07 : erreurs et panics
 IF-10	IF		1478	1	5.1 C-01 : Forge Integration
-INV-01	INV	8080	316	7	ANNEXE A.2 — Index des invariants
-INV-02	INV	8081	318	8	ANNEXE A.2 — Index des invariants
-INV-03	INV	8082	319	6	ANNEXE A.2 — Index des invariants
-INV-04	INV	8083	320	7	ANNEXE A.2 — Index des invariants
-INV-05	INV	8084	324	4	ANNEXE A.2 — Index des invariants
-INV-06	INV	8085	326	6	ANNEXE A.2 — Index des invariants
-INV-07	INV	8086	548	6	ANNEXE A.2 — Index des invariants
-INV-08	INV	8087	1237	4	ANNEXE A.2 — Index des invariants
-INV-09	INV	8088	1238	3	ANNEXE A.2 — Index des invariants
-INV-10	INV	8089	1239	9	ANNEXE A.2 — Index des invariants
-INV-11	INV	8090	1240	3	ANNEXE A.2 — Index des invariants
-INV-12	INV	8091	539	6	ANNEXE A.2 — Index des invariants
-INV-13	INV	8092	329	10	ANNEXE A.2 — Index des invariants
+INV-01	INV	8082	316	7	ANNEXE A.2 — Index des invariants
+INV-02	INV	8083	318	8	ANNEXE A.2 — Index des invariants
+INV-03	INV	8084	319	6	ANNEXE A.2 — Index des invariants
+INV-04	INV	8085	320	7	ANNEXE A.2 — Index des invariants
+INV-05	INV	8086	324	4	ANNEXE A.2 — Index des invariants
+INV-06	INV	8087	326	6	ANNEXE A.2 — Index des invariants
+INV-07	INV	8088	548	6	ANNEXE A.2 — Index des invariants
+INV-08	INV	8089	1237	4	ANNEXE A.2 — Index des invariants
+INV-09	INV	8090	1238	3	ANNEXE A.2 — Index des invariants
+INV-10	INV	8091	1239	9	ANNEXE A.2 — Index des invariants
+INV-11	INV	8092	1240	3	ANNEXE A.2 — Index des invariants
+INV-12	INV	8093	539	6	ANNEXE A.2 — Index des invariants
+INV-13	INV	8094	329	10	ANNEXE A.2 — Index des invariants
 INV-14	INV	7930	1243	11	Invariants modifiés
-INV-15	INV	8095	330	8	ANNEXE A.2 — Index des invariants
+INV-15	INV	8097	330	8	ANNEXE A.2 — Index des invariants
 INV-16	INV	7931	1245	8	Invariants modifiés
-INV-17	INV	8098	1246	7	ANNEXE A.2 — Index des invariants
-INV-18	INV	8099	1247	5	ANNEXE A.2 — Index des invariants
-INV-19	INV	8100	1248	9	ANNEXE A.2 — Index des invariants
+INV-17	INV	8100	1246	7	ANNEXE A.2 — Index des invariants
+INV-18	INV	8101	1247	5	ANNEXE A.2 — Index des invariants
+INV-19	INV	8102	1248	9	ANNEXE A.2 — Index des invariants
 P-01	P	316	316	5	1.4 Principes directeurs
 P-02	P	317	317	4	1.4 Principes directeurs
 P-03	P	318	318	1	1.4 Principes directeurs
@@ -1059,8 +1061,8 @@ R-2391	R	7357	7357	1	37.1 Règles
 R-2392	R	7358	7358	1	37.1 Règles
 R-2393	R	7359	7359	1	37.1 Règles
 R-2394	R	7360	7360	7	37.1 Règles
-R-2400	R	8350	8350	1	ANNEXE A.3 — Configuration complète (référence normative)
-R-2410	R	8383	7996	2	ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9)
+R-2400	R	8352	8352	1	ANNEXE A.3 — Configuration complète (référence normative)
+R-2410	R	8385	7996	2	ANNEXE A.4 — Sources procédurales (liste fermée V1.1, amendement A9)
 S-01	S	6558	6558	1	29.7 Tests de stress et d'endurance
 S-02	S	6559	6559	1	29.7 Tests de stress et d'endurance
 S-03	S	6560	6560	1	29.7 Tests de stress et d'endurance
