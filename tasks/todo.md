@@ -3979,6 +3979,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            (`C2S_Carried`, `AXION-21`, R-1666) : tests unitaires et 167 GameTests verts. **Reste les essais à deux
            joueurs** (gigue 100 et 40 ms, sans film, filmé : dérive dessinée au plus 0,35, jambes au plus 0,1), arrêtés
            le 2026-11-27 : Killian jouait, aucun client sans son accord.
+     - [ ] À vérifier (R-1690, lu dans le code le 2026-11-27, non reproduit) : un conducteur envoie 20 entrées et jusqu'à
+           20 accusés par seconde, le plafond `net.max_packets_per_second` (40) ; les entrées ajoutées par la régulation
+           de la file le dépassent, et cinq secondes de suite déconnectent. À mesurer à l'essai de prédiction sous gigue.
      - [ ] ADR-183 (CAP-34, CAP-11) — **accepté** le 2026-11-26 (A34) : forces et couples, téléporter, figer,
            renommer ; tranches de l'ADR.
      - [ ] `motor.<nom>.regen` (ADR-182, question F, acceptée le 2026-11-26).
