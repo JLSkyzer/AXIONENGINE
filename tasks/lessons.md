@@ -2688,6 +2688,17 @@ l'endormait avant de le résoudre.
 occurrence suivante les a toutes écartées sauf une. Puis balayer en natif **chaque pas** au lieu d'échantillonner (tous les 10 ticks ne
 voyait rien ; le défaut tenait dans un seul pas sur 239).
 
+**Suite (2026-11-26).** Une session a été ouverte sur cet échec à partir de runs du 20 novembre, antérieurs au correctif : devant un
+échec signalé, comparer d'abord la date des runs rouges aux commits et aux jobs GitHub postérieurs (`gh api
+.../runs/<id>/attempts/<n>/jobs`, les relances cachent le premier essai). La même fenêtre d'un tick se reproduit en jeu à coup sûr : un
+GameTest temporaire qui fait la même pose une fois par tick sur 25 assemblies (le tick 12 échoue sans le correctif, aucun avec). La
+leçon du 2026-11-24 (relancer le job rouge) ne vaut plus pour `t891` : un nouvel échec de ce test est un nouveau défaut.
+
+**Piège rencontré au passage.** Un `batch` de GameTests ajouté change l'ordre des autres lots : avec un lot de plus, des lots
+`rechargement_*` sont passés avant le lot par défaut, et `unAvertissementDeCompilationEntreUneFoisAuJournal` a échoué deux fois sur deux
+(registre rechargé, asset `CACHED`, aucun diagnostic) ; sans ce lot, 166 sur 166. Ce test dépend de l'ordre des lots : avant d'accuser
+un changement, regarder la suite des `Running test batch` au journal.
+
 
 ## 2026-11-25 | Le D5 « intermittent » du banc de rendu n'était pas du bruit : deux assemblies naissaient l'une dans l'autre
 
