@@ -202,6 +202,42 @@ fn poser(
     chassis
 }
 
+/// Comme [`poser`], sous le handle donné.
+fn poser_sous(
+    world: &mut PhysicsWorld,
+    handle: Handle,
+    position: Vec3,
+    rotation: Quat,
+    desc: VehicleDesc,
+    roues: &[(f32, f32)],
+) -> BodyId {
+    let volume = 8.0 * DEMI[0] * DEMI[1] * DEMI[2];
+    let chassis = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            position,
+            rotation,
+            &[collider(DEMI, MASSE / volume, 0.5)],
+        )
+        .expect("châssis");
+    let montures: Vec<WheelMount> = roues
+        .iter()
+        .map(|&(x, z)| WheelMount {
+            body: 0,
+            center: Vec3::new(x, -REPOS, z),
+        })
+        .collect();
+    world.attach_vehicle(
+        handle,
+        &[chassis],
+        desc,
+        &montures,
+        &[],
+        CollisionGroups::ALL,
+    );
+    chassis
+}
+
 /// Un véhicule de quatre roues sans moteur ni frein, dont le centre est à la hauteur `y`, l'avant
 /// vers -Z.
 fn vehicule(world: &mut PhysicsWorld, position: Vec3, rotation: Quat) -> BodyId {
@@ -3144,4 +3180,143 @@ fn r1061_sans_essieu_declare_ou_a_plat_l_anti_roulis_ne_change_rien() {
         roulis_en_virage(d)
     };
     assert_eq!(seul(0.0), seul(25.0));
+}
+
+// --- CAP-53 : ce que la fréquence des sous-pas change, en précision et en coût. ---
+
+/// La durée d'un tick de jeu, que le pilote donne au monde.
+const TICK_DE_JEU: f32 = 0.05;
+
+/// Un monde au pas physique `dt`, une dalle, et des berlines écartées de dix blocs, la première à l'origine.
+fn monde_au_pas(dt: f32, vehicules: u32) -> (PhysicsWorld, Vec<BodyId>) {
+    let mut world = PhysicsWorld::new(PhysicsConfig::new(dt, 8).expect("pas autorisé"));
+    dalle(&mut world, 0.0, 0.0, 0.0, [4000.0, 4000.0], 1.0);
+    let mut poses = Vec::new();
+    for rang in 0..vehicules {
+        let handle = Handle {
+            index: 1 + rang,
+            generation: 1,
+        };
+        let at = Vec3::new(rang as f32 * 10.0, hauteur_equilibre(), 0.0);
+        poses.push(poser_sous(
+            &mut world,
+            handle,
+            at,
+            Quat::IDENTITY,
+            berline(),
+            &QUATRE,
+        ));
+        assert_eq!(
+            world.set_vehicle_input(handle, &VehicleInput::NONE, true),
+            Some(false)
+        );
+    }
+    for _ in 0..20 {
+        world.advance(TICK_DE_JEU);
+    }
+    (world, poses)
+}
+
+/// Le scénario d'une berline au pas `dt` : tremblement au repos (mm), temps pour 20 m/s (s), distance d'arrêt depuis
+/// là (m), puis position (m) et cap (degrés) après un virage de trois secondes.
+fn scenario(dt: f32) -> (f32, f32, f32, [f32; 2], f32) {
+    let (mut world, v) = monde_au_pas(dt, 1);
+    let v = v[0];
+    // Un conducteur au frein à main tient la berline éveillée sans la faire reculer : son tremblement se mesure, pas
+    // son sommeil.
+    conduire(
+        &mut world,
+        VehicleInput {
+            handbrake: 1.0,
+            ..VehicleInput::NONE
+        },
+    );
+    let hauteurs: Vec<f32> = (0..40)
+        .map(|_| {
+            world.advance(TICK_DE_JEU);
+            world.pose(v).expect("pose").translation.y
+        })
+        .collect();
+    let moyenne = hauteurs.iter().sum::<f32>() / hauteurs.len() as f32;
+    let tremblement = hauteurs
+        .iter()
+        .map(|y| (y - moyenne).abs())
+        .fold(0.0, f32::max)
+        * 1e3;
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    let mut t20 = f32::NAN;
+    let mut avant = 0.0;
+    for tick in 1..600 {
+        world.advance(TICK_DE_JEU);
+        let vitesse = vers_l_avant(&world, v);
+        if vitesse >= 20.0 {
+            t20 = (tick as f32 - (vitesse - 20.0) / (vitesse - avant)) * TICK_DE_JEU;
+            break;
+        }
+        avant = vitesse;
+    }
+    let depart = world.pose(v).expect("pose").translation.z;
+    conduire(&mut world, entree(0.0, 1.0, 0.0));
+    for _ in 0..200 {
+        world.advance(TICK_DE_JEU);
+        if vers_l_avant(&world, v) < 0.05 {
+            break;
+        }
+    }
+    let arret = depart - world.pose(v).expect("pose").translation.z;
+    conduire(&mut world, entree(0.5, 0.0, 0.0));
+    for _ in 0..80 {
+        world.advance(TICK_DE_JEU);
+    }
+    conduire(&mut world, entree(0.3, 0.0, 0.35));
+    for _ in 0..60 {
+        world.advance(TICK_DE_JEU);
+    }
+    let fin = world.pose(v).expect("pose").translation;
+    (
+        tremblement,
+        t20,
+        arret,
+        [fin.x, fin.z],
+        cap(&world, v).to_degrees(),
+    )
+}
+
+/// Le temps réel d'un tick de jeu pour 32 berlines à plein gaz, en millisecondes ; le minimum de cinq passes.
+fn cout_au_pas(dt: f32) -> f64 {
+    (0..5)
+        .map(|_| {
+            let (mut world, poses) = monde_au_pas(dt, 32);
+            for rang in 0..poses.len() as u32 {
+                let handle = Handle {
+                    index: 1 + rang,
+                    generation: 1,
+                };
+                assert_eq!(
+                    world.set_vehicle_input(handle, &entree(0.5, 0.0, 0.2), true),
+                    Some(false)
+                );
+            }
+            let debut = std::time::Instant::now();
+            for _ in 0..400 {
+                world.advance(TICK_DE_JEU);
+            }
+            debut.elapsed().as_secs_f64() * 1e3 / 400.0
+        })
+        .fold(f64::MAX, f64::min)
+}
+
+#[test]
+#[ignore = "mesure : à lancer à la main, en release"]
+fn cap53_frequences_des_sous_pas() {
+    for hz in [30.0f32, 60.0, 120.0] {
+        let (tremblement, t20, arret, fin, cap) = scenario(1.0 / hz);
+        println!(
+            "CAP53 physique {hz:>3} Hz : tremblement {tremblement:.3} mm, 20 m/s en {t20:.3} s, arrêt {arret:.3} m, \
+             virage fini en ({:.3}, {:.3}) cap {cap:.2} deg, 32 véhicules {:.3} ms/tick",
+            fin[0],
+            fin[1],
+            cout_au_pas(1.0 / hz)
+        );
+    }
 }

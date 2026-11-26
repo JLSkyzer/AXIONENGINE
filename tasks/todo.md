@@ -3954,9 +3954,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Client mesuré le
            2026-11-26 (`--client`, `docs/mesures/CAP-53-client-2026-11-26.md`) : environ 390 images/s à 128 véhicules à
            l'écran, p95 3,4 ms (une première passe nettement plus lente, écartée : non reproduite) ; serveur seul
-           sans régression nette. Restent : les fréquences de sous-pas, une passe répétée avec joueurs, et l'ADR de
-           l'extension du parallélisme
-           (déterminisme C-16) avant tout code.
+           sans régression nette. Fréquences de la physique et du groupe motopropulseur mesurées le même jour
+           (`docs/mesures/CAP-53-sous-pas-2026-11-26.md`, rien de changé). Restent : les autres sous-systèmes, une passe
+           répétée avec joueurs, et l'ADR de l'extension du parallélisme (déterminisme C-16) avant tout code.
      - [x] CAP-42 (2026-11-18) : `ContentCheck` dit non vérifiés, sans les refuser, les contrôleurs, widgets et
            paramètres d'addon dont le code ne se charge pas hors jeu (`VehicleExtensions.withoutCode()`).
      - [x] ADR-174, tranches 9a1 et 9a2 (2026-11-18) : schéma 7, `actions` d'une interaction (`hide_node`,
