@@ -13,6 +13,7 @@ use ax_physics::{
     CollisionGroups, ContactMaterial, Handle, Jam, JointKind, JointSpec, Shape, SimDriver,
     SimSettings,
 };
+use ax_vehicle::tuning::Tuning;
 
 const ASSEMBLY: Handle = Handle {
     index: 7,
@@ -391,6 +392,47 @@ fn adr151_un_centre_de_masse_declare_n_empeche_pas_la_repartition() {
         (centre - Vec3::new(0.0, 0.2, 0.0)).length() < 1e-3,
         "le centre déclaré reste : {centre}"
     );
+}
+
+#[test]
+fn adr167_set_parameters_met_chaque_corps_a_l_echelle_de_la_masse_declaree() {
+    // D6, CAP-34 : 100 kg déclarés portés à 250 multiplient la masse de chaque corps par 2,5, depuis son origine ;
+    // NaN, zéro ou une valeur infinie ne changent rien, et une assembly sans masse déclarée n'a pas de base.
+    let deux = [corps(0, Vec3::ZERO), corps(1, Vec3::new(3.0, 0.0, 0.0))];
+    let regler = |declaree: f32, reglages: &[f32]| -> Vec<f32> {
+        let mut driver = pilote(128.0, 2048);
+        let ids = driver
+            .create_assembly_bodies(
+                0,
+                ASSEMBLY,
+                spawn([0.0, 64.0, 0.0], Quat::IDENTITY),
+                &deux,
+                &[],
+                CollisionGroups::ALL,
+                declaree,
+                false,
+            )
+            .expect("deux boîtes valides");
+        for masse in reglages {
+            assert!(driver.apply_set_parameters(ASSEMBLY, *masse, &Tuning::base()));
+        }
+        let world = driver.world_mut(0).unwrap();
+        ids.iter().map(|id| world.body_mass(*id).unwrap()).collect()
+    };
+    let proche = |masses: &[f32], attendue: f32| {
+        assert!(
+            masses.iter().all(|m| (m - attendue).abs() < 1e-2),
+            "{masses:?}, attendu {attendue} chacun"
+        );
+    };
+    proche(&regler(100.0, &[250.0]), 125.0);
+    proche(&regler(100.0, &[250.0, 150.0]), 75.0);
+    proche(
+        &regler(100.0, &[250.0, f32::NAN, 0.0, f32::INFINITY]),
+        125.0,
+    );
+    proche(&regler(0.0, &[250.0]), 1000.0);
+    assert!(!pilote(128.0, 2048).apply_set_parameters(ASSEMBLY, 250.0, &Tuning::base()));
 }
 
 #[test]
