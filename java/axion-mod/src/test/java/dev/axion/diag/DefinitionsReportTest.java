@@ -109,6 +109,17 @@ class DefinitionsReportTest {
                 "  socket avant : accepte rope"), lignes);
         lignes.clear();
         DefinitionsReport.sockets(JsonParser.parseString("{}").getAsJsonObject(), lignes);
+        List<String> energies = new java.util.ArrayList<>();
+        DefinitionsReport.energy(JsonParser.parseString("{\"schema\": 8, \"energy\": {\"stores\": ["
+                + "{\"name\": \"pile\", \"carrier\": \"axion:electricity\", \"capacity\": 2.5},"
+                + " {\"name\": \"cuve\", \"capacity\": 20}]}, \"powertrain\": {\"engine\": {\"generator\":"
+                + " {\"store\": \"pile\", \"power_kw\": 20}}, \"electric_motors\": [{\"name\": \"arriere\","
+                + " \"store\": \"pile\", \"coupling\": {\"wheels\": [\"g\", \"d\"], \"ratio\": 8}},"
+                + " {\"name\": \"central\", \"store\": \"pile\"}]}}").getAsJsonObject(), energies);
+        assertEquals(List.of("  réserves : pile (axion:electricity, 2.5), cuve (tout, 20)",
+                "  prolongateur : charge pile à 20 kW",
+                "  moteur électrique arriere : réserve pile, entraîne roues g, d",
+                "  moteur électrique central : réserve pile, entraîne la boîte"), energies);
         assertEquals(List.of(), lignes, "sans socket, rien");
     }
 

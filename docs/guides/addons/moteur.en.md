@@ -204,3 +204,39 @@ mod's controller lowers, cuts or boosts. At 0 the motor gives nothing; its regen
 - It keeps the vehicle awake while charging; a vehicle already asleep only starts once woken (a driver, the ignition).
 - Driven wheels are only required for an electric motor coupled to the gearbox.
 - `engine.running`, `engine.rpm` and `engine.load` follow it.
+
+## Three complete examples
+
+The example mod (`java/addon-temoin`) carries three vehicles ready to copy, on AXION's buggy model; each has its
+in-game test. Spawn them with `/axion spawn example_addon:electric_buggy` (or `diesel_buggy`, `hybrid_buggy`); command
+key 3 switches the ignition.
+
+=== "Electric"
+
+    ```json
+    --8<-- "java/addon-temoin/src/main/resources/axion/definitions/electric_buggy.json"
+    ```
+
+    ```java
+    --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:electric"
+    ```
+
+=== "Diesel"
+
+    ```json
+    --8<-- "java/addon-temoin/src/main/resources/axion/definitions/diesel_buggy.json"
+    ```
+
+    ```java
+    --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:diesel"
+    ```
+
+=== "Range-extender hybrid"
+
+    ```json
+    --8<-- "java/addon-temoin/src/main/resources/axion/definitions/hybrid_buggy.json"
+    ```
+
+    ```java
+    --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:hybrid"
+    ```

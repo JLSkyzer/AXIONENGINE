@@ -1,0 +1,67 @@
+{
+  "schema": 8,
+  "asset": "axion:models/example/buggy.glb",
+  "kind": "vehicle",
+  "physics": { "mass": 460.0, "center_of_mass": [0.0, 0.45, 0.0] },
+  "wheels": [
+    { "node": "roue_avant_gauche", "steering": true, "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0, "damping_compression": 2.0,
+                      "damping_rebound": 2.5, "max_force": 20000.0 } },
+    { "node": "roue_avant_droite", "steering": true, "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0, "damping_compression": 2.0,
+                      "damping_rebound": 2.5, "max_force": 20000.0 } },
+    { "node": "roue_arriere_gauche", "powered": true, "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0, "damping_compression": 2.0,
+                      "damping_rebound": 2.5, "max_force": 20000.0 } },
+    { "node": "roue_arriere_droite", "powered": true, "radius": 0.30, "width": 0.22, "mass": 12.0,
+      "suspension": { "rest_length": 0.25, "max_travel": 0.18, "stiffness": 25.0, "damping_compression": 2.0,
+                      "damping_rebound": 2.5, "max_force": 20000.0 } }
+  ],
+  "energy": {
+    "stores": [
+      { "name": "battery_pack", "carrier": "axion:electricity", "capacity": 2.0 },
+      { "name": "tank", "carrier": "axion:petrol", "capacity": 20.0, "unit_mass": 0.75 }
+    ]
+  },
+  "powertrain": {
+    "engine": { "torque_curve": [[0, 0], [1500, 45], [3500, 60], [5500, 55], [6500, 45]],
+                "idle_rpm": 900, "max_rpm": 6500, "inertia": 0.08, "braking_torque": 8.0,
+                "fuel": { "store": "tank", "consumption": [[0.0, 0.4], [1.0, 9.0]] },
+                "generator": { "store": "battery_pack", "power_kw": 20.0,
+                               "start_below": 0.25, "stop_above": 0.75 } },
+    "electric_motors": [
+      { "name": "rear", "store": "battery_pack", "variable": "power",
+        "torque_curve": [[0, 90], [4000, 90], [9000, 40]], "max_rpm": 9000, "efficiency": 0.92,
+        "regen": { "lift_off": 15, "brake": 45, "efficiency": 0.7 },
+        "coupling": { "wheels": ["roue_arriere_gauche", "roue_arriere_droite"], "ratio": 7.0 } }
+    ]
+  },
+  "steering": { "max_angle": 0.6, "speed_sensitivity": 0.5,
+                "steered_wheels": ["roue_avant_gauche", "roue_avant_droite"] },
+  "brakes": { "max_torque_front": 1200.0, "max_torque_rear": 800.0, "handbrake_torque": 1500.0,
+              "handbrake_wheels": ["roue_arriere_gauche", "roue_arriere_droite"] },
+  "seats": [
+    { "name": "driver", "node": "siege_conducteur", "role": "driver", "exit_offsets": [[1.0, 0.0, 0.0]],
+      "controls": ["throttle", "brake", "steer", "gear", "handbrake"],
+      "bindings": [ { "command": 3, "label": "key.example_addon.power", "variable": "power", "mode": "toggle" } ] }
+  ],
+  "variables": {
+    "power": { "type": "bool", "default": false, "replicate": "all", "write": "driver" }
+  },
+  "procedural": [
+    { "node": "volant", "channel": "rotation", "axis": "y", "source": "vehicle.steer", "scale": -3.0 },
+    { "node": "roue_avant_gauche", "channel": "rotation", "axis": "x", "source": "wheel.roue_avant_gauche.spin_angle" },
+    { "node": "roue_avant_droite", "channel": "rotation", "axis": "x", "source": "wheel.roue_avant_droite.spin_angle" },
+    { "node": "roue_arriere_gauche", "channel": "rotation", "axis": "x", "source": "wheel.roue_arriere_gauche.spin_angle" },
+    { "node": "roue_arriere_droite", "channel": "rotation", "axis": "x", "source": "wheel.roue_arriere_droite.spin_angle" }
+  ],
+  "dashboard": {
+    "default": true,
+    "gauges": [
+      { "name": "battery", "kind": "bar", "source": "energy.battery_pack.ratio", "min": 0, "max": 1, "label": "gauge.example_addon.battery",
+        "anchor": "bottom_right", "offset": [-110, -40] },
+      { "name": "fuel", "kind": "bar", "source": "energy.tank.ratio", "min": 0, "max": 1, "label": "gauge.example_addon.fuel",
+        "anchor": "bottom_right", "offset": [-110, -56] }
+    ]
+  }
+}

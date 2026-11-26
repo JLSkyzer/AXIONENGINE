@@ -76,6 +76,7 @@ public final class DefinitionsReport {
             lines.add("  schéma : " + definition.schema());
             lines.add("  enregistrée par : " + source.apply(definition.location()).orElse(definition.location()));
             lines.add("  empreinte : " + definition.sha256().substring(0, 16));
+            energy(definition.root(), lines);
             seated(definition.root(), lines);
             sockets(definition.root(), lines);
             content(definition.root(), lines);
@@ -85,6 +86,42 @@ public final class DefinitionsReport {
                 .map(refusal -> List.of("AXION : " + id + " refusée — " + refusal))
                 .orElse(List.of("AXION : aucune definition « " + id + " », ni chargée ni refusée : aucun mod ne "
                         + "l'enregistre (vérifier le modId et le chemin)"));
+    }
+
+    /**
+     * Les énergies d'une definition (ADR-182, axe Diagnostic) : ses réserves et leur type, le moteur à combustion et son
+     * prolongateur, les moteurs électriques et ce qu'ils entraînent.
+     */
+    static void energy(JsonObject root, List<String> lines) {
+        dev.axion.definition.EnergySpec spec = dev.axion.definition.EnergySpec.of(root);
+        if (spec.declared()) {
+            List<String> stores = spec.stores().stream().map(store -> store.name() + " ("
+                    + (store.carrier() == null ? "tout" : store.carrier()) + ", " + number(store.capacity()) + ")").toList();
+            lines.add("  réserves : " + String.join(", ", stores));
+        }
+        if (!(root.get("powertrain") instanceof JsonObject powertrain)) {
+            return;
+        }
+        if (powertrain.get("engine") instanceof JsonObject engine
+                && engine.get("generator") instanceof JsonObject generator) {
+            lines.add("  prolongateur : charge " + generator.get("store").getAsString() + " à "
+                    + number(generator.get("power_kw").getAsDouble()) + " kW");
+        }
+        if (powertrain.get("electric_motors") instanceof JsonArray motors) {
+            for (JsonElement element : motors) {
+                JsonObject motor = element.getAsJsonObject();
+                String driving = motor.get("coupling") instanceof JsonObject coupling
+                        ? "roues " + String.join(", ", coupling.getAsJsonArray("wheels").asList().stream()
+                                .map(JsonElement::getAsString).toList())
+                        : "la boîte";
+                lines.add("  moteur électrique " + motor.get("name").getAsString() + " : réserve "
+                        + motor.get("store").getAsString() + ", entraîne " + driving);
+            }
+        }
+    }
+
+    private static String number(double value) {
+        return value == Math.rint(value) && Math.abs(value) < 1e9 ? Long.toString((long) value) : Double.toString(value);
     }
 
     /**

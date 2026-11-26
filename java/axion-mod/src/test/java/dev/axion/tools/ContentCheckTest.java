@@ -46,8 +46,8 @@ class ContentCheckTest {
     void leTemoinPasse() {
         ContentCheck.Report report = ContentCheck.check("example_addon", TEMOIN, TRAVAIL);
         assertEquals(List.of(), report.faults(), () -> String.join("\n", report.faults()));
-        assertEquals(Map.of(ContentKind.DEFINITION, 2, ContentKind.MODEL, 1), report.counts(),
-                "crate et upgradable_crate, sur le même modèle");
+        assertEquals(Map.of(ContentKind.DEFINITION, 5, ContentKind.MODEL, 1), report.counts(),
+                "les deux caisses sur le même modèle ; les trois buggys d'ADR-182 sur celui d'AXION");
     }
 
     @Test

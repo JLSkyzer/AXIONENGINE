@@ -1,6 +1,7 @@
 package com.example.addon;
 
 import dev.axion.api.assembly.Assembly;
+import dev.axion.api.assembly.EnergyStore;
 import dev.axion.api.assembly.Modifier;
 import dev.axion.api.assembly.Parameters;
 import dev.axion.api.testing.AxionGameTests;
@@ -8,6 +9,7 @@ import dev.axion.api.vehicle.DriverInput;
 import dev.axion.api.vehicle.VehicleControl;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
@@ -143,6 +145,92 @@ public final class ExampleAddonGameTests {
                 .thenSucceed();
     }
     // --8<-- [end:limiter]
+
+    // --8<-- [start:electric]
+    /** The electric buggy: switched on, it drives on its battery, and its motor reports the power it draws. */
+    @GameTest(template = AxionGameTests.DALLE, timeoutTicks = 200)
+    public static void electricBuggyDrivesOnItsBattery(GameTestHelper helper) {
+        Assembly buggy = AxionGameTests.spawn(helper, "example_addon:electric_buggy",
+                new Vec3(4.5, AxionGameTests.DESSUS_DALLE, 6.0));
+        helper.startSequence()
+                .thenWaitUntil(() -> ready(helper, buggy, Parameters.motorTorque("rear")))
+                .thenExecute(() -> {
+                    buggy.variables().set("power", 1);
+                    buggy.vehicle().orElseThrow().drive(new DriverInput(0.4, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> {
+                    EnergyStore battery = buggy.energy().store("battery_pack").orElseThrow();
+                    double speed = buggy.vehicle().orElseThrow().state().speed();
+                    helper.assertTrue(speed > 0.5 && battery.amount() < battery.capacity()
+                            && buggy.source("motor.rear.power") > 0, "driving: " + speed + " m/s, "
+                            + battery.amount() + " kWh, " + buggy.source("motor.rear.power") + " kW");
+                })
+                .thenExecute(() -> buggy.vehicle().orElseThrow().drive(new DriverInput(0, 0, 0, 0, 1, 1)))
+                .thenSucceed();
+    }
+    // --8<-- [end:electric]
+
+    // --8<-- [start:diesel]
+    /** The diesel buggy: its tank takes diesel only, and its engine starts with the ignition and burns it. */
+    @GameTest(template = AxionGameTests.DALLE, timeoutTicks = 200)
+    public static void dieselBuggyBurnsDiesel(GameTestHelper helper) {
+        Assembly buggy = AxionGameTests.spawn(helper, "example_addon:diesel_buggy",
+                new Vec3(4.5, AxionGameTests.DESSUS_DALLE, 6.0));
+        helper.startSequence()
+                .thenWaitUntil(() -> ready(helper, buggy, Parameters.ENGINE_TORQUE))
+                .thenExecute(() -> {
+                    EnergyStore tank = buggy.energy().store("tank").orElseThrow();
+                    tank.set(10);
+                    helper.assertTrue(tank.fill(new ResourceLocation("axion", "petrol"), 5) == 0,
+                            "petrol does not go into a diesel tank");
+                    helper.assertTrue(tank.fill(new ResourceLocation("axion", "diesel"), 5) == 5, "diesel does");
+                    buggy.variables().set("power", 1);
+                    buggy.vehicle().orElseThrow().drive(new DriverInput(0.3, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> {
+                    double tank = buggy.energy().store("tank").orElseThrow().amount();
+                    helper.assertTrue(buggy.source("engine.running") == 1 && tank < 15,
+                            "running and burning: " + tank + " l");
+                })
+                .thenExecute(() -> buggy.vehicle().orElseThrow().drive(new DriverInput(0, 0, 0, 0, 1, 0)))
+                .thenSucceed();
+    }
+    // --8<-- [end:diesel]
+
+    // --8<-- [start:hybrid]
+    /** The hybrid buggy: with a low battery, its range extender burns petrol and charges it, wheels at rest. */
+    @GameTest(template = AxionGameTests.DALLE, timeoutTicks = 200)
+    public static void hybridBuggyChargesItsBattery(GameTestHelper helper) {
+        Assembly buggy = AxionGameTests.spawn(helper, "example_addon:hybrid_buggy",
+                new Vec3(4.5, AxionGameTests.DESSUS_DALLE, 6.0));
+        helper.startSequence()
+                .thenWaitUntil(() -> ready(helper, buggy, Parameters.motorTorque("rear")))
+                .thenExecute(() -> {
+                    buggy.energy().store("battery_pack").orElseThrow().set(0.2);
+                    // A tap on the brake wakes it; the range extender then keeps it awake while charging.
+                    buggy.vehicle().orElseThrow().drive(new DriverInput(0, 1, 0, 0, 0, 1));
+                })
+                .thenIdle(2)
+                .thenExecute(() -> buggy.vehicle().orElseThrow().drive(DriverInput.NONE))
+                .thenWaitUntil(() -> {
+                    double battery = buggy.energy().store("battery_pack").orElseThrow().amount();
+                    double tank = buggy.energy().store("tank").orElseThrow().amount();
+                    helper.assertTrue(buggy.source("engine.running") == 1 && battery > 0.205 && tank < 20,
+                            "charging: " + battery + " kWh, " + tank + " l");
+                })
+                .thenSucceed();
+    }
+    // --8<-- [end:hybrid]
+
+    /** Waits until the definition is compiled: a parameter exists and the vehicle view answers. */
+    private static void ready(GameTestHelper helper, Assembly vehicle, String parameter) {
+        helper.assertTrue(vehicle.parameters().has(parameter), "not compiled yet");
+        try {
+            vehicle.vehicle().orElseThrow().state();
+        } catch (IllegalStateException notYet) {
+            helper.fail("its vehicle state is not ready yet: " + notYet.getMessage());
+        }
+    }
 
     // --8<-- [start:tachometer]
     /**

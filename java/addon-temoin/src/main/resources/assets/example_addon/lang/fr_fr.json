@@ -1,0 +1,6 @@
+{
+  "key.example_addon.power": "Contact",
+  "key.example_addon.ignition": "Contact",
+  "gauge.example_addon.battery": "Batterie",
+  "gauge.example_addon.fuel": "Carburant"
+}

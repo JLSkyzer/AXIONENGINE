@@ -214,3 +214,39 @@ elle, reste.
   contact).
 - Les roues motrices ne sont exigées que pour un moteur électrique couplé à la boîte.
 - `engine.running`, `engine.rpm` et `engine.load` le suivent.
+
+## Trois exemples complets
+
+Le mod d'exemple (`java/addon-temoin`) porte trois véhicules prêts à copier, sur le modèle du buggy d'AXION ; chacun a
+son test en jeu. Fais-les apparaître avec `/axion spawn example_addon:electric_buggy` (ou `diesel_buggy`,
+`hybrid_buggy`) ; la touche de commande 3 met le contact.
+
+=== "Électrique"
+
+    ```json
+    --8<-- "java/addon-temoin/src/main/resources/axion/definitions/electric_buggy.json"
+    ```
+
+    ```java
+    --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:electric"
+    ```
+
+=== "Diesel"
+
+    ```json
+    --8<-- "java/addon-temoin/src/main/resources/axion/definitions/diesel_buggy.json"
+    ```
+
+    ```java
+    --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:diesel"
+    ```
+
+=== "Hybride à prolongateur"
+
+    ```json
+    --8<-- "java/addon-temoin/src/main/resources/axion/definitions/hybrid_buggy.json"
+    ```
+
+    ```java
+    --8<-- "java/addon-temoin/src/main/java/com/example/addon/ExampleAddonGameTests.java:hybrid"
+    ```
