@@ -3663,7 +3663,7 @@ T-980..T-984.
       - [x] Relevé au film du 2026-11-10 : le passager avait un tick de retard sur la carrosserie (75 cm à 15 m/s) et
             ne tournait pas avec elle. Corrigé : `SeatedPassengers` le pose à chaque image au siège de la pose dessinée ;
             le film le juge (écart ≤ 2 cm, regard ≤ 0,5°), mutation rouge à 0,98 m.
-      - [ ] Côté serveur, le lacet d'un passager qui n'est pas un joueur ne suit pas encore le véhicule.
+      - [x] Côté serveur, le lacet d'un passager qui n'est pas un joueur suit le véhicule (2026-11-26, précision d'ADR-158).
       - [ ] Échelle des occupants (Killian, 2026-11-10 : « scale la voiture ») : un joueur assis a la tête 1,29 m au-dessus
             du coussin ; une voiture à l'échelle réelle ne le contient pas. La Charger locale est passée à ×1,5. Aucun
             champ ne règle la pose ni l'échelle d'un occupant (audit, point 13).

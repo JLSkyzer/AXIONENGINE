@@ -668,6 +668,62 @@ public final class VehiculesGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-158 D3 : au serveur, un passager qui n'est pas un joueur tourne avec le véhicule qui tourne, comme dans un
+     * bateau ; les joueurs, eux, tournent chez eux.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 300)
+    public static void unCochonAssisTourneAvecLeVehicule(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 9.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(8.0, DESSUS_DALLE + 0.6, 12.0), IDENTITE);
+        net.minecraft.world.entity.animal.Pig cochon =
+                net.minecraft.world.entity.EntityType.PIG.create(helper.getLevel());
+        // Au départ de la conduite : le regard du cochon, l'avant du siège, le corps du cochon.
+        float[] depart = {0f, 0f, 0f};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.seatingKnown(),
+                        "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    cochon.setNoAi(true);
+                    helper.getLevel().addFreshEntity(cochon);
+                    cochon.moveTo(vehicule.getX(), vehicule.getY() + 1.0, vehicule.getZ(), 30f, 0f);
+                    helper.assertTrue(vehicule.reseat(cochon, "passager"),
+                            "le cochon est assis à la place du passager");
+                })
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    depart[0] = cochon.getYRot();
+                    depart[1] = lacet(vehicule);
+                    depart[2] = cochon.yBodyRot;
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 1.0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(
+                        Math.abs(net.minecraft.util.Mth.wrapDegrees(lacet(vehicule) - depart[1])) > 25f,
+                        "le véhicule tourne : " + lacet(vehicule) + " contre " + depart[1]))
+                .thenExecute(() -> {
+                    float vehiculeA = net.minecraft.util.Mth.wrapDegrees(lacet(vehicule) - depart[1]);
+                    float cochonA = net.minecraft.util.Mth.wrapDegrees(cochon.getYRot() - depart[0]);
+                    helper.assertTrue(Math.abs(net.minecraft.util.Mth.wrapDegrees(vehiculeA - cochonA)) < 8f,
+                            "le cochon tourne avec lui : " + cochonA + " degrés contre " + vehiculeA);
+                    float corpsA = net.minecraft.util.Mth.wrapDegrees(cochon.yBodyRot - depart[2]);
+                    helper.assertTrue(Math.abs(net.minecraft.util.Mth.wrapDegrees(vehiculeA - corpsA)) < 8f,
+                            "son corps aussi : " + corpsA + " degrés contre " + vehiculeA);
+                    vehicule.discard();
+                    cochon.discard();
+                })
+                .thenSucceed();
+    }
+
+    /** {@return le lacet de Minecraft, en degrés, de l'avant du siège conducteur} */
+    private static float lacet(AxionEntity vehicule) {
+        dev.axion.seat.SeatPlacement.Pose siege = vehicule.seatPose(0);
+        org.joml.Quaternionf q = new org.joml.Quaternionf(siege.rotation()[0], siege.rotation()[1],
+                siege.rotation()[2], siege.rotation()[3]);
+        org.joml.Vector3f avant = q.transform(new org.joml.Vector3f(0f, 0f, -1f));
+        return (float) Math.toDegrees(Math.atan2(-avant.x, avant.z));
+    }
+
     private static double masse(AxionEntity vehicule) {
         dev.axion.entity.AssemblyParameters table = vehicule.parameters();
         return table.value(table.tuning().indexOf(dev.axion.api.assembly.Parameters.MASS));

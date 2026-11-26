@@ -131,6 +131,17 @@ public final class SeatPlacement {
         return next;
     }
 
+    /**
+     * {@return le lacet de Minecraft, en degrés, de l'avant d'une orientation : son {@code -Z} (§6.5), 0 vers le sud,
+     * 90 vers l'ouest}
+     *
+     * @param rotation orientation monde, {@code x, y, z, w}
+     */
+    public static float yaw(float[] rotation) {
+        float[] forward = rotate(rotation, new float[] {0f, 0f, -1f});
+        return (float) Math.toDegrees(Math.atan2(-forward[0], forward[2]));
+    }
+
     /** {@return {@code v} tourné par le quaternion unitaire {@code q = [x, y, z, w]}} */
     static float[] rotate(float[] q, float[] v) {
         float qx = q[0];

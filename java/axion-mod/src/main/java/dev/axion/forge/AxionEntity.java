@@ -474,6 +474,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** Tick où chaque joueur refusé pourra de nouveau chercher une sortie. */
     private final Map<Integer, Integer> exitRefusedUntil = new HashMap<>();
+    /** Au serveur, le lacet du siège de chaque passager non joueur à sa dernière pose, pour le tourner avec lui. */
+    private final Map<Integer, Float> riderYaw = new HashMap<>();
 
     private final List<LostNode> lostNodes = new ArrayList<>();
 
@@ -2659,6 +2661,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             }
         }
         exitRefusedUntil.remove(passenger.getId());
+        riderYaw.remove(passenger.getId());
         forgetSeat(passenger);
         if (departure == null || departure.passenger() != passenger.getId()) {
             departure = new Departure(passenger.getId(), seat, null);
@@ -2679,6 +2682,30 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return;
         }
         move.accept(passenger, pose.x(), pose.y() + riderOffset(passenger), pose.z());
+        if (!level().isClientSide() && !(passenger instanceof Player)) {
+            turnRider(passenger, pose);
+        }
+    }
+
+    /**
+     * Au serveur, un passager qui n'est pas un joueur tourne de ce que son siège a tourné depuis sa dernière pose, comme
+     * dans un bateau (ADR-158 D3) ; les joueurs tournent chez eux, d'image en image, et arrivent tournés.
+     */
+    private void turnRider(Entity passenger, SeatPlacement.Pose seat) {
+        float yaw = SeatPlacement.yaw(seat.rotation());
+        Float last = riderYaw.put(passenger.getId(), yaw);
+        if (last == null) {
+            return;
+        }
+        float delta = Mth.wrapDegrees(yaw - last);
+        if (delta == 0f) {
+            return;
+        }
+        passenger.setYRot(passenger.getYRot() + delta);
+        if (passenger instanceof LivingEntity living) {
+            living.setYBodyRot(living.yBodyRot + delta);
+            living.setYHeadRot(living.getYHeadRot() + delta);
+        }
     }
 
     /**

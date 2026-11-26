@@ -42,6 +42,7 @@ The choice depends on what you want elsewhere. A model at its real size behaves 
 ## Good to know
 
 - The player's name, above them, is drawn with them: it follows the scale.
+- A passenger who is not a player — a seated mob — turns with the vehicle, as in a boat.
 - Seated or standing, the server places the player at the same node; only the height differs (the mount offset, 0.35 m for a seated
   player).
 - The API writes these fields like the others: `seat("driver", s -> s.occupant(o -> o.scale(0.67)))`.

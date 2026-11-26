@@ -43,6 +43,7 @@ carrosserie, un autre mod) ; une échelle de siège évite de refaire un modèle
 ## À savoir
 
 - Le nom du joueur, au-dessus de lui, est dessiné avec lui : il suit l'échelle.
+- Un passager qui n'est pas un joueur — un mob assis — tourne avec le véhicule, comme dans un bateau.
 - Assis ou debout, le serveur pose le joueur au même node ; seule la hauteur diffère (le décalage de monture, 0,35 m pour un joueur
   assis).
 - L'API écrit ces champs comme les autres : `seat("conducteur", s -> s.occupant(o -> o.scale(0.67)))`.

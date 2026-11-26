@@ -32,6 +32,16 @@ class SeatPlacementTest {
     }
 
     @Test
+    @DisplayName("ADR-158 D3 : le lacet de Minecraft d'une orientation est celui de son avant, le -Z")
+    void lacet() {
+        // Identité : l'avant vers le nord, lacet 180 ; demi-tour autour de Y : vers le sud, 0 ; quart de tour à gauche
+        // (autour de +Y) : vers l'ouest, 90.
+        proche(180.0, Math.abs(SeatPlacement.yaw(new float[] {0f, 0f, 0f, 1f})), "nord");
+        proche(0.0, SeatPlacement.yaw(new float[] {0f, 1f, 0f, 0f}), "sud");
+        proche(90.0, SeatPlacement.yaw(new float[] {0f, DEMI, 0f, DEMI}), "ouest");
+    }
+
+    @Test
     @DisplayName("T-440 : le siège suit la position et l'orientation de son corps")
     void suitLeCorps() {
         // Le corps tourné d'un quart de tour autour de y : (1, 0,5, 0) devient (0, 0,5, −1).
