@@ -505,6 +505,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // ADR-167 D9 : les contrôleurs lisent l'état du début du tick, avant que les entrées partent au natif.
         control(stream);
         drive(stream);
+        impulses(stream);
         energy(stream);
         wear(stream);
         weather(stream, tick);
@@ -591,6 +592,15 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
         }
         return true;
+    }
+
+    /** Envoie les impulsions des mods (CAP-11) à chaque corps qui existe ; les autres assemblies les gardent. */
+    private void impulses(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            for (float[][] impulse : assembly.takeImpulses()) {
+                stream.impulse(index, GENERATION, impulse[0], impulse[1]);
+            }
+        });
     }
 
     /**

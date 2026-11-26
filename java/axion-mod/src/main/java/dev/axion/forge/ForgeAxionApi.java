@@ -545,6 +545,37 @@ public final class ForgeAxionApi implements AxionApi {
         }
 
         @Override
+        public Vec3 linearVelocity() {
+            return serverSide().currentVelocity(false);
+        }
+
+        @Override
+        public Vec3 angularVelocity() {
+            return serverSide().currentVelocity(true);
+        }
+
+        @Override
+        public void applyImpulse(Vec3 impulse, Vec3 worldPoint) {
+            java.util.Objects.requireNonNull(impulse, "impulse");
+            if (!finite(impulse) || worldPoint != null && !finite(worldPoint)) {
+                throw new IllegalArgumentException("impulsion ou point non fini : " + impulse + ", " + worldPoint);
+            }
+            serverSide().addImpulse(impulse, worldPoint);
+        }
+
+        private AxionEntity serverSide() {
+            if (entity.level().isClientSide()) {
+                throw new IllegalStateException("R-1755 : la vitesse et les impulsions sont au serveur");
+            }
+            AuthoritativeThread.require();
+            return entity;
+        }
+
+        private static boolean finite(Vec3 v) {
+            return Double.isFinite(v.x) && Double.isFinite(v.y) && Double.isFinite(v.z);
+        }
+
+        @Override
         public java.util.List<dev.axion.api.assembly.Seat> seats() {
             AuthoritativeThread.require();
             dev.axion.definition.Seating seating = entity.declaredSeating();

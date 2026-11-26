@@ -3917,8 +3917,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              grille D7 vérifiée) FAIT le 2026-11-26. Ouverts : essai à deux joueurs, questions E et F.
              Reste signalé : une citerne sans roue (objet rigide) est refusée à la compilation.
            - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`,
-             test natif de la masse par `SET_PARAMETERS` le 2026-11-26) ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
-             entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,
+             test natif de la masse par `SET_PARAMETERS` le 2026-11-26 ; le même jour `linearVelocity`,
+             `angularVelocity`, `applyImpulse` — restent `applyForce`, `applyTorque` (aucune commande native
+             de couple : ADR), sockets) ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
+             entrées ; forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,
              canaux, sources) ; données d'addon synchronisées ; sections d'extension par pièce ; échelle par definition et
              par instance ; joints à engrenages et crémaillère ; texte du CDC 23.2 et A.7. Ce qui touche un contrat, l'ABI
              ou le protocole demande un ADR accepté.

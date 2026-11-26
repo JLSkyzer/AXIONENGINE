@@ -269,6 +269,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     private boolean sleeping;
 
+    /** Vrai tant que la gestion d'activité le suspend (ADR-153), au dernier état : ses vitesses gardées sont gelées. */
+    private boolean suspendedBody;
+
+    /** Les impulsions qu'un mod a données et qui attendent le prochain pas : {@code {impulsion, point local ou null}}. */
+    private final List<float[][]> impulses = new ArrayList<>();
+
     /**
      * Vrai dès que le natif a rapporté un état depuis la lecture du NBT (serveur) : avant, l'état gardé
      * est celui que le NBT portait, et il est réécrit tel quel.
@@ -3734,6 +3740,44 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
     }
 
+    /**
+     * {@return la vitesse monde du corps racine au dernier état, en m/s ({@code angular} : de rotation, en rad/s) ;
+     * nulle avant le premier état, endormie ou suspendue}
+     */
+    Vec3 currentVelocity(boolean angular) {
+        if (!simulated || sleeping || suspendedBody) {
+            return Vec3.ZERO;
+        }
+        float[] v = angular ? angularVelocity : linearVelocity;
+        return new Vec3(v[0], v[1], v[2]);
+    }
+
+    /**
+     * Garde une impulsion pour le prochain pas (CAP-11) : le point du monde est ramené au repère du corps racine, tel
+     * que le dernier état l'a posé.
+     */
+    void addImpulse(Vec3 impulse, Vec3 worldPoint) {
+        float[] j = {(float) impulse.x, (float) impulse.y, (float) impulse.z};
+        float[] local = null;
+        if (worldPoint != null) {
+            Vector3f point = new Quaternionf(bodyRotation).conjugate().transform(new Vector3f(
+                    (float) (worldPoint.x - getX()), (float) (worldPoint.y - getY()),
+                    (float) (worldPoint.z - getZ())));
+            local = new float[] {point.x, point.y, point.z};
+        }
+        impulses.add(new float[][] {j, local});
+    }
+
+    /** {@return les impulsions en attente, et les oublie} */
+    List<float[][]> takeImpulses() {
+        if (impulses.isEmpty()) {
+            return List.of();
+        }
+        List<float[][]> taken = List.copyOf(impulses);
+        impulses.clear();
+        return taken;
+    }
+
     /** {@return vrai si la physique a endormi l'assembly} */
     boolean netSleeping() {
         return sleeping;
@@ -3747,6 +3791,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             System.arraycopy(angular, 0, angularVelocity, 0, 3);
         }
         this.sleeping = sleeping;
+        suspendedBody = suspended;
         simulated = true;
         boolean bounded = hasPhysicalBounds();
         double[] root = {getX(), getY(), getZ()};

@@ -1042,16 +1042,29 @@ public final class SimCommandStream {
      * @return {@code this}, pour chaîner
      */
     public SimCommandStream applyImpulse(int handleIndex, int handleGeneration, float x, float y, float z) {
+        return impulse(handleIndex, handleGeneration, new float[] {x, y, z}, null);
+    }
+
+    /**
+     * Comme {@link #applyImpulse}, en un point du corps racine, qui le fait aussi tourner.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param impulse impulsion {@code x, y, z} en N·s, repère monde
+     * @param localPoint point {@code x, y, z} dans le repère du corps racine, ou {@code null} : au centre de masse
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream impulse(int handleIndex, int handleGeneration, float[] impulse, float[] localPoint) {
         ByteBuffer command = beginCommand(OP_APPLY_IMPULSE, APPLY_IMPULSE_BYTES);
         command.putInt(handleIndex);
         command.putInt(handleGeneration);
-        command.putFloat(x);
-        command.putFloat(y);
-        command.putFloat(z);
-        command.putFloat(0f);
-        command.putFloat(0f);
-        command.putFloat(0f);
-        command.putInt(0);
+        for (int axis = 0; axis < 3; axis++) {
+            command.putFloat(impulse[axis]);
+        }
+        for (int axis = 0; axis < 3; axis++) {
+            command.putFloat(localPoint == null ? 0f : localPoint[axis]);
+        }
+        command.putInt(localPoint == null ? 0 : 1);
         commands.add(command.array());
         return this;
     }

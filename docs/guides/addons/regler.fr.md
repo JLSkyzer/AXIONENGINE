@@ -313,3 +313,20 @@ traduit dans ses fichiers de langue.
 - **Quand ta fiche change** — une plage resserrée, un rapport retiré —, un modificateur sauvegardé que les nouvelles
   bornes refusent n'est pas perdu : il reste posé, inactif, et le journal le dit (`E-7011`). `/axion params` le
   montre, et on peut le retirer.
+
+## 10. Lire sa vitesse, la pousser
+
+Au serveur, ton mod lit la vitesse d'une assembly et lui donne une **impulsion** — un rebond de trampoline, un souffle
+d'explosion, une catapulte :
+
+```java
+Vec3 vitesse = assembly.linearVelocity();       // m/s, repère du monde
+Vec3 rotation = assembly.angularVelocity();     // rad/s autour des axes du monde
+assembly.applyImpulse(new Vec3(0, 4000, 0), null);                      // en N·s, au centre de masse
+assembly.applyImpulse(new Vec3(2000, 0, 0), assembly.transform().position().add(0, 1, 0));  // en un point : elle tourne
+```
+
+- L'impulsion s'applique au **prochain pas physique**, au corps racine, et le réveille. Donnée avant que le moteur ne
+  simule l'assembly — juste après `spawn` —, elle attend son premier pas.
+- La vitesse est **nulle** pour une assembly endormie, suspendue loin de tout joueur, ou pas encore simulée.
+- Côté serveur seulement, sur son thread ; une valeur non finie est refusée.

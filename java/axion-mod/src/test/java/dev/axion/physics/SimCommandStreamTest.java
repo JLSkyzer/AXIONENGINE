@@ -61,6 +61,28 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeUneImpulsionEnUnPoint() {
+        // ADR-114 : handle, vecteur, point local, at_point ; sans point, le centre de masse.
+        ByteBuffer b = wrap(new SimCommandStream()
+                .impulse(7, 1, new float[] {1f, 2f, 3f}, new float[] {0.5f, 0f, -0.5f})
+                .impulse(7, 1, new float[] {4f, 5f, 6f}, null)
+                .toBytes());
+        assertEquals(SimCommandStream.OP_APPLY_IMPULSE, b.getInt(8), "opcode");
+        assertEquals(SimCommandStream.APPLY_IMPULSE_BYTES, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16));
+        assertEquals(1, b.getInt(20));
+        assertEquals(3f, b.getFloat(32), "vector.z");
+        assertEquals(0.5f, b.getFloat(36), "point.x");
+        assertEquals(-0.5f, b.getFloat(44), "point.z");
+        assertEquals(1, b.getInt(48), "at_point");
+        // Le payload de 36 octets est aligné à 40 : la seconde commande commence à 56.
+        assertEquals(SimCommandStream.OP_APPLY_IMPULSE, b.getInt(56), "opcode de la seconde");
+        assertEquals(6f, b.getFloat(64 + 16), "vector.z de la seconde");
+        assertEquals(0f, b.getFloat(64 + 20), "point.x nul");
+        assertEquals(0, b.getInt(64 + 32), "at_point nul");
+    }
+
+    @Test
     void sansFluideLeDrapeauEstNul() {
         byte[] bytes = new SimCommandStream()
                 .setDimensionEnv(0L, new float[] {0, 0, 0}, new float[] {0, 0, 0}, 0, 0, false)

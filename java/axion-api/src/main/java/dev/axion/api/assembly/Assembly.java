@@ -145,6 +145,44 @@ public interface Assembly {
     }
 
     /**
+     * {@return la vitesse de son corps racine, en m/s dans le repère du monde} Nulle pour une assembly endormie,
+     * suspendue loin de tout joueur, ou que le moteur physique ne simule pas encore.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755), au serveur.
+     *
+     * @throws IllegalStateException chez un client
+     */
+    default net.minecraft.world.phys.Vec3 linearVelocity() {
+        throw new UnsupportedOperationException("linearVelocity : cette assembly ne dit pas sa vitesse");
+    }
+
+    /**
+     * {@return la vitesse de rotation de son corps racine, en rad/s autour des axes du monde} Mêmes conditions que
+     * {@link #linearVelocity}.
+     *
+     * @throws IllegalStateException chez un client
+     */
+    default net.minecraft.world.phys.Vec3 angularVelocity() {
+        throw new UnsupportedOperationException("angularVelocity : cette assembly ne dit pas sa vitesse");
+    }
+
+    /**
+     * Donne à son corps racine une impulsion, au prochain pas physique, et le réveille. Elle est gardée tant que le
+     * moteur physique ne simule pas encore l'assembly ; un corps fixe ne bouge pas.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755), au serveur.
+     *
+     * @param impulse l'impulsion, en N·s dans le repère du monde
+     * @param worldPoint le point du monde où elle s'applique, qui fait aussi tourner le corps ; {@code null} : au
+     *     centre de masse, sans rotation
+     * @throws IllegalArgumentException si une composante n'est pas finie
+     * @throws IllegalStateException chez un client
+     */
+    default void applyImpulse(net.minecraft.world.phys.Vec3 impulse, net.minecraft.world.phys.Vec3 worldPoint) {
+        throw new UnsupportedOperationException("applyImpulse : cette assembly ne se pousse pas");
+    }
+
+    /**
      * {@return les entités que cette assembly porte au serveur (ADR-178, CAP-14)} Celles posées sur un de ses corps ; une
      * copie, dans un ordre quelconque. Les passagers assis n'y sont pas : ils sont des passagers.
      *

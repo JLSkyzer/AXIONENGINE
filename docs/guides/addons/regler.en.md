@@ -306,3 +306,20 @@ translates in its language files.
   `IllegalStateException` there.
 - **When your sheet changes** — a narrower range, a gear removed —, a saved modifier that the new bounds refuse is not
   lost: it stays in place, inactive, and the log says so (`E-7011`). `/axion params` shows it, and it can be removed.
+
+## 10. Read its velocity, push it
+
+On the server, your mod reads an assembly's velocity and gives it an **impulse** — a trampoline bounce, an explosion's
+blast, a catapult:
+
+```java
+Vec3 velocity = assembly.linearVelocity();      // m/s, in world space
+Vec3 spin = assembly.angularVelocity();         // rad/s around the world axes
+assembly.applyImpulse(new Vec3(0, 4000, 0), null);                      // in N·s, at the center of mass
+assembly.applyImpulse(new Vec3(2000, 0, 0), assembly.transform().position().add(0, 1, 0));  // at a point: it spins
+```
+
+- The impulse applies at the **next physics step**, to the root body, and wakes it. Given before the engine simulates
+  the assembly — right after `spawn` —, it waits for its first step.
+- The velocity is **zero** for an assembly that is asleep, suspended far from every player, or not simulated yet.
+- Server only, on its thread; a non-finite value is refused.

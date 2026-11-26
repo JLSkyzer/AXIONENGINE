@@ -87,6 +87,52 @@ public final class ApiPubliqueGameTests {
     }
 
     /**
+     * CAP-11 (23.2) : un mod pousse une assembly et lit sa vitesse. Au centre de masse, elle part sans tourner ; à
+     * côté, elle tourne autour de la verticale, du côté et de la mesure que donne le bras de levier — même tournée d'un
+     * quart de tour, ce qui prouve que le point du monde est bien ramené au corps. Les deux cubes sont en l'air, sans
+     * frottement.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 100)
+    public static void cap11_UnModPousseUneAssemblyEtLitSaVitesse(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionApi api = AxionApi.get();
+        DefinitionRef cube = new DefinitionRef(new ResourceLocation("axion", "test_cube"));
+        Assembly droit = api.assemblies().spawn(helper.getLevel(), cube,
+                helper.absoluteVec(new Vec3(4.0, DESSUS_DALLE + 5.0, 8.0)), new Quaternionf());
+        Assembly decale = api.assemblies().spawn(helper.getLevel(), cube,
+                helper.absoluteVec(new Vec3(11.0, DESSUS_DALLE + 5.0, 8.0)),
+                new Quaternionf().rotateY((float) (Math.PI / 2)));
+        // Le côté du cube, lu à l'orientation identité.
+        double[] cote = {0.0};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(((AxionEntity) droit.entity()).hasPhysicalBounds()
+                        && ((AxionEntity) decale.entity()).hasPhysicalBounds(), "les cubes sont simulés"))
+                .thenExecute(() -> {
+                    cote[0] = droit.entity().getBoundingBox().getXsize();
+                    droit.applyImpulse(new Vec3(0, 0, 3000), null);
+                    Vec3 point = decale.transform().position().add(0.5 * cote[0], 0, 0);
+                    decale.applyImpulse(new Vec3(0, 0, 3000), point);
+                })
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    Vec3 v = droit.linearVelocity();
+                    helper.assertTrue(v.z > 0.05 && Math.abs(v.x) < 0.02, "le cube poussé au centre part droit : " + v);
+                    helper.assertTrue(droit.angularVelocity().length() < 0.05,
+                            "sans tourner : " + droit.angularVelocity());
+                    Vec3 u = decale.linearVelocity();
+                    Vec3 w = decale.angularVelocity();
+                    helper.assertTrue(Math.abs(u.z - v.z) < 0.1 * v.z, "la même impulsion, la même vitesse : " + u);
+                    // Cube plein : I = m c² / 6 ; bras c / 2 vers +X, impulsion vers +Z : ω = -3 v / c autour de Y.
+                    double attendu = -3.0 * u.z / cote[0];
+                    helper.assertTrue(Math.abs(w.y - attendu) < 0.2 * Math.abs(attendu),
+                            "il tourne de " + w.y + " rad/s, attendu " + attendu + " (côté " + cote[0] + ")");
+                    droit.remove();
+                    decale.remove();
+                })
+                .thenSucceed();
+    }
+
+    /**
      * ADR-173 D1 (CAP-43) : au serveur, un mod lit les sources procédurales d'une assembly par leur nom
      * ({@code Assembly.source}), et un contrôleur de même ({@code VehicleView.source}) — le monde au point de
      * l'assembly, son véhicule, ses variables ; un nom inconnu lève.
