@@ -71,7 +71,7 @@ ADR-178	ADR		2321	13	5.44 C-53 : Interaction & Sièges
 ADR-179	ADR		2275	3	5.40 C-48 : Attachment System
 ADR-180	ADR		2090	4	5.30 C-38 : World Collision Provider
 ADR-181	ADR		3326	3	12.4 Modèle de pneu
-ADR-182	ADR		3348	13	12.5 Groupe motopropulseur
+ADR-182	ADR		3348	14	12.5 Groupe motopropulseur
 B-01	B	6603	5970	9	30.2 Ce qui est mesuré
 B-02	B	6604	6604	3	30.2 Ce qui est mesuré
 B-03	B	6605	6605	1	30.2 Ce qui est mesuré
@@ -724,10 +724,10 @@ R-1088	R	3351	3351	3	12.5 Groupe motopropulseur
 R-1089	R	3352	3352	4	12.5 Groupe motopropulseur
 R-1090	R	3370	3370	1	12.6 Direction et freinage
 R-1091	R	3371	3371	1	12.6 Direction et freinage
-R-1092	R	3353	3353	2	12.5 Groupe motopropulseur
+R-1092	R	3353	3353	3	12.5 Groupe motopropulseur
 R-1093	R	3354	3354	3	12.5 Groupe motopropulseur
 R-1094	R	3355	3355	3	12.5 Groupe motopropulseur
-R-1095	R	3356	3356	2	12.5 Groupe motopropulseur
+R-1095	R	3356	3356	3	12.5 Groupe motopropulseur
 R-1100	R	3381	3381	1	12.7 Aérodynamique
 R-1110	R	3393	3393	2	12.8 Entrées
 R-1111	R	3419	3419	3	12.10 Vues et tableau de bord

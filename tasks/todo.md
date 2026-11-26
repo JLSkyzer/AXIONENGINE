@@ -3906,14 +3906,16 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              depuis ADR-182 14a2 (R-1093) ; le mouillé sans vue d'API propre (la source `vehicle.wet` le donne) ; grille D7 d'ADR-176 à
              prononcer. Faits : annexe A.7 et A27 à jour, la neige (ADR-180 14c), le mouillé lu par `/axion wear`
              (ADR-181, 2026-11-26).
-           - [ ] [ADR-182](../docs/decisions/ADR-182.md) — les types d'énergie (essence, diesel, électrique, hybride ;
+           - [x] [ADR-182](../docs/decisions/ADR-182.md) — les types d'énergie (essence, diesel, électrique, hybride ;
              CAP-76, M5, demandé par Killian le 2026-11-26) : **accepté** le 2026-11-26 (Q1 à Q6 comme recommandé),
              A33. Tranches : 14a réserves typées — 14a1 (4 réserves au natif et au réseau, ABI 38, AXION-17) FAIT
              le 2026-11-26, 14a2 (schéma 8, types, plein typé et débit, API, commande, action, sauvegarde par nom,
              sources, guides ; R-1093) FAIT le 2026-11-26 → 14b moteurs électriques (ABI 39, AXION-18 ; consommation à
              la puissance, récupération, couplage boîte ou roues, sources, guides ; R-1094) FAIT le 2026-11-26 → 14c
              hybride (`motor.<nom>.torque`, prolongateur ; ABI 40, AXION-19 ; R-1095) FAIT le 2026-11-26 → 14d
-             exemples, essai de prédiction, film, coût, clôture D7. Reste signalé : une citerne sans roue (objet rigide) est refusée à la compilation.
+             (exemples du mod témoin, essai de prédiction, film, coût, défaut du plein à l'arrêt corrigé,
+             grille D7 vérifiée) FAIT le 2026-11-26. Ouverts : essai à deux joueurs, questions E et F.
+             Reste signalé : une citerne sans roue (objet rigide) est refusée à la compilation.
            - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`) ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,
