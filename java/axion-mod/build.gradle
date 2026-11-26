@@ -251,6 +251,16 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmEnergies {
+            // ADR-182 : le film des énergies (FilmDesEnergies) : électrique, récupération, hybride à prolongateur.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-energies')
+            property 'axion.film', 'energies'
+            property 'axion.souris.libre', 'true'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmVues {
             // ADR-170, tranche 7b : la scene du film du vehicule, filmee par la camera de vehicule elle-meme (F5).
             parent minecraft.runs.client
@@ -709,6 +719,17 @@ tasks.matching { it.name == 'runFilmPlein' }.configureEach {
         delete rootProject.file('.runs/film-plein/saves/axion-film-plein')
         delete fileTree(rootProject.file('.runs/film-plein/axion-film'))
         delete rootProject.file('.runs/film-plein/axion/world')
+    }
+}
+
+// Le film des energies (ADR-182), de meme.
+tasks.matching { it.name == 'runFilmEnergies' }.configureEach {
+    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/film-energies'))
+        delete rootProject.file('.runs/film-energies/saves/axion-film-energies')
+        delete fileTree(rootProject.file('.runs/film-energies/axion-film'))
+        delete rootProject.file('.runs/film-energies/axion/world')
     }
 }
 

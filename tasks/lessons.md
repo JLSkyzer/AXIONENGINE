@@ -2758,3 +2758,22 @@ shaderpack, dont le scénario saute la scène des sièges ; seul le banc vanilla
 
 **Règle.** Un verdict n'entre dans une liste attendue que si le scénario de ce backend le joue : vérifier le bloc qui
 l'entoure avant de pousser.
+
+---
+
+**[2026-11-26] | Une réserve remplie sur un véhicule endormi n'atteignait pas les joueurs : la jauge d'une voiture
+garée à la borne ne montait pas | Tout ce que Java pose sur une assembly et que les snapshots portent se rafraîchit dans
+`netState()`, pas seulement à la réception d'un rapport du natif.**
+
+**Ce qui a mal tourné.** L'état de véhicule des snapshots (`vehicleState()`) lisait les réserves du dernier
+`VehicleReport` ; un véhicule endormi n'en envoie plus. Présent depuis ADR-176 (plein à l'arrêt), vu au film des
+énergies, confirmé par un GameTest rouge sur la batterie (sans masse, rien ne la réveille — le carburant, lui, change la
+masse et réveille, ce qui masquait le défaut).
+
+**Cause.** `netState()` ne rafraîchissait que ce qui avait déjà été signalé (variables, nodes, capteurs) pour une
+assembly endormie ; l'énergie, le mouillé et l'usure passaient par le rapport.
+
+**Règle.** Un état qu'un appel Java change se publie sans attendre la physique : le lire de la valeur que Java tient, et
+l'ajouter au rafraîchissement des assemblies endormies ; tester avec une assembly endormie, et une grandeur qui ne la
+réveille pas.
+

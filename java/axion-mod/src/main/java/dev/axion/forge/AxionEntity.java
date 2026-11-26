@@ -3596,17 +3596,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * stationnement est serré, comme le natif le suppose (ADR-159 D8, Q3).
      */
     private AssemblyState.Vehicle vehicleState() {
-        if (vehicleReport == null) {
+        dev.axion.definition.EnergySpec energy = energySpec();
+        if (vehicleReport == null && !energy.declared()) {
             return AssemblyState.Vehicle.NONE;
+        }
+        // Les réserves que Java tient : celles du dernier rapport, ou ce qu'un plein y a posé depuis, endormi compris.
+        float[] ratios = new float[dev.axion.definition.EnergySpec.MAX_STORES];
+        for (int slot = 0; slot < ratios.length; slot++) {
+            ratios[slot] = dev.axion.net.PredictedStates.ratio((float) storeAmount(slot), energy.capacity(slot));
+        }
+        if (vehicleReport == null) {
+            // Jamais éveillé depuis sa création ou sa lecture : garé, son énergie connue.
+            return AssemblyState.Vehicle.of(0f, 0f, 0, 0, 0f, 0f, 0f, 1f, ratios, (float) wetness);
         }
         DriverInput driver = driverInput();
         DriverInput held = driver == null ? DriverInput.ABSENT : driver;
         VehicleInput input = held.input();
-        dev.axion.definition.EnergySpec energy = energySpec();
-        float[] ratios = new float[dev.axion.definition.EnergySpec.MAX_STORES];
-        for (int slot = 0; slot < ratios.length; slot++) {
-            ratios[slot] = dev.axion.net.PredictedStates.ratio(vehicleReport.store(slot), energy.capacity(slot));
-        }
         return AssemblyState.Vehicle.of(vehicleReport.rpm(), vehicleReport.load(), vehicleReport.gear(),
                 vehicleReport.flags(), input.throttle(), input.brake(), vehicleReport.steer(),
                 held.present() ? input.handbrake() : 1f, ratios, (float) wetness, vehicleReport.motors());
@@ -3761,6 +3766,17 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-167 D8 : de même un réglage d'une assembly endormie.
         if (netState != null && netState.parameters() != netParameters) {
             netState = netState.withParameters(netParameters);
+        }
+        // ADR-182 D2, ADR-176 : un plein, le mouillé ou une usure posés à un véhicule endormi partent aussi.
+        if (netState != null && !level().isClientSide() && netState.sleeping()) {
+            AssemblyState.Vehicle vehicle = vehicleState();
+            if (!vehicle.equals(netState.vehicle())) {
+                netState = netState.withVehicle(vehicle);
+            }
+            AssemblyState.Wheels wheels = wheelStates();
+            if (!wheels.equals(netState.wheels())) {
+                netState = netState.withWheels(wheels);
+            }
         }
         // ADR-174 D3 : l'état des nodes, qui part aussi pour une assembly endormie.
         if (netState != null && !level().isClientSide() && !netState.nodes().equals(nodeStates())) {

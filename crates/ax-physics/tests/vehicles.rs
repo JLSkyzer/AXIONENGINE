@@ -3021,3 +3021,64 @@ fn adr182_d4_en_parallele_les_couples_s_additionnent() {
     assert_eq!(pleine, 10.0, "sans autorisation, rien ne sort");
     assert!(entamee < 10.0);
 }
+
+/// La durée de l'étape des véhicules, en microsecondes par tick, sur 5 000 ticks pleins gaz.
+fn cout_des_vehicules(desc: VehicleDesc, entree_tenue: VehicleInput) -> f64 {
+    use ax_physics::Stage;
+    let prolongateur = desc.generator.is_some();
+    let (mut world, _) = sur_le_plat(desc, [4000.0, 4000.0], 1.0);
+    if prolongateur {
+        // La batterie sous son seuil : le prolongateur tourne pendant toute la mesure.
+        assert!(world.set_vehicle_energy(ASSEMBLY, [100.0, f32::NAN, f32::NAN, f32::NAN]));
+    }
+    conduire(&mut world, entree_tenue);
+    avancer(&mut world, 1.0);
+    let n = 5_000u32;
+    let mut vehicules = 0u64;
+    for _ in 0..n {
+        world.advance(TICK);
+        vehicules += world.stage_duration(Stage::Vehicles);
+    }
+    vehicules as f64 / f64::from(n) / 1e3
+}
+
+#[test]
+#[ignore = "mesure : à lancer à la main, en release"]
+fn adr182_cout_des_moteurs_electriques_et_du_prolongateur() {
+    let quatre = {
+        let mut d = electrique_pure(1000.0);
+        let un = d.motors[0].clone();
+        d.motors = (0..4)
+            .map(|rank| MotorDesc {
+                wheels: 1 << rank,
+                ..un.clone()
+            })
+            .collect();
+        d
+    };
+    let mut hybride = a_prolongateur();
+    hybride.energy.capacities[0] = 1000.0;
+    hybride.energy.capacities[1] = 1000.0;
+    let plein = entree(1.0, 0.0, 0.0);
+    let avec = VehicleInput {
+        native_flags: native_input_flags::MOTORS,
+        ..plein
+    };
+    // Les mêmes cas en alternance, sept fois : le minimum de chacun écarte le bruit de la machine.
+    let mut mesures = [f64::MAX; 4];
+    for _ in 0..7 {
+        for (rang, mesure) in mesures.iter_mut().enumerate() {
+            let valeur = match rang {
+                0 => cout_des_vehicules(berline(), plein),
+                1 => cout_des_vehicules(electrique_pure(1000.0), moteur_autorise(plein)),
+                2 => cout_des_vehicules(quatre.clone(), avec),
+                _ => cout_des_vehicules(hybride.clone(), moteur_autorise(plein)),
+            };
+            *mesure = mesure.min(valeur);
+        }
+    }
+    println!(
+        "étape des véhicules, µs/tick : thermique {:.2}, un moteur {:.2}, quatre moteurs {:.2}, hybride série {:.2}",
+        mesures[0], mesures[1], mesures[2], mesures[3]
+    );
+}

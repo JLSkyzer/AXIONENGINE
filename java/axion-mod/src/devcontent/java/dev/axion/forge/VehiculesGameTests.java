@@ -646,6 +646,28 @@ public final class VehiculesGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-182 D2 : un véhicule endormi qu'on recharge le montre aux joueurs sans se réveiller — la jauge d'une voiture
+     * garée à la borne monte. La batterie n'a pas de masse : rien ne le réveille.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void adr182_UnPleinALArretSeVoitSansReveillerLeVehicule(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_energies",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), IDENTITE);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.netState() != null && vehicule.netState().sleeping()
+                        && vehicule.netState().vehicle().storeRatio(2) > 0.99f, "garé, endormi, batterie pleine"))
+                .thenIdle(10)
+                .thenExecute(() -> vehicule.setStore(2, 0.25))
+                .thenIdle(5)
+                .thenExecute(() -> helper.assertTrue(vehicule.netState().sleeping()
+                        && Math.abs(vehicule.netState().vehicle().storeRatio(2) - 0.25f) < 0.01f,
+                        "endormi, la jauge suit : " + vehicule.netState().vehicle().storeRatio(2) + ", dort "
+                                + vehicule.netState().sleeping()))
+                .thenSucceed();
+    }
+
     private static double masse(AxionEntity vehicule) {
         dev.axion.entity.AssemblyParameters table = vehicule.parameters();
         return table.value(table.tuning().indexOf(dev.axion.api.assembly.Parameters.MASS));
