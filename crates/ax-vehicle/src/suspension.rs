@@ -40,6 +40,14 @@ pub fn force(desc: &SuspensionDesc, mass_ref: f32, compression: f32, rate: f32) 
     (spring + damping * rate * mass_ref).clamp(0.0, desc.max_force)
 }
 
+/// La force qu'un anti-roulis ajoute à la roue d'un essieu, en newtons (R-1061, ADR-159 D5) : sa raideur, relative à la
+/// masse comme le ressort (R-1060), par l'écart de compression avec l'autre roue de l'essieu. Positive pour la roue la
+/// plus comprimée, qu'elle charge ; négative pour l'autre, qu'elle soulage.
+#[must_use]
+pub fn anti_roll(desc: &SuspensionDesc, mass_ref: f32, compression: f32, other: f32) -> f32 {
+    desc.anti_roll * (compression.min(1.0) - other.min(1.0)) * mass_ref
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,6 +102,21 @@ mod tests {
         let s = exemple();
         assert!((force(&s, 100.0, 0.5, -1.0) - (1500.0 - 280.0)).abs() < 1e-2);
         assert!((force(&s, 100.0, 0.5, 1.0) - (1500.0 + 230.0)).abs() < 1e-2);
+    }
+
+    #[test]
+    fn r1061_l_anti_roulis_charge_la_roue_la_plus_comprimee() {
+        let mut s = exemple();
+        s.anti_roll = 20.0;
+        assert!((anti_roll(&s, 100.0, 0.6, 0.4) - 400.0).abs() < 1e-2);
+        assert!((anti_roll(&s, 100.0, 0.4, 0.6) + 400.0).abs() < 1e-2);
+        assert_eq!(anti_roll(&s, 100.0, 0.5, 0.5), 0.0);
+        assert!(
+            (anti_roll(&s, 100.0, 3.0, 0.5) - 1000.0).abs() < 1e-2,
+            "en butée au plus"
+        );
+        s.anti_roll = 0.0;
+        assert_eq!(anti_roll(&s, 100.0, 0.9, 0.1), 0.0);
     }
 
     #[test]

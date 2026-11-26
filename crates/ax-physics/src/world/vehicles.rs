@@ -110,6 +110,10 @@ struct Contact {
     ground_speed: f32,
     /// Le corps dynamique touché, qui reçoit la réaction.
     ground: Option<RigidBodyHandle>,
+    /// La masse que la roue porte, qui met la suspension à l'échelle (R-1060).
+    mass_ref: f32,
+    /// La résistance au roulement du matériau touché.
+    rolling: f32,
 }
 
 /// Un véhicule dans le monde.
@@ -182,6 +186,40 @@ fn combustion(desc: &VehicleDesc, engine: &EngineState, generating: bool) -> boo
     desc.flags & vehicle_flags::NO_ENGINE == 0
         && engine.running()
         && (desc.generator.is_none() || generating)
+}
+
+/// R-1061, ADR-159 D5 : chaque essieu déclaré, deux roues de même `axle`, passe de la charge de la roue la moins
+/// comprimée à la plus comprimée, dans les bornes de chacune. Une roue en l'air compte pour sa compression pendante et
+/// ne reçoit rien ; un essieu d'une seule roue, ou sans anti-roulis, ne change rien.
+fn transfer_anti_roll(vehicle: &mut Vehicle) {
+    let desc = &vehicle.desc;
+    for left in 0..vehicle.wheels.len() {
+        let axle = desc.wheels[left].axle;
+        if axle == NONE_U16 {
+            continue;
+        }
+        let Some(right) = (left + 1..vehicle.wheels.len()).find(|&o| desc.wheels[o].axle == axle)
+        else {
+            continue;
+        };
+        let compressions = [
+            vehicle.wheels[left].compression,
+            vehicle.wheels[right].compression,
+        ];
+        for (index, own, other) in [
+            (left, compressions[0], compressions[1]),
+            (right, compressions[1], compressions[0]),
+        ] {
+            let suspension = &desc.wheels[index].suspension;
+            let drive = &mut vehicle.drives[index];
+            if !drive.grounded || suspension.anti_roll <= 0.0 {
+                continue;
+            }
+            let mass_ref = vehicle.contacts[index].mass_ref;
+            let force = suspension::anti_roll(suspension, mass_ref, own, other);
+            drive.load = (drive.load + force).clamp(0.0, suspension.max_force);
+        }
+    }
 }
 
 /// La traînée d'un véhicule sur son corps racine (12.7) : la sienne, plus celle de chaque surface portante.
@@ -1261,11 +1299,6 @@ impl PhysicsWorld {
             drive.tangent = tangent;
             drive.right = right;
             drive.offset = point - props.world_com;
-            drive.hold += brakes::rolling_torque(
-                material.map_or(0.0, |m| m.rolling_friction),
-                load,
-                wheel.radius,
-            );
             vehicle.grounded[index] = true;
             *contact = Contact {
                 point,
@@ -1276,14 +1309,32 @@ impl PhysicsWorld {
                 ground: ground
                     .filter(|(_, ground)| ground.is_dynamic())
                     .map(|(parent, _)| parent),
+                mass_ref,
+                rolling: material.map_or(0.0, |m| m.rolling_friction),
             };
-
-            let suspension_impulse = normal * load * dt;
-            vehicle
-                .impulses
-                .push((vehicle.carriers[index], suspension_impulse, anchor));
+        }
+        transfer_anti_roll(vehicle);
+        // Les charges établies, anti-roulis compris : la résistance au roulement, puis les impulsions de suspension.
+        for index in 0..vehicle.wheels.len() {
+            if !vehicle.drives[index].grounded {
+                continue;
+            }
+            let wheel = &vehicle.desc.wheels[index];
+            let contact = vehicle.contacts[index];
+            let drive = &mut vehicle.drives[index];
+            let load = drive.load;
+            vehicle.wheels[index].load = load;
+            drive.hold += brakes::rolling_torque(contact.rolling, load, wheel.radius);
+            let suspension_impulse = contact.normal * load * dt;
+            vehicle.impulses.push((
+                vehicle.carriers[index],
+                suspension_impulse,
+                vehicle.wheels[index].anchor,
+            ));
             if let Some(ground) = contact.ground {
-                vehicle.impulses.push((ground, -suspension_impulse, point));
+                vehicle
+                    .impulses
+                    .push((ground, -suspension_impulse, contact.point));
             }
         }
         Self::count_suspension(vehicle, dt);

@@ -64,3 +64,18 @@ montre jusqu'à 0,3 d'usure et s'efface vers 0,5, le pneu usé fait l'inverse. L
 changement de pneus (`setWear`, `/axion wear`, `set_wear`) remet le modèle neuf dès que le client reçoit l'état suivant. Ce que le moteur ne fait pas :
 changer la texture d'**un même** nœud selon l'usure, ni dessiner des couches d'usure sur la surface (C-47) ; deux nœuds ou une
 teinte tiennent ce besoin. Un test (`ProceduralTracksTest`) tient l'échange par `visibility` et `map` sur `wheel.<roue>.wear`.
+
+## Essieux et anti-roulis
+
+Deux roues d'un même essieu portent le même `axle` ; leur suspension peut déclarer un anti-roulis, qui redresse le
+véhicule en virage ([ADR-159](../../decisions/ADR-159.md) D5) :
+
+```json
+{ "node": "roue_avant_gauche", "radius": 0.3, "axle": "avant", "suspension": { "stiffness": 25.0, "anti_roll": 15.0 } },
+{ "node": "roue_avant_droite", "radius": 0.3, "axle": "avant", "suspension": { "stiffness": 25.0, "anti_roll": 15.0 } }
+```
+
+- Il passe de la charge de la roue la moins comprimée à la plus comprimée, à proportion de l'écart : `anti_roll` se
+  compte comme `stiffness`, par kilogramme porté. À plat, il ne fait rien.
+- Les deux roues de l'essieu déclarent la même valeur ; sans essieu de deux roues, il est refusé. Rien n'est déduit.
+- Une roue en l'air ne reçoit rien, mais celle qui touche en tient compte.

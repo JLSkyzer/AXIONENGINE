@@ -3659,7 +3659,7 @@ T-980..T-984.
             `SET_VEHICLE_INPUT` (ABI 20), `DEFN` 3, touches de boîte. T-321..T-324, T-327, T-328 en Rust, GameTest par le
             vrai canal des entrées ; film conduit au clavier, tourné le 2026-11-10 (vue éloignée et vue conducteur, Charger
             locale ×1,5). Buggy d'exemple retourné. Commit `5db5297`, CI locale verte.
-      - [ ] Relevé à la tranche 3 : l'anti-roulis (R-1061, D5) est compilé et validé, mais le pas ne l'applique pas encore.
+      - [x] Relevé à la tranche 3 : l'anti-roulis (R-1061, D5) était compilé et validé sans que le pas l'applique ; appliqué le 2026-11-26 (précision d'ADR-159, tests `r1061_*`).
       - [x] Relevé au film du 2026-11-10 : le passager avait un tick de retard sur la carrosserie (75 cm à 15 m/s) et
             ne tournait pas avec elle. Corrigé : `SeatedPassengers` le pose à chaque image au siège de la pose dessinée ;
             le film le juge (écart ≤ 2 cm, regard ≤ 0,5°), mutation rouge à 0,98 m.

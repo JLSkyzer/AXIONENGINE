@@ -62,3 +62,18 @@ to 0.3 wear and fades out around 0.5, and the worn tyre does the opposite. The c
 a tyre change (`setWear`, `/axion wear`, `set_wear`) puts the new model back as soon as the client receives the next state. What the engine does not do:
 change the texture of **one and the same** node according to wear, or draw wear layers on the surface (C-47); two nodes or a tint
 cover that need. A test (`ProceduralTracksTest`) holds the swap through `visibility` and `map` on `wheel.<wheel>.wear`.
+
+## Axles and anti-roll
+
+The two wheels of an axle share the same `axle` name; their suspension may declare an anti-roll bar, which keeps the
+vehicle upright in corners ([ADR-159](../../decisions/ADR-159.md) D5):
+
+```json
+{ "node": "front_left_wheel", "radius": 0.3, "axle": "front", "suspension": { "stiffness": 25.0, "anti_roll": 15.0 } },
+{ "node": "front_right_wheel", "radius": 0.3, "axle": "front", "suspension": { "stiffness": 25.0, "anti_roll": 15.0 } }
+```
+
+- It moves load from the less compressed wheel to the more compressed one, in proportion to the difference: `anti_roll`
+  is counted like `stiffness`, per kilogram carried. On flat ground it does nothing.
+- Both wheels of the axle declare the same value; without an axle of two wheels it is refused. Nothing is guessed.
+- A wheel in the air receives nothing, but the one on the ground takes it into account.

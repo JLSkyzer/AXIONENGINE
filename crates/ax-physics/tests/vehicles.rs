@@ -3082,3 +3082,66 @@ fn adr182_cout_des_moteurs_electriques_et_du_prolongateur() {
         mesures[0], mesures[1], mesures[2], mesures[3]
     );
 }
+
+// --- R-1061, ADR-159 D5 : l'anti-roulis. ---
+
+/// La berline aux deux essieux déclarés, d'anti-roulis `raideur` sur chacun.
+fn a_essieux(raideur: f32) -> VehicleDesc {
+    let mut d = berline();
+    for (rang, roue) in d.wheels.iter_mut().enumerate() {
+        roue.axle = u16::from(rang >= 2);
+        roue.suspension.anti_roll = raideur;
+    }
+    d
+}
+
+/// Le roulis, en radians : l'angle du haut du véhicule avec la verticale, autour de son avant.
+fn roulis(world: &PhysicsWorld, v: BodyId) -> f32 {
+    let rotation = world.pose(v).expect("pose").rotation;
+    let droite = rotation * Vec3::X;
+    droite.y.asin()
+}
+
+/// Le plus grand roulis d'un virage tenu à droite après quatre secondes de ligne droite.
+fn roulis_en_virage(desc: VehicleDesc) -> f32 {
+    let (mut world, v) = sur_le_plat(desc, [400.0, 400.0], 1.0);
+    conduire(&mut world, entree(0.5, 0.0, 0.0));
+    avancer(&mut world, 4.0);
+    conduire(&mut world, entree(0.3, 0.0, 0.35));
+    let mut pire = 0.0f32;
+    for _ in 0..90 {
+        world.advance(TICK);
+        pire = pire.max(roulis(&world, v).abs());
+    }
+    pire
+}
+
+#[test]
+fn r1061_l_anti_roulis_d_un_essieu_redresse_en_virage() {
+    let sans = roulis_en_virage(a_essieux(0.0));
+    let avec = roulis_en_virage(a_essieux(25.0));
+    assert!(sans > 0.02, "le virage fait pencher : {sans}");
+    assert!(
+        avec < sans * 0.75,
+        "l'anti-roulis redresse : {avec} contre {sans}"
+    );
+}
+
+#[test]
+fn r1061_sans_essieu_declare_ou_a_plat_l_anti_roulis_ne_change_rien() {
+    // À l'arrêt sur le plat, les deux roues d'un essieu sont aussi comprimées : rien ne passe de l'une à l'autre.
+    let poser_au_repos = |raideur: f32| {
+        let (mut world, v) = sur_le_plat(a_essieux(raideur), [20.0, 20.0], 1.0);
+        avancer(&mut world, 1.0);
+        world.pose(v).expect("pose").translation.y
+    };
+    assert!((poser_au_repos(0.0) - poser_au_repos(25.0)).abs() < 1e-4);
+    // Un essieu qui n'a qu'une roue déclarée ne reçoit rien : l'anti-roulis ne se devine pas.
+    let seul = |raideur: f32| {
+        let mut d = a_essieux(raideur);
+        d.wheels[1].axle = NONE_U16;
+        d.wheels[3].axle = NONE_U16;
+        roulis_en_virage(d)
+    };
+    assert_eq!(seul(0.0), seul(25.0));
+}
