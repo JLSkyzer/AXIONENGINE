@@ -128,6 +128,11 @@ public final class EssaiObservateur {
                         message -> LOGGER.info("[observateur] {}", message.getString()));
             }
             if (mesures == MESURE) {
+                AxionEntity.RenderPose pose = vehicule.renderPose(1f);
+                if (pose.vehicle() != null && !pose.wheels().isEmpty()) {
+                    lignes.add(String.format(Locale.ROOT, "valeurs vues : carburant %.3f, mouillé %.3f, usure %.3f",
+                            pose.vehicle().store0(), pose.vehicle().wet(), pose.wheels().get(0).wear()));
+                }
                 terminer(minecraft, null);
             }
         }

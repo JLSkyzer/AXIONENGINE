@@ -3902,7 +3902,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              dans ADR-176, `energy.fuel` testé, GameTest de `/axion energy` (celui d'`Assembly.energy()` existait). Restent :
              essai à deux processus du contact, de la masse et du mouillé prédits (corrigé : la prédiction pesait sans le
              carburant et se dessinait sèche), GameTest des réservoirs attelés et film du plein (`runFilmPlein`) FAITS le
-             2026-11-26. Ouverts : essai à deux clients ou report ; une remorque sans moteur porte des réserves
+             2026-11-26. Essai à deux joueurs du carburant, du mouillé et de l'usure FAIT le 2026-11-26
+             (`portage.py --valeurs`). Ouverts : une remorque sans moteur porte des réserves
              depuis ADR-182 14a2 (R-1093) ; le mouillé sans vue d'API propre (la source `vehicle.wet` le donne) ; grille D7 d'ADR-176 à
              prononcer. Faits : annexe A.7 et A27 à jour, la neige (ADR-180 14c), le mouillé lu par `/axion wear`
              (ADR-181, 2026-11-26).
@@ -3914,7 +3915,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              la puissance, récupération, couplage boîte ou roues, sources, guides ; R-1094) FAIT le 2026-11-26 → 14c
              hybride (`motor.<nom>.torque`, prolongateur ; ABI 40, AXION-19 ; R-1095) FAIT le 2026-11-26 → 14d
              (exemples du mod témoin, essai de prédiction, film, coût, défaut du plein à l'arrêt corrigé,
-             grille D7 vérifiée) FAIT le 2026-11-26. Ouverts : essai à deux joueurs, questions E et F.
+             grille D7 vérifiée) FAIT le 2026-11-26, essai à deux joueurs du carburant compris. Ouverts : questions E et F.
              Reste signalé : une citerne sans roue (objet rigide) est refusée à la compilation.
            - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`,
              test natif de la masse par `SET_PARAMETERS` le 2026-11-26 ; le même jour `linearVelocity`,

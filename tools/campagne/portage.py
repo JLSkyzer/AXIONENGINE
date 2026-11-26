@@ -46,6 +46,27 @@ FAUTES = ("moved wrongly", "moved too quickly", "floating too long")
 SUPPORT_MIN = 0.9
 
 
+MOTIF_VALEURS = re.compile(r"carburant ([\d.]+), mouillé ([\d.]+), usure ([\d.]+)")
+# L'écart admis entre ce que le serveur dit et ce que l'observateur lit : la quantification du snapshot et un tick.
+TOLERANCES = (0.01, 0.05, 0.02)
+
+
+def valeurs_lues(releve: list[str], journal: list[str]) -> bool:
+    """Compare ce que l'observateur a lu à la dernière valeur que le serveur a dite ; vrai dans les tolérances."""
+    lu = next((m for ligne in releve if ligne.startswith("valeurs vues") and (m := MOTIF_VALEURS.search(ligne))), None)
+    dit = [m for ligne in journal if "valeurs serveur" in ligne and (m := MOTIF_VALEURS.search(ligne))]
+    if not lu or not dit:
+        print("valeurs : absentes d'un côté")
+        return False
+    vus = [float(x) for x in lu.groups()]
+    # Le serveur dit ses valeurs toutes les 20 ticks : la plus proche de ce que l'observateur a lu, à la fin.
+    ecarts = min(([abs(float(a) - b) for a, b in zip(m.groups(), vus)] for m in dit), key=sum)
+    juste = all(e <= t for e, t in zip(ecarts, TOLERANCES)) and vus[0] > 0.1 and vus[1] > 0.1 and vus[2] > 0.3
+    print(f"valeurs lues par l'observateur : {vus} ; écarts au serveur {[round(e, 3) for e in ecarts]} :"
+          f" {'justes' if juste else 'FAUSSES'}")
+    return juste
+
+
 def essai(latence: int, film: bool, observateur: bool = False, assis: bool = False) -> bool:
     """Joue l'essai ; rend vrai si le client est vert et le serveur sans correction ni expulsion."""
     SORTIES.mkdir(parents=True, exist_ok=True)
@@ -127,6 +148,8 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
         for ligne in releve or ["ÉCHEC : aucun rapport de l'observateur"]:
             print("observateur : " + ligne)
         vu = bool(releve) and releve[-1].startswith("VERT")
+        if os.environ.get("AXION_ESSAI_VALEURS") == "1":
+            vu = valeurs_lues(releve, journal) and vu
     if assis:
         # Assis, le porté n'est pas porté : son rapport ne vaut pas, seul ce que l'autre voit compte.
         return vu
@@ -141,6 +164,9 @@ def main() -> int:
     parser.add_argument("--observateur", action="store_true", help="un second client juge ce qu'il voit du porté")
     parser.add_argument("--siege", metavar="VEHICULE",
                         help="asseoir le porté dans ce véhicule d'essai : seul le verdict de l'observateur compte")
+    parser.add_argument("--valeurs", action="store_true",
+                        help="avec --siege et un véhicule à réservoir : l'observateur doit lire le carburant, le mouillé et"
+                             " l'usure que le serveur a posés")
     parser.add_argument("--place", default="conducteur",
                         help="avec --siege : la place (conducteur : la voiture reste ; une autre : le serveur la conduit)")
     arguments = parser.parse_args()
@@ -148,6 +174,8 @@ def main() -> int:
         if arguments.siege:
             os.environ["AXION_ESSAI_SIEGE"] = arguments.siege
             os.environ["AXION_ESSAI_PLACE"] = arguments.place
+        if arguments.valeurs:
+            os.environ["AXION_ESSAI_VALEURS"] = "1"
         vert = essai(arguments.latence, arguments.film, arguments.observateur or bool(arguments.siege),
                      bool(arguments.siege))
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
