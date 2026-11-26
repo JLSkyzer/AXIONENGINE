@@ -118,8 +118,11 @@ public final class ClientPrediction {
     private static dev.axion.physics.CollectResult resultBefore;
     /** La compression de repos de chaque roue, relevée sur les pas prédits ; {@code null} avant le premier. */
     private static float[] settled;
-    /** ADR-181 : le matériau vu en dernier sous chaque roue ; le bloc d'état restauré ne le porte pas. */
-    private static String[] surfaces;
+    /**
+     * ADR-181 : les matériaux sous chaque roue, pas à pas ; le bloc d'état restauré ne les porte pas, et un rejeu repart
+     * de ceux du pas acquitté.
+     */
+    private static final dev.axion.entity.SurfaceHistory surfaces = new dev.axion.entity.SurfaceHistory();
     /** Les derniers couples de roue envoyés au monde prédit ; {@code null} : aucun, ou tous nuls. */
     private static float[] sentTorques;
     /** Vrai après une restauration : le natif tient les couples du serveur, les prochains partent quoi qu'ils vaillent. */
@@ -258,8 +261,9 @@ public final class ClientPrediction {
                 }
             }
             resultBefore = lastStep.result();
-            surfaces = dev.axion.entity.PredictedControl.surfaces(resultBefore, world.handle(), PredictedWorld.GENERATION,
-                    vehicle.wheelNodes().size(), RuntimeAccess.get()::physicsMaterialId, surfaces);
+            surfaces.step(sequence, dev.axion.entity.PredictedControl.surfaces(resultBefore, world.handle(),
+                    PredictedWorld.GENERATION, vehicle.wheelNodes().size(), RuntimeAccess.get()::physicsMaterialId,
+                    surfaces.current()));
             // Un joint rompu ici, intact au serveur, ne se recoud pas : le monde prédit se recrée (6a, IRRECONCILABLE).
             if (lastStep.state() != null && lastStep.state().status() == AssemblyStateReport.IRRECONCILABLE) {
                 irreconcilable = true;
@@ -301,6 +305,7 @@ public final class ClientPrediction {
             stateBefore = state.clone();
             resultBefore = null;
             torquesUnknown = true;
+            surfaces.restore(sequence);
             if (variables != null) {
                 variables.restore(sequence);
             }
@@ -853,7 +858,7 @@ public final class ClientPrediction {
         stateBefore = null;
         resultBefore = null;
         settled = null;
-        surfaces = null;
+        surfaces.clear();
         sentTorques = null;
         torquesUnknown = false;
         AxionConfig config = runtime.outcome().config();
@@ -909,7 +914,7 @@ public final class ClientPrediction {
         stateBefore = null;
         resultBefore = null;
         settled = null;
-        surfaces = null;
+        surfaces.clear();
         sentTorques = null;
         irreconcilable = false;
         lastStep = null;
@@ -1034,10 +1039,10 @@ public final class ClientPrediction {
         // Après un pas prédit, sa collecte, comme au serveur ; après une restauration, le bloc du serveur.
         dev.axion.entity.VehicleSnapshot view = resultBefore != null
                 ? dev.axion.entity.PredictedControl.view(resultBefore, world.handle(), PredictedWorld.GENERATION,
-                        rootNode, vehicle.wheelNodes(), variableNames(), values, table, input, surfaces)
+                        rootNode, vehicle.wheelNodes(), variableNames(), values, table, input, surfaces.current())
                 : stateBefore == null ? null
                         : dev.axion.entity.PredictedControl.view(stateBefore, settled, vehicle.wheelNodes(),
-                                variableNames(), values, table, input, surfaces);
+                                variableNames(), values, table, input, surfaces.current());
         if (view == null) {
             return out;
         }

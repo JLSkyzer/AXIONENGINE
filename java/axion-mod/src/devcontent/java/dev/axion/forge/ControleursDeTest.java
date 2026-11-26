@@ -56,6 +56,28 @@ public final class ControleursDeTest {
         }
     };
 
+    /** Le couple qu'ajoute {@link #ADHERENCE} sur chaque roue hors de la glace, à plein gaz, en N·m. */
+    private static final double COUPLE_HORS_GLACE = 80.0;
+
+    private static final java.util.Set<String> GLACE_DITE = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * ADR-181 : lit le matériau sous chaque roue et ajoute du couple, au gaz du conducteur, aux roues hors de la glace. Au client qui prédit, un
+     * matériau lu autrement que par le serveur donnerait d'autres couples. Dit au journal, une fois par fil, qu'il a lu
+     * la glace — l'essai à deux processus l'y cherche des deux côtés.
+     */
+    static final VehicleController ADHERENCE = (vue, sortie) -> {
+        for (int roue = 0; roue < vue.wheels().size(); roue++) {
+            boolean glace = vue.wheels().get(roue).surface()
+                    .map(materiau -> "axion:ice".equals(materiau.toString())).orElse(false);
+            if (glace && GLACE_DITE.add(Thread.currentThread().getName())) {
+                org.slf4j.LoggerFactory.getLogger("AXION essai").info("[adherence] glace lue sous la roue {} par {}",
+                        roue, Thread.currentThread().getName());
+            }
+            sortie.wheelTorque(roue, glace ? 0.0 : COUPLE_HORS_GLACE * vue.input().throttle());
+        }
+    };
+
     /** Lève à chaque appel : désactivé au nombre de fautes consécutives toléré (E-1011). */
     static final VehicleController CASSE = (vue, sortie) -> {
         throw new IllegalStateException("contrôleur d'essai cassé exprès");
@@ -113,6 +135,7 @@ public final class ControleursDeTest {
             registrar.registerController("test/casse", CASSE);
             registrar.registerController("test/excessif", EXCESSIF);
             registrar.registerController("test/regulateur", REGULATEUR);
+            registrar.registerController("test/adherence", ADHERENCE);
             registrar.registerParameter("test/gain", "", 1.0, new Parameters.Range(0, true, 10, true));
             // ADR-174 D6 : une action, une interaction, et le conteneur délégué.
             registrar.registerAction("test/compte", COMPTE);

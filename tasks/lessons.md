@@ -2802,7 +2802,7 @@ lancements de diagnostic). La même collision cassait depuis le 2026-11-25 `Essa
 d'écrire le banc, et rien ne le vérifiait.
 
 **Règle.** Une règle qu'un test peut dire devient un test, pas seulement une leçon. Un client d'essai qui ne fait rien :
-lire d'abord la sortie console (le `latest.log` d'un client tué perd ses dernières lignes).
+tracer le chargement de la classe et le premier appel de chaque abonné avant de soupçonner autre chose.
 
 ---
 

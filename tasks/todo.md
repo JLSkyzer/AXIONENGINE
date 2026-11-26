@@ -3947,8 +3947,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  (`docs/mesures/ADR-180-reduction-2026-11-26.md`). Reste mesuré : pas natif +11 à +14 % sur monde plat,
                  cause non établie (banc natif `adr180_cout`).
      - [x] **ADR-181, le matériau sous la roue** (accepté le 2026-11-26, A32, R-1074) : rapport de roue (ABI 37,
-           `SIM_OUT` 8), `WheelView.surface()`, prédiction, `/axion wear`. Reste : essai à deux processus d'un contrôleur
-           qui le lit.
+           `SIM_OUT` 8), `WheelView.surface()`, prédiction, `/axion wear`. Essai à deux processus d'un contrôleur qui le lit
+           fait le 2026-11-26 (`axion:test/vehicule_adherence`) ; corrigé : un rejeu recevait le sol d'un autre pas. À surveiller :
+           sur cette piste, T-416 a échoué deux fois sur sept (téléportation au choc contre l'obstacle ou au démarrage).
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
            `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
            (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Client mesuré le

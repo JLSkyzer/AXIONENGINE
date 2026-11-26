@@ -44,6 +44,8 @@ class PublishedSchemaTest {
             "axion:test/propulsion", new VehicleExtensions.Controller("axion:test/propulsion", NAMESPACE,
                     (vue, sortie) -> { }),
             "axion:test/compteur", new VehicleExtensions.Controller("axion:test/compteur", NAMESPACE,
+                    (vue, sortie) -> { }),
+            "axion:test/adherence", new VehicleExtensions.Controller("axion:test/adherence", NAMESPACE,
                     (vue, sortie) -> { })),
             Map.of());
 
