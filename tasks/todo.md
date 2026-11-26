@@ -3900,10 +3900,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              - [x] un changement du seul modèle relie les assemblies.
            - Restes de CAP-12 et CAP-20 (cœur livré). Faits le 2026-11-25 : guide moteur (FR, EN), usure visible actée
              dans ADR-176, `energy.fuel` testé, GameTest de `/axion energy` (celui d'`Assembly.energy()` existait). Restent :
-             GameTests du contact et de la masse prédits, des réservoirs de remorque ; commande d'humidité (l'API la lit par
-             la source `vehicle.wet`) ; essai à deux clients ou report ; film du plein et jauge ; grille D7 d'ADR-176.
-             Faits le 2026-11-25 : annexe A.7 et A27 à jour ; la neige (ADR-180 14c).
-           - CAP-11 et CAP-34 non livrées (isolement d'`AttachmentListener` fait et testé le 2026-11-25) ; test natif de la
+             GameTests du contact et de la masse prédits, des réservoirs de remorque ; essai à deux clients ou report ; film du
+             plein et jauge ; grille D7 d'ADR-176. Faits : annexe A.7 et A27 à jour, la neige (ADR-180 14c), le mouillé lu
+             par `/axion wear` (ADR-181, 2026-11-26).
+           - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`) ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,
              canaux, sources) ; données d'addon synchronisées ; sections d'extension par pièce ; échelle par definition et
