@@ -236,7 +236,8 @@ public final class NativeSimulation {
                     if (schema >= WHEELS_SINCE_SCHEMA) {
                         int wheelsAt = jointsAt + JointState.SECTION_HEADER_BYTES + joints.size() * JointState.BYTES;
                         int wheelBytes = WheelReport.bytes(schema);
-                        wheels = WheelReport.decodeSection(buffer, wheelsAt, wheelBytes);
+                        wheels = WheelReport.decodeSection(buffer, wheelsAt, wheelBytes,
+                                schema >= WheelReport.MATERIALS_SINCE_SCHEMA);
                         if (schema >= VEHICLES_SINCE_SCHEMA) {
                             int vehiclesAt = wheelsAt + WheelReport.SECTION_HEADER_BYTES + wheels.size() * wheelBytes;
                             vehicles = VehicleReport.decodeSection(buffer, vehiclesAt);

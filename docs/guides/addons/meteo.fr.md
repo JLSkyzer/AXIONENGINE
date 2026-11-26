@@ -43,6 +43,26 @@ une route sur de l'herbe adhère comme la route. La première couche de neige, q
 dessous de son matériau parce que le mappage des exemples la déclare `cover` ([les matériaux](../MATERIALS.md)) ; le tien
 déclare les siennes.
 
+## Savoir sur quoi roule une roue
+
+`WheelView.surface()` donne l'identifiant du matériau physique que touche la roue — `axion:ice`, `axion:snow`, ou celui
+d'un addon ([ADR-181](../../decisions/ADR-181.md)). Il est vide en l'air, ou sur un sol qui n'en déclare pas. C'est ce que
+la physique utilise, couche de neige comprise : pour des sons ou des particules selon le sol, un contrôleur ou ton code
+serveur le lit.
+
+```java
+for (WheelView roue : assembly.vehicle().orElseThrow().state().wheels()) {
+    if (roue.surface().map(id -> id.getPath().equals("sand")).orElse(false)) {
+        // la roue soulève du sable : roue.node(), roue.slipLong()
+    }
+}
+```
+
+Un contrôleur lit la même valeur au client qui prédit ; juste après une correction du serveur, il reçoit pour un tick le
+dernier matériau que la prédiction a vu sous la roue.
+
+`/axion wear <cible>` dit, pour chaque roue, ce qu'elle touche, et le mouillé de la route.
+
 ## Le lire
 
 - La source procédurale `vehicle.wet` (de 0 à 1, schéma 7) : une jauge, une piste de matériau, des essuie-glaces.

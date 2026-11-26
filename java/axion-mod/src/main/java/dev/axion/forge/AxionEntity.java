@@ -117,6 +117,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     private float[] wheelSlipLat = new float[0];
     private float[] wheelWear = new float[0];
+    /** ADR-181 : l'index du matériau que le natif a rapporté sous chaque roue (serveur). */
+    private int[] wheelMaterial = new int[0];
 
     /** L'angle de chaque roue, intégré au rendu (client, ADR-159 D9). */
     private final ProceduralTracks.Spin wheelVisualSpin = new ProceduralTracks.Spin();
@@ -1667,7 +1669,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             boolean known = i < wheelCompression.length;
             wheels.add(new dev.axion.entity.VehicleSnapshot.Wheel(nodes.get(i), known && wheelGround[i],
                     known ? wheelCompression[i] : 0.0, known ? wheelSpin[i] : 0.0, known ? wheelSteer[i] : 0.0,
-                    known ? wheelSlipLong[i] : 0.0, known ? wheelSlipLat[i] : 0.0, wheelWear(i)));
+                    known ? wheelSlipLong[i] : 0.0, known ? wheelSlipLat[i] : 0.0, wheelWear(i), wheelSurface(i)));
         }
         AssemblyVariables held = variables();
         List<String> variableNames = held == null ? List.of()
@@ -3133,7 +3135,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param slipLat glissement latéral, en radians
      */
     void setWheelState(int wheel, boolean grounded, float spin, float compression, float steer, float slipLong,
-            float slipLat, float wear) {
+            float slipLat, float wear, int material) {
         AuthoritativeThread.require();
         if (wheel < 0 || wheel >= AssemblyState.Wheels.MAX_WHEELS) {
             return;
@@ -3147,6 +3149,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             wheelSlipLat = Arrays.copyOf(wheelSlipLat, wheel + 1);
             wheelWear = Arrays.copyOf(wheelWear, wheel + 1);
         }
+        if (wheel >= wheelMaterial.length) {
+            int known = wheelMaterial.length;
+            wheelMaterial = Arrays.copyOf(wheelMaterial, wheel + 1);
+            Arrays.fill(wheelMaterial, known, wheel + 1, dev.axion.physics.SimCommandStream.NO_MATERIAL);
+        }
+        wheelMaterial[wheel] = material;
         wheelCompression[wheel] = compression;
         wheelSpin[wheel] = spin;
         wheelSteer[wheel] = steer;
@@ -3273,6 +3281,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         boolean push = wearPending;
         wearPending = false;
         return push;
+    }
+
+    /**
+     * {@return l'identifiant du matériau que le natif a rapporté sous une roue (ADR-181), {@code null} en l'air, sans
+     * rapport ou sur un sol sans matériau} Serveur seulement.
+     *
+     * @param wheel le rang de la roue dans la definition
+     */
+    public String wheelSurface(int wheel) {
+        return wheel >= 0 && wheel < wheelMaterial.length && wheelGround[wheel]
+                ? RuntimeAccess.get().physicsMaterialId(wheelMaterial[wheel]) : null;
+    }
+
+    /** {@return vrai si le natif a rapporté une roue au sol} */
+    boolean wheelGrounded(int wheel) {
+        return wheel >= 0 && wheel < wheelGround.length && wheelGround[wheel];
     }
 
     /**

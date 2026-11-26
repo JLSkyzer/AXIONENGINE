@@ -142,8 +142,8 @@ fn sim_out_porte_l_emprise_apres_les_etats() {
     let header = BufferHeader::read(out_view).expect("en-tête SIM_OUT lisible");
     assert_eq!(header.kind, BufferKind::SimOut);
     assert_eq!(
-        header.schema_version, 7,
-        "schéma de SIM_OUT (ADR-171 D6 : les attaches après les états complets)"
+        header.schema_version, 8,
+        "schéma de SIM_OUT (ADR-181 D1 : chaque roue porte le matériau qu'elle touche)"
     );
     let node = &out_view[HEADER_BYTES + 76..HEADER_BYTES + 80];
     assert_eq!(

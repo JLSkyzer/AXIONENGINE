@@ -23,7 +23,8 @@ class WheelReportTest {
         buffer.putFloat(base + 24, 0.125f); // slip_long @24
         buffer.putFloat(base + 28, -0.0625f); // slip_lat @28
         buffer.putFloat(base + 32, 0.375f); // wear @32
-        buffer.putInt(base + 36, 0x5A5A5A5A); // réservé @36, ignoré
+        buffer.putShort(base + 36, (short) 0x8001); // matériau @36
+        buffer.putShort(base + 38, (short) 0x5A5A); // réservé @38, ignoré
     }
 
     @Test
@@ -32,11 +33,23 @@ class WheelReportTest {
         assertEquals(40, WheelReport.BYTES);
         ByteBuffer buffer = ByteBuffer.allocate(WheelReport.BYTES).order(ByteOrder.LITTLE_ENDIAN);
         poser(buffer, 0);
-        assertEquals(new WheelReport(7, 3, 2, WheelReport.ON_GROUND, -12.5f, 0.25f, 0.5f, 0.125f, -0.0625f, 0.375f),
-                WheelReport.decode(buffer, 0));
+        assertEquals(new WheelReport(7, 3, 2, WheelReport.ON_GROUND, -12.5f, 0.25f, 0.5f, 0.125f, -0.0625f, 0.375f,
+                0x8001), WheelReport.decode(buffer, 0));
         List<WheelReport> section = WheelReport.decodeSection(
                 (ByteBuffer) ByteBuffer.allocate(WheelReport.SECTION_HEADER_BYTES + 2 * WheelReport.BYTES)
                         .order(ByteOrder.LITTLE_ENDIAN).putInt(0, 2), 0);
         assertTrue(section.size() == 2, "deux enregistrements annoncés, deux lus");
+    }
+
+    @Test
+    @DisplayName("ADR-181 D1 : le matériau à l'offset 36 depuis SIM_OUT 8 ; avant, aucun")
+    void decodeLitLeMateriau() {
+        ByteBuffer buffer = ByteBuffer.allocate(WheelReport.SECTION_HEADER_BYTES + WheelReport.BYTES)
+                .order(ByteOrder.LITTLE_ENDIAN).putInt(0, 1);
+        poser(buffer, WheelReport.SECTION_HEADER_BYTES);
+        assertEquals(0x8001, WheelReport.decodeSection(buffer, 0, WheelReport.BYTES, true).get(0).material());
+        assertEquals(SimCommandStream.NO_MATERIAL,
+                WheelReport.decodeSection(buffer, 0, WheelReport.BYTES, false).get(0).material(),
+                "un schéma plus ancien y tenait des octets réservés");
     }
 }

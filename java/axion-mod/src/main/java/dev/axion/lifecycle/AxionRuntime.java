@@ -958,6 +958,16 @@ public final class AxionRuntime {
     }
 
     /**
+     * {@return l'identifiant du matériau d'un index de la table de la session (ADR-181), {@code null} pour l'acier
+     * générique et un index hors table}
+     *
+     * @param index index que le natif rapporte
+     */
+    public String physicsMaterialId(int index) {
+        return materialTable.idAt(index);
+    }
+
+    /**
      * {@return la table des matériaux physiques, encodée pour le natif, si elle a changé depuis la dernière prise ;
      * {@code null} sinon} Chez un client distant, son monde prédit la prend (ADR-168 D1) ; au serveur, le cycle de
      * simulation.

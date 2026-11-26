@@ -40,7 +40,7 @@ pub mod wheel_report_flags {
 /// éveillé.
 ///
 /// **Disposition figée** : 40 octets, alignement 4 : le handle, le rang, les drapeaux, la rotation, la compression, le
-/// braquage, les deux glissements, l'usure, puis 4 octets réservés.
+/// braquage, les deux glissements, l'usure, le matériau touché (ADR-181), puis 2 octets réservés.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WheelReport {
@@ -63,11 +63,14 @@ pub struct WheelReport {
     pub slip_lat: f32,
     /// Usure du pneu, dans [0, 1] (ADR-176 D4).
     pub wear: f32,
+    /// Index, dans la table de la session (ADR-149), du matériau que touche la roue au dernier sous-pas ;
+    /// [`NO_MATERIAL`](super::physics::NO_MATERIAL) en l'air ou sur un collider sans matériau (ADR-181 D1).
+    pub material: u16,
 }
 
 impl WheelReport {
     /// Taille sur la frontière, en octets : 32 depuis les glissements (`SIM_OUT` schéma 5, ADR-167 D9), 40 depuis
-    /// l'usure (ADR-176 D4) : 4 octets réservés gardent les enregistrements alignés sur 8.
+    /// l'usure (ADR-176 D4) ; le matériau (ADR-181) a pris 2 des 4 octets qui gardaient l'alignement sur 8.
     pub const BYTES: usize = 40;
 
     /// Taille de l'en-tête de la section des roues dans `SIM_OUT` : leur nombre et 4 octets réservés,
@@ -90,7 +93,8 @@ impl WheelReport {
         ] {
             out.extend_from_slice(&value.to_le_bytes());
         }
-        out.extend_from_slice(&[0u8; 4]);
+        out.extend_from_slice(&self.material.to_le_bytes());
+        out.extend_from_slice(&[0u8; 2]);
     }
 
     /// Lit une roue au début de `bytes` ; `None` si elle est tronquée.
@@ -109,6 +113,7 @@ impl WheelReport {
             slip_long: f32_at(24),
             slip_lat: f32_at(28),
             wear: f32_at(32),
+            material: u16::from_le_bytes([bytes[36], bytes[37]]),
         })
     }
 
@@ -1149,8 +1154,8 @@ mod tests {
         use crate::dm::handle::Handle;
         use std::mem::{align_of, offset_of, size_of};
 
-        // 36 octets de champs, 4 réservés sur le fil pour garder les enregistrements alignés sur 8.
-        assert_eq!(size_of::<WheelReport>() + 4, WheelReport::BYTES);
+        // 38 octets de champs, 2 réservés pour garder les enregistrements alignés sur 8 (ADR-181 D1).
+        assert_eq!(size_of::<WheelReport>(), WheelReport::BYTES);
         assert_eq!(align_of::<WheelReport>(), 4);
         assert_eq!(offset_of!(WheelReport, handle), 0);
         assert_eq!(offset_of!(WheelReport, index), 8);
@@ -1161,6 +1166,7 @@ mod tests {
         assert_eq!(offset_of!(WheelReport, slip_long), 24);
         assert_eq!(offset_of!(WheelReport, slip_lat), 28);
         assert_eq!(offset_of!(WheelReport, wear), 32);
+        assert_eq!(offset_of!(WheelReport, material), 36);
         let roue = WheelReport {
             handle: Handle::new(7, 3),
             index: 2,
@@ -1171,6 +1177,7 @@ mod tests {
             slip_long: 0.125,
             slip_lat: -0.0625,
             wear: 0.375,
+            material: 0x0102,
         };
         let mut octets = Vec::new();
         roue.write_le(&mut octets);
@@ -1180,6 +1187,7 @@ mod tests {
         assert_eq!(WheelReport::read_le(&octets), Some(roue));
         assert_eq!(&octets[24..28], &0.125f32.to_le_bytes());
         assert_eq!(&octets[32..36], &0.375f32.to_le_bytes());
+        assert_eq!(&octets[36..40], &[0x02, 0x01, 0, 0]);
         assert_eq!(WheelReport::read_le(&octets[..39]), None);
 
         let mut section = Vec::new();

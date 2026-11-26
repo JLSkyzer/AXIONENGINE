@@ -6,10 +6,10 @@ import java.util.List;
 
 /**
  * L'état d'une roue à la fin d'un tick (ADR-159 D9), décodé de {@code SIM_OUT} (miroir de
- * {@code WheelReport::write_le}) : <strong>24 octets</strong> little-endian (R-271) — le handle de
- * l'assembly (index puis génération, {@code u32}), le rang de la roue et ses drapeaux ({@code u16}), puis
- * la vitesse de rotation, la compression et le braquage ({@code f32}). Un enregistrement par roue d'un
- * véhicule éveillé.
+ * {@code WheelReport::write_le}) : <strong>40 octets</strong> little-endian (R-271) — le handle de
+ * l'assembly (index puis génération, {@code u32}), le rang de la roue et ses drapeaux ({@code u16}), la vitesse de
+ * rotation, la compression, le braquage, les deux glissements et l'usure ({@code f32}), le matériau touché
+ * ({@code u16}, ADR-181) et 2 octets réservés. Un enregistrement par roue d'un véhicule éveillé.
  *
  * <p>Dans {@code SIM_OUT} (schéma 3), la section des roues suit celle des joints : leur nombre
  * ({@code u32}), 4 octets réservés, puis les enregistrements ({@link #decodeSection}).
@@ -23,10 +23,19 @@ import java.util.List;
  *     position dans le modèle posé, positive quand la roue monte
  * @param steerAngle angle de braquage, en radians
  * @param wear usure du pneu, dans [0, 1] (ADR-176 D4)
+ * @param material index du matériau touché dans la table de la session, {@link SimCommandStream#NO_MATERIAL} en l'air
+ *     ou sans matériau (ADR-181)
  */
 public record WheelReport(
         int handleIndex, int handleGeneration, int index, int flags, float spinSpeed, float compression,
-        float steerAngle, float slipLong, float slipLat, float wear) {
+        float steerAngle, float slipLong, float slipLat, float wear, int material) {
+
+    /** Un rapport sans matériau touché. */
+    public WheelReport(int handleIndex, int handleGeneration, int index, int flags, float spinSpeed,
+            float compression, float steerAngle, float slipLong, float slipLat, float wear) {
+        this(handleIndex, handleGeneration, index, flags, spinSpeed, compression, steerAngle, slipLong, slipLat, wear,
+                SimCommandStream.NO_MATERIAL);
+    }
 
     /** Un rapport sans usure : ce que rend un pneu qui ne s'use pas. */
     public WheelReport(int handleIndex, int handleGeneration, int index, int flags, float spinSpeed,
@@ -45,6 +54,9 @@ public record WheelReport(
 
     /** Le schéma de {@code SIM_OUT} depuis lequel chaque roue porte ses glissements (ADR-167 D9). */
     public static final int SLIPS_SINCE_SCHEMA = 5;
+
+    /** Le schéma de {@code SIM_OUT} depuis lequel chaque roue porte le matériau qu'elle touche (ADR-181 D1). */
+    public static final int MATERIALS_SINCE_SCHEMA = 8;
 
     /** Taille de l'en-tête de la section : le nombre de roues et 4 octets réservés. */
     public static final int SECTION_HEADER_BYTES = 8;
@@ -65,10 +77,10 @@ public record WheelReport(
      * @return l'état décodé
      */
     public static WheelReport decode(ByteBuffer buffer, int base) {
-        return decode(buffer, base, BYTES);
+        return decode(buffer, base, BYTES, true);
     }
 
-    private static WheelReport decode(ByteBuffer buffer, int base, int bytes) {
+    private static WheelReport decode(ByteBuffer buffer, int base, int bytes, boolean material) {
         boolean slips = bytes >= BYTES;
         return new WheelReport(
                 buffer.getInt(base),
@@ -80,7 +92,8 @@ public record WheelReport(
                 buffer.getFloat(base + 20),
                 slips ? buffer.getFloat(base + 24) : 0f,
                 slips ? buffer.getFloat(base + 28) : 0f,
-                slips ? buffer.getFloat(base + 32) : 0f);
+                slips ? buffer.getFloat(base + 32) : 0f,
+                material ? Short.toUnsignedInt(buffer.getShort(base + 36)) : SimCommandStream.NO_MATERIAL);
     }
 
     /**
@@ -115,6 +128,19 @@ public record WheelReport(
      * @return les roues, vide si la section dépasse le tampon
      */
     public static List<WheelReport> decodeSection(ByteBuffer buffer, int base, int bytes) {
+        return decodeSection(buffer, base, bytes, bytes >= BYTES);
+    }
+
+    /**
+     * Décode la section des roues, ses enregistrements de la taille donnée.
+     *
+     * @param buffer tampon en little-endian
+     * @param base offset de l'en-tête de la section
+     * @param bytes taille d'un enregistrement, voir {@link #bytes(int)}
+     * @param materials vrai si l'enregistrement porte le matériau touché, depuis {@link #MATERIALS_SINCE_SCHEMA}
+     * @return les roues, vide si la section dépasse le tampon
+     */
+    public static List<WheelReport> decodeSection(ByteBuffer buffer, int base, int bytes, boolean materials) {
         long records = (long) base + SECTION_HEADER_BYTES;
         if (base < 0 || records > buffer.capacity()) {
             return List.of();
@@ -125,7 +151,7 @@ public record WheelReport(
         }
         List<WheelReport> wheels = new ArrayList<>((int) count);
         for (int rank = 0; rank < count; rank++) {
-            wheels.add(decode(buffer, (int) records + rank * bytes, bytes));
+            wheels.add(decode(buffer, (int) records + rank * bytes, bytes, materials && bytes >= BYTES));
         }
         return wheels;
     }

@@ -94,6 +94,15 @@ public final class PhysicsMaterialTable {
         return assign(id);
     }
 
+    /**
+     * {@return l'identifiant du matériau d'un index, {@code null} pour l'acier générique et un index hors table}
+     *
+     * @param index index dans la table de la session
+     */
+    public synchronized String idAt(int index) {
+        return index > 0 && index < ids.size() ? ids.get(index) : null;
+    }
+
     /** {@return la table encodée si elle a changé depuis l'appel précédent, sinon {@code null}} */
     public synchronized Encoded takeIfChanged() {
         if (!changed) {

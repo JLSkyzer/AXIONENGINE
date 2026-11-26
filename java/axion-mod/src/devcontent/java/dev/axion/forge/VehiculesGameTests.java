@@ -468,6 +468,50 @@ public final class VehiculesGameTests {
     }
 
     /**
+     * ADR-181 : sur la glace tassée, chaque roue dit le matériau qu'elle touche, à l'API et par la commande des pneus,
+     * avec la route sèche ; un véhicule en l'air n'en dit aucun.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 300)
+    public static void adr181_ChaqueRoueDitLeMateriauQuElleTouche(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        for (int x = 0; x <= 8; x++) {
+            for (int z = 0; z <= 8; z++) {
+                helper.setBlock(new BlockPos(x, (int) DESSUS_DALLE - 1, z), Blocks.PACKED_ICE);
+            }
+        }
+        AxionEntity pose = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), IDENTITE);
+        AxionEntity enLAir = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(4.5, DESSUS_DALLE + 8.0, 4.5), IDENTITE);
+        var glace = java.util.Optional.of(new net.minecraft.resources.ResourceLocation("axion", "ice"));
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(enLAir.hasPhysicalBounds() && enLAir.vehicleSnapshot() != null,
+                        "le véhicule en l'air est simulé"))
+                .thenExecute(() -> {
+                    var roues = enLAir.vehicleSnapshot().wheels();
+                    helper.assertTrue(roues.stream().noneMatch(roue -> roue.grounded() || roue.surface().isPresent()),
+                            "en l'air, aucun matériau : " + roues);
+                    String vu = String.join(" | ", ParametresGameTests.commande(helper.getLevel().getServer(),
+                            "axion wear " + enLAir.getUUID()));
+                    helper.assertTrue(vu.contains("en l'air"), "la commande le dit : " + vu);
+                    enLAir.discard();
+                })
+                .thenWaitUntil(() -> {
+                    var api = dev.axion.api.AxionApi.get().assemblies().byEntity(pose).orElseThrow();
+                    var roues = api.vehicle().orElseThrow().state().wheels();
+                    helper.assertTrue(roues.size() == 4 && roues.stream().allMatch(
+                            roue -> roue.grounded() && roue.surface().equals(glace)), "sur la glace : " + roues);
+                })
+                .thenExecute(() -> {
+                    String vu = String.join(" | ", ParametresGameTests.commande(helper.getLevel().getServer(),
+                            "axion wear " + pose.getUUID()));
+                    helper.assertTrue(vu.contains("sur axion:ice") && vu.contains("route : mouillée à 0 %"),
+                            "ce que la commande dit : " + vu);
+                })
+                .thenSucceed();
+    }
+
+    /**
      * ADR-176 D5 : le mouillé d'un véhicule suit la pluie qu'il reçoit, lue à sa position — ciel visible, biome non froid. À
      * l'air libre il se mouille en {@code physics.wet_rise_seconds} ; sous un toit, au même instant, il reste sec ; sans
      * pluie, il sèche.

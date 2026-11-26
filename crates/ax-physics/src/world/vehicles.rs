@@ -62,6 +62,8 @@ pub struct WheelState {
     pub steer_angle: f32,
     /// Le rayon touche le sol.
     pub on_ground: bool,
+    /// L'index du matériau touché au dernier sous-pas (ADR-181) ; `None` en l'air ou sur un collider sans matériau.
+    pub material: Option<u16>,
     /// Force de suspension, en newtons.
     pub load: f32,
     /// Glissement longitudinal.
@@ -540,6 +542,7 @@ impl PhysicsWorld {
                     slip_long: state.slip_long,
                     slip_lat: state.slip_lat,
                     wear: state.wear as f32,
+                    material: state.material.unwrap_or(ax_model::dm::physics::NO_MATERIAL),
                 });
             }
         }
@@ -625,6 +628,8 @@ impl PhysicsWorld {
             wheel.slip_long = saved.slip_long;
             wheel.slip_lat = saved.slip_lat;
             wheel.on_ground = saved.on_ground;
+            // Le matériau touché n'est pas un état : le prochain pas le relit.
+            wheel.material = None;
             wheel.wear = if saved.wear.is_finite() {
                 saved.wear.clamp(0.0, 1.0)
             } else {
@@ -1099,6 +1104,7 @@ impl PhysicsWorld {
             let Some((collider, hit)) = hit else {
                 // 12.2, étape 5 : en l'air, seule la traînée de rotation s'applique.
                 state.on_ground = false;
+                state.material = None;
                 state.compression =
                     suspension::compression(&wheel.suspension, wheel.radius, length);
                 state.load = 0.0;
@@ -1156,6 +1162,9 @@ impl PhysicsWorld {
                 .map(|(cells, field)| cells.at(point - field.translation()))
                 .or_else(|| self.collider_materials.get(&collider).copied());
             drive.grounded = true;
+            state.material = material
+                .map(|m| m.index)
+                .filter(|&index| index != ax_model::dm::physics::NO_MATERIAL);
             drive.load = load;
             // ADR-176 D4 : un pneu usé adhère moins ; l'usure agit ici, sur ce que le matériau laisse, et jamais sur la
             // description du pneu, que les réglages d'une instance refont à chaque pas (ADR-167 D6).

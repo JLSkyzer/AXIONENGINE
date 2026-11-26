@@ -41,6 +41,26 @@ content declares its own (see [materials](../MATERIALS.en.md)).
 a road on grass grips like the road. The first snow layer, which has no collision, covers the block below with its
 material because the example mapping declares it `cover` ([materials](../MATERIALS.en.md)); yours declares its own.
 
+## Knowing what a wheel rolls on
+
+`WheelView.surface()` gives the identifier of the physical material the wheel touches — `axion:ice`, `axion:snow`, or an
+addon's own ([ADR-181](../../decisions/ADR-181.md)). It is empty in the air, or on ground that declares none. It is what the
+physics uses, snow cover included: for sounds or particles that depend on the ground, a controller or your server code
+reads it.
+
+```java
+for (WheelView wheel : assembly.vehicle().orElseThrow().state().wheels()) {
+    if (wheel.surface().map(id -> id.getPath().equals("sand")).orElse(false)) {
+        // the wheel kicks up sand: wheel.node(), wheel.slipLong()
+    }
+}
+```
+
+A controller reads the same value on the predicting client; right after a server correction, it gets for one tick the last
+material the prediction saw under the wheel.
+
+`/axion wear <target>` says what each wheel touches, and how wet the road is.
+
 ## Reading it
 
 - The procedural source `vehicle.wet` (0 to 1, schema 7): a gauge, a material track, wipers.

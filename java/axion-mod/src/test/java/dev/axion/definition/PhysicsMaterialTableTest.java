@@ -47,6 +47,14 @@ class PhysicsMaterialTableTest {
     @Test
     @DisplayName("ADR-149 D1 : l'acier générique à 0, puis chaque matériau garde son index pour la session")
     void lesIndexSontStablesPourLaSession() {
+        PhysicsMaterialTable inverse = new PhysicsMaterialTable();
+        inverse.update(registry(Map.of("mymod:wood", "{}", "mymod:ice", "{}")));
+        assertEquals("mymod:ice", inverse.idAt(1), "ADR-181 : un index rend son identifiant");
+        assertEquals("mymod:wood", inverse.idAt(2));
+        assertNull(inverse.idAt(0), "l'acier générique n'est pas un matériau déclaré");
+        assertNull(inverse.idAt(3), "hors table");
+        assertNull(inverse.idAt(PhysicsMaterialTable.NO_MATERIAL));
+        assertNull(inverse.idAt(-1));
         PhysicsMaterialTable table = new PhysicsMaterialTable();
         assertEquals(1, table.size(), "l'acier générique, seul");
         table.update(registry(Map.of("mymod:wood", "{}", "mymod:ice", "{}")));

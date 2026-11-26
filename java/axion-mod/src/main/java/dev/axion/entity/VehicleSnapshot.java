@@ -26,13 +26,26 @@ public final class VehicleSnapshot implements VehicleView {
      * @param slipLong son glissement longitudinal
      * @param slipLat son glissement latéral, en radians
      * @param wear l'usure de son pneu, de 0 à 1 (ADR-176 D4)
+     * @param material l'identifiant du matériau qu'elle touche (ADR-181), {@code null} en l'air ou sans matériau
      */
     public record Wheel(String node, boolean grounded, double compression, double spin, double steer,
-            double slipLong, double slipLat, double wear) implements WheelView {
+            double slipLong, double slipLat, double wear, String material) implements WheelView {
+
+        /** Une roue dont le matériau n'est pas connu. */
+        public Wheel(String node, boolean grounded, double compression, double spin, double steer, double slipLong,
+                double slipLat, double wear) {
+            this(node, grounded, compression, spin, steer, slipLong, slipLat, wear, null);
+        }
 
         /** Refuse un node absent. */
         public Wheel {
             Objects.requireNonNull(node, "node");
+        }
+
+        @Override
+        public java.util.Optional<net.minecraft.resources.ResourceLocation> surface() {
+            return java.util.Optional.ofNullable(material)
+                    .map(net.minecraft.resources.ResourceLocation::tryParse);
         }
 
         /** Une roue au pneu neuf. */

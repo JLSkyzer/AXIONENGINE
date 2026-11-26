@@ -1,6 +1,8 @@
 package dev.axion.api.vehicle;
 
 import dev.axion.api.Experimental;
+import java.util.Optional;
+import net.minecraft.resources.ResourceLocation;
 
 /** L'état d'une roue au début d'un tick (ADR-167 D9) : ce qu'un contrôleur en lit. */
 @Experimental
@@ -36,5 +38,13 @@ public interface WheelView {
      */
     default double wear() {
         return 0.0;
+    }
+
+    /**
+     * {@return l'identifiant du matériau physique que touche la roue (ADR-181), celui d'AXION ou d'un addon ; vide en
+     * l'air, ou sur un sol qui n'en déclare pas}
+     */
+    default Optional<ResourceLocation> surface() {
+        return Optional.empty();
     }
 }

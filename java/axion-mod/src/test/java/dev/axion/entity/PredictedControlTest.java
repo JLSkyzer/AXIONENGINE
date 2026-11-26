@@ -77,10 +77,28 @@ class PredictedControlTest {
     }
 
     @Test
+    @DisplayName("ADR-181 : la prédiction suit le matériau de chaque roue, et garde celui d'avant sans rapport")
+    void materiauxSuivis() {
+        java.util.function.IntFunction<String> ids = index -> index == 4 ? "mymod:ice" : null;
+        List<dev.axion.physics.WheelReport> roues = List.of(
+                new dev.axion.physics.WheelReport(7, 1, 0, 1, 0f, 0f, 0f, 0f, 0f, 0f, 4),
+                new dev.axion.physics.WheelReport(7, 1, 1, 0, 0f, 0f, 0f, 0f, 0f, 0f,
+                        dev.axion.physics.SimCommandStream.NO_MATERIAL),
+                new dev.axion.physics.WheelReport(8, 1, 2, 1, 0f, 0f, 0f, 0f, 0f, 0f, 4));
+        dev.axion.physics.CollectResult collecte = new dev.axion.physics.CollectResult(0, 0, 0, 0, 0, 0, 0, 0,
+                List.of(), List.of(), List.of(), roues, List.of(), List.of(), List.of(), List.of());
+        String[] vus = PredictedControl.surfaces(collecte, 7, 1, 3, ids, new String[] {null, "mymod:wood", "mymod:sand"});
+        assertArrayEquals(new String[] {"mymod:ice", null, "mymod:sand"}, vus,
+                "la roue rapportée en l'air n'en touche aucun ; la roue d'une autre assembly n'écrit rien");
+        assertArrayEquals(new String[] {"mymod:ice", null}, PredictedControl.surfaces(collecte, 7, 1, 2, ids, null));
+    }
+
+    @Test
     @DisplayName("la vue se bâtit comme au serveur, et un contrôleur y rend ses sorties")
     void vueEtSorties() {
         VehicleSnapshot vue = PredictedControl.view(bloc(true), new float[] {0.1f, 0.1f}, List.of("av", "ar"),
-                List.of("sport"), new double[] {1}, table(), new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) 2, 0));
+                List.of("sport"), new double[] {1}, table(), new VehicleInput(1f, 0f, 0f, 0f, 0f, (byte) 2, 0),
+                new String[] {"mymod:ice", null});
         assertEquals(0.25f - 0.1f, (float) vue.wheels().get(0).compression(), "relative à la pose du modèle");
         assertEquals(12.0, vue.speed(), 1e-6, "12 m/s le long de son avant, tourné d'un demi-tour");
         assertEquals(2, vue.gear());
@@ -89,7 +107,10 @@ class PredictedControlTest {
         assertEquals(1.0, vue.variable("sport"));
         assertEquals(260.0, vue.parameter(Parameters.ENGINE_TORQUE), "les paramètres sans sortie de contrôleur");
         assertNull(PredictedControl.view(bloc(false), null, List.of("av"), List.of(), new double[0], table(),
-                VehicleInput.NONE), "pas de véhicule dans le bloc : pas de vue");
+                VehicleInput.NONE, null), "pas de véhicule dans le bloc : pas de vue");
+        assertEquals("mymod:ice", vue.wheels().get(0).surface().orElseThrow().toString(),
+                "ADR-181 : après une correction, le dernier matériau vu par la prédiction");
+        assertTrue(vue.wheels().get(1).surface().isEmpty());
 
         PredictedControl controle = new PredictedControl(new ControllerRunner.Limits(50_000_000L, 3), System::nanoTime);
         VehicleExtensions.Controller abs = new VehicleExtensions.Controller("essai:abs", "essai", (vehicle, out) -> {

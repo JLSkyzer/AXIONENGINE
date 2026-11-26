@@ -44,9 +44,12 @@ public final class PredictedControl {
      * @param variableValues leurs valeurs, après l'entrée du tick
      * @param table les paramètres du tick, avant les sorties des contrôleurs
      * @param input l'entrée du conducteur pour ce tick
+     * @param surfaces le matériau vu en dernier sous chaque roue ({@link #surfaces}), le bloc ne le portant pas ;
+     *     {@code null} sans
      */
     public static VehicleSnapshot view(byte[] previous, float[] settled, List<String> wheelNodes,
-            List<String> variableNames, double[] variableValues, AssemblyParameters table, VehicleInput input) {
+            List<String> variableNames, double[] variableValues, AssemblyParameters table, VehicleInput input,
+            String[] surfaces) {
         AssemblyStateView.Vehicle vehicle = AssemblyStateView.vehicle(previous);
         AssemblyStateView.Root root = AssemblyStateView.root(previous);
         if (vehicle == null || root == null || table == null || wheelNodes.isEmpty()) {
@@ -62,7 +65,8 @@ public final class PredictedControl {
             float rest = settled != null && i < settled.length ? settled[i] : 0f;
             float compression = Math.max(-1f, Math.min(1f, wheel.compression())) - rest;
             wheels.add(new VehicleSnapshot.Wheel(wheelNodes.get(i), wheel.onGround(), compression, wheel.spin(),
-                    wheel.steer(), wheel.slipLong(), wheel.slipLat()));
+                    wheel.steer(), wheel.slipLong(), wheel.slipLat(), 0.0,
+                    wheel.onGround() ? at(surfaces, i) : null));
         }
         return snapshot(Interpolation.forwardSpeed(root.linear(), root.rotation()), vehicle.rpm(), vehicle.gear(),
                 wheels, variableNames, variableValues, table, input);
@@ -81,10 +85,11 @@ public final class PredictedControl {
      * @param variableValues leurs valeurs, après l'entrée du tick
      * @param table les paramètres du tick, avant les sorties des contrôleurs
      * @param input l'entrée du conducteur pour ce tick
+     * @param surfaces le matériau sous chaque roue, celui de cette collecte compris ({@link #surfaces})
      */
     public static VehicleSnapshot view(dev.axion.physics.CollectResult result, int handle, int generation, int rootNode,
             List<String> wheelNodes, List<String> variableNames, double[] variableValues, AssemblyParameters table,
-            VehicleInput input) {
+            VehicleInput input, String[] surfaces) {
         if (table == null || wheelNodes.isEmpty()) {
             return null;
         }
@@ -109,7 +114,8 @@ public final class PredictedControl {
             if (wheel.handleIndex() == handle && wheel.handleGeneration() == generation && wheel.index() >= 0
                     && wheel.index() < wheels.length) {
                 wheels[wheel.index()] = new VehicleSnapshot.Wheel(wheelNodes.get(wheel.index()), wheel.onGround(),
-                        wheel.compression(), wheel.spinSpeed(), wheel.steerAngle(), wheel.slipLong(), wheel.slipLat());
+                        wheel.compression(), wheel.spinSpeed(), wheel.steerAngle(), wheel.slipLong(), wheel.slipLat(),
+                        0.0, at(surfaces, wheel.index()));
             }
         }
         List<VehicleSnapshot.Wheel> list = new ArrayList<>(wheels.length);
@@ -119,6 +125,36 @@ public final class PredictedControl {
         }
         return snapshot(Interpolation.forwardSpeed(root.linearVelocity(), root.rotation()), engine.rpm(),
                 engine.gear(), list, variableNames, variableValues, table, input);
+    }
+
+    /**
+     * {@return le matériau que la prédiction a vu en dernier sous chaque roue (ADR-181) : celui de la collecte, sinon
+     * celui d'avant}
+     *
+     * @param result la collecte d'un pas prédit
+     * @param handle le rang du handle du véhicule
+     * @param generation sa génération
+     * @param wheels le nombre de roues
+     * @param ids l'identifiant d'un index de la table de la session, {@code null} sans
+     * @param previous les matériaux d'avant ce pas, {@code null} sans
+     */
+    public static String[] surfaces(dev.axion.physics.CollectResult result, int handle, int generation, int wheels,
+            java.util.function.IntFunction<String> ids, String[] previous) {
+        String[] seen = new String[wheels];
+        for (int i = 0; i < wheels; i++) {
+            seen[i] = at(previous, i);
+        }
+        for (dev.axion.physics.WheelReport wheel : result.wheels()) {
+            if (wheel.handleIndex() == handle && wheel.handleGeneration() == generation && wheel.index() >= 0
+                    && wheel.index() < wheels) {
+                seen[wheel.index()] = ids.apply(wheel.material());
+            }
+        }
+        return seen;
+    }
+
+    private static String at(String[] surfaces, int wheel) {
+        return surfaces != null && wheel < surfaces.length ? surfaces[wheel] : null;
     }
 
     /**

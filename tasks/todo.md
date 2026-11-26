@@ -3925,13 +3925,14 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  défaut trouvé et corrigé : les chocs des paires à plusieurs variétés valaient zéro (ADR-149).
            - [x] 14e (2026-11-25) — essai à deux processus sur un sol à deux matériaux (`prediction.py --sol-mixte`) ;
                  grille D7 d'ADR-180 écrite.
-           - [ ] Grille d'ADR-180, ouverts : matériau sous la roue à l'API et à l'écran (ADR-181 proposé) ; constructeur
-                 Java de correspondances. Test combiné mouillé/usure fait le 2026-11-25.
+           - [ ] Grille d'ADR-180, ouvert : constructeur Java de correspondances (le matériau sous la roue : ADR-181).
+                 Test combiné mouillé/usure fait le 2026-11-25.
            - [x] Coût du sol (2026-11-26, choix de Killian) : tuiles moins chères qu'avant ADR-180
                  (`docs/mesures/ADR-180-reduction-2026-11-26.md`). Reste mesuré : pas natif +11 à +14 % sur monde plat,
                  cause non établie (banc natif `adr180_cout`).
-     - [ ] **ADR-181, le matériau sous la roue à l'API** : proposé le 2026-11-25 (demande de Killian) ; attend son
-           acceptation (Q1 à Q3) avant tout code.
+     - [x] **ADR-181, le matériau sous la roue** (accepté le 2026-11-26, A32, R-1074) : rapport de roue (ABI 37,
+           `SIM_OUT` 8), `WheelView.surface()`, prédiction, `/axion wear`. Reste : essai à deux processus d'un contrôleur
+           qui le lit.
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
            `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
            (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Restent : la mesure du

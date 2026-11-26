@@ -35,7 +35,7 @@ La definition nomme ce profil comme tout pneu : `"tire": "monmod:tire/route"` da
 
 - **API** : `assembly.vehicle().orElseThrow().setWear("roue_arriere_gauche", 0.0)` — le changement de pneus d'un garage — ;
   `state().wheels().get(i).wear()` la lit.
-- **Commande** : `/axion wear <cible>` la montre ; `/axion wear <cible> set <roue> <0..1>` et `reset` la posent (opérateurs,
+- **Commande** : `/axion wear <cible>` la montre, avec ce que chaque roue touche et le mouillé de la route ; `/axion wear <cible> set <roue> <0..1>` et `reset` la posent (opérateurs,
   journalisées).
 - **Interaction** : une action `set_wear { "wheel": "roue_arriere_gauche", "value": 0 }` dans la liste `actions` d'une interaction
   (sans `wheel`, toutes les roues).

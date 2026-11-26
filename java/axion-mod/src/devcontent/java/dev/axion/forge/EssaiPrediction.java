@@ -503,7 +503,7 @@ public final class EssaiPrediction {
             }
             dev.axion.entity.VehicleSnapshot vue = dev.axion.entity.PredictedControl.view(precedent,
                     ClientPrediction.settled(), vehicule.wheelNodes(), List.of(), new double[0],
-                    vehicule.predictedParameters(new double[0]), VehicleInput.NONE);
+                    vehicule.predictedParameters(new double[0]), VehicleInput.NONE, null);
             if (vue == null) {
                 return;
             }

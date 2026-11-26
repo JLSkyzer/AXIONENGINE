@@ -35,7 +35,7 @@ The definition names this profile like any tyre: `"tire": "mymod:tire/road"` in 
 
 - **API**: `assembly.vehicle().orElseThrow().setWear("rear_left", 0.0)` — a garage's tyre change —; `state().wheels().get(i).wear()`
   reads it.
-- **Command**: `/axion wear <target>` shows it; `/axion wear <target> set <wheel> <0..1>` and `reset` set it (operators, logged).
+- **Command**: `/axion wear <target>` shows it, with what each wheel touches and how wet the road is; `/axion wear <target> set <wheel> <0..1>` and `reset` set it (operators, logged).
 - **Interaction**: a `set_wear { "wheel": "rear_left", "value": 0 }` action in an interaction's `actions` list (without `wheel`, all
   the wheels).
 - **Diagnostics**: the wheels overlay (`/axion debug`) draws a second, smaller circle as the tyre wears.

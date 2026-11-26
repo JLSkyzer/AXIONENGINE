@@ -11,7 +11,7 @@ use ax_model::dm::vehicle::{
 };
 use ax_physics::{
     BodyCollider, BodyId, BodyKind, CellMaterials, CollisionGroups, CombineRule, ContactMaterial,
-    Handle, PhysicsConfig, PhysicsWorld, Shape, WheelMount,
+    Handle, PhysicsConfig, PhysicsWorld, Shape, WheelMount, NO_MATERIAL,
 };
 
 const TICK: f32 = 1.0 / 60.0;
@@ -2537,4 +2537,69 @@ fn adr180_cout_d_un_sol_a_plusieurs_materiaux() {
             passes[0].0
         );
     }
+}
+
+#[test]
+fn adr181_chaque_roue_rapporte_le_materiau_qu_elle_touche() {
+    let materiau = |index: u16| ContactMaterial {
+        index,
+        ..contact(0.8)
+    };
+    // À gauche, une dalle d'une boîte au matériau 3 ; à droite, un champ de hauteurs à une cellule au matériau 5, dont
+    // le dominant, 9, ne doit sortir nulle part.
+    let mut world = monde();
+    let dalle = |world: &mut PhysicsWorld, x: f32, shape: Shape, material: ContactMaterial| {
+        world
+            .add_assembly(
+                BodyKind::Static,
+                Vec3::new(x, 0.0, 0.0),
+                Quat::IDENTITY,
+                &[BodyCollider {
+                    shape,
+                    density: 1.0,
+                    material,
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            )
+            .expect("sol")
+    };
+    let boite = Shape::Cuboid {
+        half_extents: [10.0, 0.5, 40.0],
+    };
+    let gauche = dalle(&mut world, -10.0, boite, materiau(3));
+    // La boîte a son dessus à y = 0,5 : le champ s'y tient aussi.
+    let champ = Shape::Heightfield {
+        rows: 2,
+        cols: 2,
+        heights: vec![0.5; 4],
+        scale: [20.0, 1.0, 80.0],
+    };
+    let champ = dalle(&mut world, 10.0, champ, materiau(9));
+    let cellules = CellMaterials::new(1, [20.0, 80.0], vec![materiau(5)]).expect("cellule");
+    world.set_cell_materials(champ, cellules);
+    let v = poser(
+        &mut world,
+        Vec3::new(0.0, 0.5 + hauteur_equilibre(), 0.0),
+        Quat::IDENTITY,
+        berline(),
+        &QUATRE,
+    );
+    conduire(&mut world, VehicleInput::NONE);
+    avancer(&mut world, 0.5);
+    let materiaux = |world: &PhysicsWorld| {
+        world
+            .wheel_reports()
+            .iter()
+            .map(|roue| roue.material)
+            .collect::<Vec<_>>()
+    };
+    // QUATRE : gauche, droite, gauche, droite.
+    assert_eq!(materiaux(&world), vec![3, 5, 3, 5]);
+    // Le sol retiré, les roues en l'air n'en touchent aucun.
+    world.remove_body(gauche);
+    world.remove_body(champ);
+    avancer(&mut world, 0.05);
+    assert!(world.pose(v).is_some());
+    assert_eq!(materiaux(&world), vec![NO_MATERIAL; 4]);
 }

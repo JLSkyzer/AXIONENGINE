@@ -674,9 +674,14 @@ final class AxionCommands {
             return lines;
         }
         for (int rank = 0; rank < wheels.size(); rank++) {
-            lines.add(String.format(java.util.Locale.ROOT, "  %s : %.1f %% d'usure", wheels.get(rank),
-                    100.0 * assembly.wheelWear(rank)));
+            // ADR-181 D4 : ce que chaque roue touche, tel que le natif l'a rapporté.
+            String surface = assembly.wheelSurface(rank);
+            String sol = !assembly.wheelGrounded(rank) ? "en l'air"
+                    : surface == null ? "sur un sol sans matériau" : "sur " + surface;
+            lines.add(String.format(java.util.Locale.ROOT, "  %s : %.1f %% d'usure, %s", wheels.get(rank),
+                    100.0 * assembly.wheelWear(rank), sol));
         }
+        lines.add(String.format(java.util.Locale.ROOT, "  route : mouillée à %.0f %%", 100.0 * assembly.wetness()));
         return lines;
     }
 
