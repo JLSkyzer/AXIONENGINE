@@ -283,8 +283,9 @@ public final class VehiculesGameTests {
                     vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 0, 0, 0, 1));
                 })
                 .thenWaitUntil(() -> helper.assertTrue(vehicule.vehicleReport() != null
-                        && vehicule.vehicleReport().fuel() > 0f && vehicule.vehicleReport().fuel() < 40f
-                        && vehicule.vehicleReport().battery() > 0.5f && vehicule.vehicleReport().battery() <= 1f,
+                        && vehicule.vehicleReport().store(0) > 0f && vehicule.vehicleReport().store(0) < 40f
+                        && vehicule.vehicleReport().store(vehicule.energySpec().batteryStore()) > 0.5f
+                        && vehicule.vehicleReport().store(vehicule.energySpec().batteryStore()) <= 1f,
                         "le natif a brûlé du carburant sur un réservoir de 40 litres : " + vehicule.vehicleReport()))
                 .thenSucceed();
     }
@@ -344,7 +345,7 @@ public final class VehiculesGameTests {
                     helper.assertTrue(vehicule.refuel(0.0) == 0.0, "zéro litre, zéro entré");
                 })
                 .thenWaitUntil(() -> helper.assertTrue(vehicule.vehicleReport() != null
-                        && vehicule.vehicleReport().fuel() > 39.99f,
+                        && vehicule.vehicleReport().store(0) > 39.99f,
                         "le natif a reçu le plein : " + vehicule.vehicleReport()))
                 .thenExecute(() -> {
                     // L'action de contenu verse comme l'API.

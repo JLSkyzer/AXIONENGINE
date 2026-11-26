@@ -393,13 +393,12 @@ fn apply_one(
             driver.apply_set_wet(read_handle(payload, 0), read_f32(payload, 8));
             outcome.applied += 1;
         }
-        // ADR-176 D3 : le carburant et la batterie d'un véhicule ; NaN garde la valeur, rien ne réveille.
+        // ADR-176 D3, ADR-182 : les réserves d'un véhicule ; NaN garde la valeur, rien ne réveille.
         opcode::SET_ENERGY => {
             expect_len(payload, SetEnergy::BYTES)?;
             driver.apply_set_energy(
                 read_handle(payload, 0),
-                read_f32(payload, 8),
-                read_f32(payload, 12),
+                core::array::from_fn(|rank| read_f32(payload, 8 + 4 * rank)),
             );
             outcome.applied += 1;
         }

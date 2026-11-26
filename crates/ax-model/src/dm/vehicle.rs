@@ -9,18 +9,18 @@
 //! Little-endian, sans remplissage, à la suite des parts quand le drapeau `VEHICLE` est posé :
 //!
 //! ```text
-//! en-tête                 144 o : roues, points de couple, rapports, surfaces en u16 ;
+//! en-tête                 148 o : roues, points de couple, rapports, surfaces en u16 ;
 //!                                 drapeaux u16 ; transmission u8 ; différentiel u8 ;
 //!                                 puis 28 f32 : moteur (5), transmission (5), différentiel (2),
 //!                                 direction (5), freins (4), aéro (4), correcteurs (2) ;
-//!                                 enfin l'énergie (ADR-176 D3) : points de consommation u16, 2 o à zéro,
-//!                                 puis 5 f32 : capacité du réservoir, masse par litre, capacité de la
-//!                                 batterie, tirage du démarreur, charge
+//!                                 enfin l'énergie (ADR-176 D3, ADR-182) : points de consommation u16, réserve
+//!                                 du moteur u8, réserve du démarreur u8 (255 : aucune), puis 6 f32 : la capacité
+//!                                 de chacune des 4 réserves, tirage du démarreur, charge
 //! WheelDesc[roues]        100 o
 //! [f32; 2][points]          8 o : régime, couple
 //! f32[rapports]             4 o
 //! AeroSurfaceDesc[surfaces] 16 o
-//! [f32; 2][consommation]    8 o : charge du moteur, litres par heure
+//! [f32; 2][consommation]    8 o : charge du moteur, unités de la réserve par heure
 //! ```
 
 use super::definition::DefnError;
@@ -28,6 +28,12 @@ use super::scene::NONE_U16;
 
 /// Nombre maximal de roues d'une assembly (R-1052).
 pub const MAX_WHEELS: usize = 32;
+
+/// Nombre maximal de réserves d'énergie d'un véhicule (ADR-182 D1).
+pub const MAX_STORES: usize = 4;
+
+/// « Aucune réserve » : le moteur ou le démarreur n'en dépendent pas.
+pub const NO_STORE: u8 = u8::MAX;
 
 /// Drapeaux de [`WheelReport`], champ `flags`.
 pub mod wheel_report_flags {
@@ -158,8 +164,8 @@ pub mod vehicle_report_flags {
 /// véhicules de `SIM_OUT`, après celle des roues : leur nombre (`u32`), 4 octets réservés, puis un enregistrement
 /// par véhicule éveillé.
 ///
-/// **Disposition figée** : 32 octets, alignement 4, comme [`WheelReport`] : le handle, le régime, la charge, le
-/// rapport, les drapeaux, 2 octets réservés, la direction, puis le carburant et la batterie (ADR-176 D3).
+/// **Disposition figée** : 40 octets, alignement 4, comme [`WheelReport`] : le handle, le régime, la charge, le
+/// rapport, les drapeaux, 2 octets réservés, la direction, puis le contenu des 4 réserves (ADR-176 D3, ADR-182).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VehicleReport {
@@ -177,15 +183,13 @@ pub struct VehicleReport {
     /// Position de la direction dans [-1, 1], positive à droite : la consigne du conducteur après la vitesse de
     /// braquage (ADR-159 D7). C'est elle que le volant suit, pas la touche.
     pub steer: f32,
-    /// Carburant restant, en litres ; 0 sans réservoir.
-    pub fuel: f32,
-    /// Charge restante de la batterie ; 0 sans batterie.
-    pub battery: f32,
+    /// Le contenu de chaque réserve, dans son unité ; 0 pour une réserve absente (ADR-182).
+    pub stores: [f32; MAX_STORES],
 }
 
 impl VehicleReport {
     /// Taille sur la frontière, en octets.
-    pub const BYTES: usize = 32;
+    pub const BYTES: usize = 40;
 
     /// Taille de l'en-tête de la section des véhicules dans `SIM_OUT` : leur nombre et 4 octets réservés.
     pub const SECTION_HEADER_BYTES: usize = 8;
@@ -200,8 +204,9 @@ impl VehicleReport {
         out.push(self.flags);
         out.extend_from_slice(&[0u8; 2]);
         out.extend_from_slice(&self.steer.to_le_bytes());
-        out.extend_from_slice(&self.fuel.to_le_bytes());
-        out.extend_from_slice(&self.battery.to_le_bytes());
+        for store in self.stores {
+            out.extend_from_slice(&store.to_le_bytes());
+        }
     }
 
     /// Lit un véhicule au début de `bytes` ; `None` s'il en manque.
@@ -216,8 +221,7 @@ impl VehicleReport {
             gear: i8::from_le_bytes([bytes[16]]),
             flags: bytes[17],
             steer: f32::from_bits(u32_at(20)),
-            fuel: f32::from_bits(u32_at(24)),
-            battery: f32::from_bits(u32_at(28)),
+            stores: core::array::from_fn(|rank| f32::from_bits(u32_at(24 + 4 * rank))),
         })
     }
 
@@ -513,31 +517,32 @@ pub struct EngineDesc {
     pub starter_time: f32,
 }
 
-/// L'énergie du véhicule : un réservoir et une batterie (12.5, ADR-176 D3). Une capacité nulle veut dire « pas de
-/// réservoir » ou « pas de batterie » : le moteur n'en dépend pas, comme avant ADR-176.
+/// L'énergie du véhicule : jusqu'à [`MAX_STORES`] réserves, dont une que le moteur brûle et une que tire le
+/// démarreur (12.5, ADR-176 D3, ADR-182 D1). Une réserve qu'aucun des deux ne vise est une cargaison : le natif la
+/// garde et la rapporte, sans la toucher. Sans réserve du moteur, il n'en dépend pas, comme avant ADR-176.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnergyDesc {
-    /// Capacité du réservoir, en litres ; 0 : pas de réservoir.
-    pub fuel_capacity: f32,
-    /// Masse d'un litre de carburant, en kg ; 0 : la masse ne suit pas le carburant.
-    pub unit_mass: f32,
-    /// Capacité de la batterie, en unités de charge ; 0 : pas de batterie.
-    pub battery_capacity: f32,
-    /// Charge que le démarreur tire par seconde, en unités de charge.
+    /// Capacité de chaque réserve, dans l'unité de son contenu ; 0 : pas de réserve à ce rang.
+    pub capacities: [f32; MAX_STORES],
+    /// Rang de la réserve que le moteur brûle, ou [`NO_STORE`].
+    pub fuel_store: u8,
+    /// Rang de la réserve que tire le démarreur et que rend le moteur qui tourne, ou [`NO_STORE`].
+    pub battery_store: u8,
+    /// Ce que le démarreur tire par seconde, dans l'unité de sa réserve.
     pub starter_draw: f32,
-    /// Charge que le moteur qui tourne rend par seconde, en unités de charge.
+    /// Ce que le moteur qui tourne rend par seconde à la réserve du démarreur.
     pub charge_rate: f32,
-    /// La consommation : charge du moteur dans [0, 1], litres par heure, à régime maximal. Strictement croissante en
-    /// charge ; vide sans réservoir.
+    /// La consommation : charge du moteur dans [0, 1], unités par heure, à régime maximal. Strictement croissante en
+    /// charge ; vide sans réserve du moteur.
     pub consumption: Vec<[f32; 2]>,
 }
 
 impl EnergyDesc {
     /// Aucune énergie : ce qu'une definition sans `energy` déclare.
     pub const NONE: Self = Self {
-        fuel_capacity: 0.0,
-        unit_mass: 0.0,
-        battery_capacity: 0.0,
+        capacities: [0.0; MAX_STORES],
+        fuel_store: NO_STORE,
+        battery_store: NO_STORE,
         starter_draw: 0.0,
         charge_rate: 0.0,
         consumption: Vec::new(),
@@ -545,6 +550,15 @@ impl EnergyDesc {
 
     /// Au plus ce nombre de points de consommation.
     pub const MAX_POINTS: usize = 64;
+
+    /// La capacité de la réserve au rang `store` ; 0 pour [`NO_STORE`] ou un rang hors table.
+    #[must_use]
+    pub fn capacity(&self, store: u8) -> f32 {
+        self.capacities
+            .get(usize::from(store))
+            .copied()
+            .unwrap_or(0.0)
+    }
 }
 
 /// La transmission (12.5).
@@ -818,7 +832,7 @@ fn put_curve(out: &mut Vec<u8>, curve: &TireCurve) {
 
 impl VehicleDesc {
     /// Taille de l'en-tête de la section, en octets.
-    pub const HEADER_BYTES: usize = 144;
+    pub const HEADER_BYTES: usize = 148;
 
     /// Écrit la section en little-endian à la fin de `out`.
     ///
@@ -880,17 +894,10 @@ impl VehicleDesc {
         );
         let en = &self.energy;
         out.extend_from_slice(&count(en.consumption.len()).to_le_bytes());
-        out.extend_from_slice(&[0u8; 2]);
-        put(
-            out,
-            &[
-                en.fuel_capacity,
-                en.unit_mass,
-                en.battery_capacity,
-                en.starter_draw,
-                en.charge_rate,
-            ],
-        );
+        out.push(en.fuel_store);
+        out.push(en.battery_store);
+        put(out, &en.capacities);
+        put(out, &[en.starter_draw, en.charge_rate]);
         for wheel in &self.wheels {
             out.extend_from_slice(&wheel.node.to_le_bytes());
             out.extend_from_slice(&wheel.flags.to_le_bytes());
@@ -1013,23 +1020,28 @@ impl VehicleDesc {
             return Err(DefnError::Field("assists"));
         }
         let consumption_points = usize::from(c.u16()?);
-        c.take::<2>()?;
+        let [fuel_store, battery_store] = c.take::<2>()?;
+        let mut capacities = [0.0f32; MAX_STORES];
+        for capacity in &mut capacities {
+            *capacity = c.f32("energy")?;
+        }
         let mut energy = EnergyDesc {
-            fuel_capacity: c.f32("energy")?,
-            unit_mass: c.f32("energy")?,
-            battery_capacity: c.f32("energy")?,
+            capacities,
+            fuel_store,
+            battery_store,
             starter_draw: c.f32("energy")?,
             charge_rate: c.f32("energy")?,
             consumption: Vec::with_capacity(consumption_points),
         };
-        let scalars = [
-            energy.fuel_capacity,
-            energy.unit_mass,
-            energy.battery_capacity,
-            energy.starter_draw,
-            energy.charge_rate,
-        ];
-        if !scalars.iter().all(|v| v.is_finite() && *v >= 0.0)
+        let named = |store: u8| store == NO_STORE || energy.capacity(store) > 0.0;
+        if !energy
+            .capacities
+            .iter()
+            .chain([&energy.starter_draw, &energy.charge_rate])
+            .all(|v| v.is_finite() && *v >= 0.0)
+            || !named(fuel_store)
+            || !named(battery_store)
+            || (fuel_store != NO_STORE && fuel_store == battery_store)
             || consumption_points > EnergyDesc::MAX_POINTS
         {
             return Err(DefnError::Field("energy"));
@@ -1080,7 +1092,7 @@ impl VehicleDesc {
         if energy.consumption.iter().any(|p| {
             !(p[0].is_finite() && (0.0..=1.0).contains(&p[0]) && p[1].is_finite() && p[1] >= 0.0)
         }) || energy.consumption.windows(2).any(|p| p[1][0] <= p[0][0])
-            || (energy.fuel_capacity > 0.0) == energy.consumption.is_empty()
+            || (energy.fuel_store != NO_STORE) == energy.consumption.is_empty()
         {
             return Err(DefnError::Field("energy.consumption"));
         }
@@ -1109,7 +1121,7 @@ impl VehicleDesc {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn un_rapport_de_vehicule_fait_trente_deux_octets_et_se_relit() {
+    fn un_rapport_de_vehicule_fait_quarante_octets_et_se_relit() {
         let report = super::VehicleReport {
             handle: crate::dm::handle::Handle::new(7, 3),
             rpm: 3125.5,
@@ -1117,8 +1129,7 @@ mod tests {
             gear: -1,
             flags: super::vehicle_report_flags::SHIFTING | super::vehicle_report_flags::DRIVER,
             steer: -0.5,
-            fuel: 12.5,
-            battery: 0.75,
+            stores: [12.5, 0.75, 0.0, 3.0],
         };
         let mut out = Vec::new();
         super::VehicleReport::write_section(&[report, report], &mut out);
@@ -1145,6 +1156,11 @@ mod tests {
             out[8 + 20..8 + 24],
             (-0.5f32).to_le_bytes(),
             "la direction à l'octet 20"
+        );
+        assert_eq!(
+            out[8 + 36..8 + 40],
+            3.0f32.to_le_bytes(),
+            "la quatrième réserve à l'octet 36"
         );
     }
 
@@ -1429,12 +1445,12 @@ mod tests {
     }
 
     #[test]
-    fn adr176_d3_l_energie_d_une_definition_se_relit_et_ses_refus_sont_nommes() {
+    fn adr182_les_reserves_d_une_definition_se_relisent_et_leurs_refus_sont_nommes() {
         let mut avec = vehicule();
         avec.energy = EnergyDesc {
-            fuel_capacity: 40.0,
-            unit_mass: 0.75,
-            battery_capacity: 1.0,
+            capacities: [40.0, 1.0, 0.0, 200.0],
+            fuel_store: 0,
+            battery_store: 1,
             starter_draw: 0.02,
             charge_rate: 0.002,
             consumption: vec![[0.0, 0.4], [1.0, 9.0]],
@@ -1451,13 +1467,24 @@ mod tests {
             mutation(&mut d);
             lire(&octets(&d)).err()
         };
+        let energie = Some(DefnError::Field("energy"));
+        assert_eq!(refus(&|d| d.energy.capacities[3] = -1.0), energie);
+        assert_eq!(refus(&|d| d.energy.capacities[2] = f32::NAN), energie);
+        assert_eq!(refus(&|d| d.energy.starter_draw = f32::INFINITY), energie);
         assert_eq!(
-            refus(&|d| d.energy.fuel_capacity = -1.0),
-            Some(DefnError::Field("energy"))
+            refus(&|d| d.energy.fuel_store = 2),
+            energie,
+            "une réserve vide ne se brûle pas"
         );
         assert_eq!(
-            refus(&|d| d.energy.unit_mass = f32::NAN),
-            Some(DefnError::Field("energy"))
+            refus(&|d| d.energy.battery_store = 4),
+            energie,
+            "un rang hors table"
+        );
+        assert_eq!(
+            refus(&|d| d.energy.battery_store = 0),
+            energie,
+            "le moteur et le démarreur ont chacun la leur"
         );
         assert_eq!(
             refus(&|d| d.energy.consumption = vec![[0.5, 1.0], [0.5, 2.0]]),
@@ -1472,7 +1499,7 @@ mod tests {
         assert_eq!(
             refus(&|d| d.energy.consumption.clear()),
             Some(DefnError::Field("energy.consumption")),
-            "un réservoir a une consommation"
+            "une réserve brûlée a une consommation"
         );
         assert_eq!(
             refus(&|d| d.energy = EnergyDesc {
@@ -1480,7 +1507,15 @@ mod tests {
                 ..EnergyDesc::NONE
             }),
             Some(DefnError::Field("energy.consumption")),
-            "pas de réservoir, pas de consommation"
+            "pas de réserve brûlée, pas de consommation"
+        );
+        let mut citerne = avec.clone();
+        citerne.energy.fuel_store = NO_STORE;
+        citerne.energy.battery_store = NO_STORE;
+        citerne.energy.consumption.clear();
+        assert!(
+            lire(&octets(&citerne)).is_ok(),
+            "des réserves sans moteur : une citerne"
         );
     }
 

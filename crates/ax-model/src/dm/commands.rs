@@ -13,6 +13,7 @@
 use super::geometry::WorldTransform;
 use super::handle::Handle;
 use super::physics::BodyDesc;
+use super::vehicle::MAX_STORES;
 
 /// Valeurs d'opcode (ADR-114), champ `opcode` de [`SimCommandHeader`].
 pub mod opcode {
@@ -87,7 +88,7 @@ pub mod opcode {
     pub const SET_ATTACHMENT_LENGTH: u32 = 26;
     /// Poser un capteur déclaré sur un corps d'une assembly ([`super::SetSensor`]). ADR-174 D5.
     pub const SET_SENSOR: u32 = 27;
-    /// Poser le carburant et la batterie d'un véhicule ([`super::SetEnergy`]). ADR-176 D3.
+    /// Poser les réserves d'un véhicule ([`super::SetEnergy`]). ADR-176 D3, ADR-182.
     pub const SET_ENERGY: u32 = 28;
     /// Poser l'usure d'un pneu ([`super::SetWear`]). ADR-176 D4.
     pub const SET_WEAR: u32 = 29;
@@ -130,23 +131,21 @@ impl SetSensor {
     pub const BYTES: usize = 60;
 }
 
-/// Payload de `SET_ENERGY` (ADR-176 D3) : 16 octets. Le carburant et la charge de la batterie d'un véhicule, en litres et
-/// en unités de charge ; **NaN** garde la valeur. Une valeur hors de `[0, capacité]` y est ramenée. Ne réveille pas le
-/// véhicule. Posée à la création d'une assembly relue d'une sauvegarde, avant son premier pas, et à un plein.
+/// Payload de `SET_ENERGY` (ADR-176 D3, ADR-182) : 24 octets. Le contenu des 4 réserves d'un véhicule, chacune dans
+/// son unité ; **NaN** garde la valeur. Une valeur hors de `[0, capacité]` y est ramenée. Ne réveille pas le véhicule.
+/// Posée à la création d'une assembly relue d'une sauvegarde, avant son premier pas, et à un plein.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SetEnergy {
     /// L'assembly.
     pub handle: Handle,
-    /// Le carburant, en litres.
-    pub fuel: f32,
-    /// La charge de la batterie.
-    pub battery: f32,
+    /// Le contenu de chaque réserve.
+    pub stores: [f32; MAX_STORES],
 }
 
 impl SetEnergy {
     /// Taille sur la frontière, en octets.
-    pub const BYTES: usize = 16;
+    pub const BYTES: usize = 24;
 }
 
 /// Payload de `SET_WEAR` (ADR-176 D4) : 16 octets. L'usure d'une roue d'un véhicule, dans [0, 1] ; **NaN** garde la
@@ -1227,8 +1226,7 @@ mod tests {
         assert_eq!(offset_of!(SetWear, wear), 12);
         assert_eq!(size_of::<SetEnergy>(), SetEnergy::BYTES);
         assert_eq!(align_of::<SetEnergy>(), 4);
-        assert_eq!(offset_of!(SetEnergy, fuel), 8);
-        assert_eq!(offset_of!(SetEnergy, battery), 12);
+        assert_eq!(offset_of!(SetEnergy, stores), 8);
         assert_eq!(size_of::<SetSensor>(), SetSensor::BYTES);
         assert_eq!(align_of::<SetSensor>(), 4);
         assert_eq!(offset_of!(SetSensor, index), 8);

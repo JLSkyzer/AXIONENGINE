@@ -99,7 +99,7 @@ class ProceduralTracksTest {
 
     private static ProceduralTracks pistesDuVehicule(String pistes, List<String> journal) {
         JsonObject racine = JsonParser.parseString("{\"wheels\":[{\"node\":\"roue_g\"},{\"node\":\"roue_d\"}],"
-                + "\"seats\":[{\"name\":\"conducteur\"},{\"name\":\"passager\"}],\"energy\":{\"fuel\":{\"capacity\":40}},"
+                + "\"seats\":[{\"name\":\"conducteur\"},{\"name\":\"passager\"}],\"energy\":{\"fuel\":{\"capacity\":40},\"battery\":{\"capacity\":1}},"
                 + "\"procedural\":[" + pistes + "]}")
                 .getAsJsonObject();
         return ProceduralTracks.of(racine, NOMS, journal::add);

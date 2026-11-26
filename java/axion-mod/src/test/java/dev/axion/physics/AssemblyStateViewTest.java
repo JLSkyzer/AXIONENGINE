@@ -74,11 +74,10 @@ class AssemblyStateViewTest {
         assertEquals(0.0, AssemblyStateView.errors(deux, deux.clone()).position());
     }
 
-    /** Un bloc d'un corps et d'un véhicule sans roue, au format v4 d'{@code world::state} : carburant, batterie, mouillé. */
+    /** Un bloc d'un corps et d'un véhicule sans roue, au format v5 d'{@code world::state} : réserves, mouillé. */
     private static byte[] blocDeVehicule(double fuel, double battery) {
-        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 80).order(ByteOrder.LITTLE_ENDIAN);
-        b.putShort((short) 4).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 0);
-        b.position(16 + 64);
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 96).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 5).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 0);
         b.position(16 + 64 + 56);
         b.putDouble(fuel).putDouble(battery);
         return b.array();
@@ -89,9 +88,9 @@ class AssemblyStateViewTest {
     void ecartDuMouille() {
         byte[] sec = blocDeVehicule(0, 0);
         byte[] humide = blocDeVehicule(0, 0);
-        ByteBuffer.wrap(humide).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 72, 0.5);
+        ByteBuffer.wrap(humide).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 88, 0.5);
         byte[] presque = blocDeVehicule(0, 0);
-        ByteBuffer.wrap(presque).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 72, 0.004);
+        ByteBuffer.wrap(presque).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 88, 0.004);
         AssemblyStateView.Errors ecart = AssemblyStateView.errors(sec, humide);
         assertEquals(0.5, ecart.wet(), 1e-12);
         assertFalse(ecart.within(1, 1, 1, 1, 1, 0.05), "un véhicule mouillé par le serveur se corrige");
@@ -99,20 +98,25 @@ class AssemblyStateViewTest {
     }
 
     @Test
-    @DisplayName("ADR-176 D5 : le bloc de véhicule porte le mouillé, un f64 après la batterie")
+    @DisplayName("ADR-176 D5 : le bloc de véhicule porte le mouillé, un f64 après les réserves")
     void mouille() {
         byte[] bloc = blocDeVehicule(0, 0);
-        ByteBuffer.wrap(bloc).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 72, 0.625);
+        ByteBuffer.wrap(bloc).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 88, 0.625);
         assertEquals(0.625, AssemblyStateView.vehicle(bloc).wet());
         assertEquals(0.0, AssemblyStateView.vehicle(blocDeVehicule(0, 0)).wet());
     }
 
     @Test
-    @DisplayName("ADR-176 D3 : le bloc de véhicule porte le carburant et la batterie ; l'écart est relatif, avec un plancher")
+    @DisplayName("ADR-176 D3, ADR-182 : le bloc de véhicule porte ses réserves ; l'écart est relatif, avec un plancher")
     void energie() {
         AssemblyStateView.Vehicle v = AssemblyStateView.vehicle(blocDeVehicule(12.5, 0.75));
-        assertEquals(12.5, v.fuel());
-        assertEquals(0.75, v.battery());
+        assertEquals(12.5, v.store(0));
+        assertEquals(0.75, v.store(1));
+        byte[] quatrieme = blocDeVehicule(12.5, 0.75);
+        ByteBuffer.wrap(quatrieme).order(ByteOrder.LITTLE_ENDIAN).putDouble(16 + 64 + 80, 5.0);
+        assertEquals(5.0, AssemblyStateView.vehicle(quatrieme).store(3));
+        assertEquals(1.0, AssemblyStateView.errors(blocDeVehicule(12.5, 0.75), quatrieme).energy(), 1e-12,
+                "chaque réserve compte à l'écart");
         assertEquals(0.0, AssemblyStateView.errors(blocDeVehicule(12.5, 0.75), blocDeVehicule(12.5, 0.75)).energy());
         // Un plein fait par le serveur : 0 contre 40 litres, l'écart est entier ; le seuil de la prédiction le voit.
         AssemblyStateView.Errors plein = AssemblyStateView.errors(blocDeVehicule(0, 1), blocDeVehicule(40, 1));
@@ -128,9 +132,9 @@ class AssemblyStateViewTest {
 
     /** Un bloc d'un corps et d'un véhicule à une roue, au format v3 d'{@code world::state} : l'usure de la roue. */
     private static byte[] blocAUneRoue(double usure) {
-        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 80 + 40).order(ByteOrder.LITTLE_ENDIAN);
-        b.putShort((short) 4).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 1);
-        b.position(16 + 64 + 80 + 32);
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 96 + 40).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 5).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 1);
+        b.position(16 + 64 + 96 + 32);
         b.putDouble(usure);
         return b.array();
     }

@@ -144,10 +144,12 @@ public final class PredictedStates {
             VehicleInput input, EnergySpec energy, float wet) {
         for (VehicleReport report : reports) {
             if (report.handleIndex() == handle && report.handleGeneration() == generation) {
+                float[] ratios = new float[EnergySpec.MAX_STORES];
+                for (int slot = 0; slot < ratios.length; slot++) {
+                    ratios[slot] = ratio(report.store(slot), energy.capacity(slot));
+                }
                 return AssemblyState.Vehicle.of(report.rpm(), report.load(), report.gear(), report.flags(),
-                        input.throttle(), input.brake(), report.steer(), input.handbrake(),
-                        ratio(report.fuel(), energy.fuelCapacity()), ratio(report.battery(), energy.batteryCapacity()),
-                        wet);
+                        input.throttle(), input.brake(), report.steer(), input.handbrake(), ratios, wet);
             }
         }
         return AssemblyState.Vehicle.NONE;

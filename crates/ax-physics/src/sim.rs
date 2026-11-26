@@ -36,7 +36,7 @@ use ax_model::dm::debug::overlay;
 use ax_model::dm::geometry::WorldTransform;
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::{BodyDesc, BodyState, PhysicsEvent, PhysicsMaterial, NO_MATERIAL};
-use ax_model::dm::vehicle::{VehicleDesc, VehicleInput};
+use ax_model::dm::vehicle::{VehicleDesc, VehicleInput, MAX_STORES};
 use ax_vehicle::tuning::Tuning;
 use std::collections::BTreeMap;
 
@@ -1672,11 +1672,11 @@ impl SimDriver {
         })
     }
 
-    /// Applique `SET_ENERGY` (ADR-176 D3) : le carburant et la batterie d'un véhicule ; NaN garde la valeur. Faux si
+    /// Applique `SET_ENERGY` (ADR-176 D3, ADR-182) : les réserves d'un véhicule ; NaN garde la valeur. Faux si
     /// l'assembly est inconnue ou n'est pas un véhicule.
-    pub fn apply_set_energy(&mut self, handle: Handle, fuel: f32, battery: f32) -> bool {
+    pub fn apply_set_energy(&mut self, handle: Handle, stores: [f32; MAX_STORES]) -> bool {
         self.assembly_world(handle)
-            .is_some_and(|world| world.set_vehicle_energy(handle, fuel, battery))
+            .is_some_and(|world| world.set_vehicle_energy(handle, stores))
     }
 
     /// Applique `SET_WEAR` (ADR-176 D4) : l'usure de la roue de rang `wheel` ; NaN garde la valeur. Faux si l'assembly est

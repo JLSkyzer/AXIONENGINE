@@ -833,10 +833,11 @@ public final class FilmDesParametres {
         Interpolation.Pose temoinEtat = temoinVue.received();
         marcheRegle = (regleEtat.vehicle().flags() & AssemblyState.Vehicle.RUNNING) != 0;
         marcheTemoin = (temoinEtat.vehicle().flags() & AssemblyState.Vehicle.RUNNING) != 0;
-        carburantRegle = regleEtat.vehicle().fuelRatio();
-        carburantTemoin = temoinEtat.vehicle().fuelRatio();
-        batterieRegle = regleEtat.vehicle().battery();
-        batterieTemoin = temoinEtat.vehicle().battery();
+        dev.axion.definition.EnergySpec reserves = regleClient.energySpec();
+        carburantRegle = regleEtat.vehicle().storeRatio(reserves.fuelStore());
+        carburantTemoin = temoinEtat.vehicle().storeRatio(reserves.fuelStore());
+        batterieRegle = regleEtat.vehicle().storeRatio(reserves.batteryStore());
+        batterieTemoin = temoinEtat.vehicle().storeRatio(reserves.batteryStore());
         usureRegle = usureMax(regleEtat);
         usureTemoin = usureMax(temoinEtat);
         mouilleRegle = regleEtat.vehicle().wet();

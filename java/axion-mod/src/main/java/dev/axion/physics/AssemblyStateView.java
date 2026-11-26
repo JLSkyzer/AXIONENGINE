@@ -12,10 +12,10 @@ import java.nio.ByteOrder;
  * en-tête   16 o : version u16 | drapeaux u16 (1 : véhicule) | corps u16 | joints u16 | roues u16 | 6 o à zéro
  * corps     64 o : position monde f64×3 | rotation f32×4 | vitesse f32×3 | vitesse angulaire f32×3
  * joint      8 o : rompu u8 | 7 o à zéro
- * véhicule  80 o : entrée f32×5 | rapport demandé i8 | drapeaux u8 | conducteur u8 | contact natif u8 | moteur rad/s f32
+ * véhicule  96 o : entrée f32×5 | rapport demandé i8 | drapeaux u8 | conducteur u8 | contact natif u8 | moteur rad/s f32
  *                  | rapport engagé i8 | visé i8 | phase du moteur u8 | contact du pas précédent u8 | changement f32
  *                  | maintien f32 | direction f32 | patinage f32 | charge f32 | temps restant au démarreur f32
- *                  | carburant f64 | batterie f64 (ADR-176 D3) | mouillé f64 (ADR-176 D5)
+ *                  | réserves f64×4 (ADR-176 D3, ADR-182) | mouillé f64 (ADR-176 D5)
  *                  (ADR-176 D1 : ces trois octets et ces quatre octets étaient du remplissage à zéro ; Java ne les lit pas)
  * roue      40 o : rotation f32 | compression f32 | braquage f32 | charge f32 | glissement long f32 | latéral f32
  *                  | couple posé f32 | au sol u8 | 3 o | usure f64 (ADR-176 D4)
@@ -26,7 +26,7 @@ public final class AssemblyStateView {
     private static final int HEADER_BYTES = 16;
     private static final int BODY_BYTES = 64;
     private static final int JOINT_BYTES = 8;
-    private static final int VEHICLE_BYTES = 80;
+    private static final int VEHICLE_BYTES = 96;
     private static final int WHEEL_BYTES = 40;
     private static final int FLAGS_OFFSET = 2;
     private static final int BODIES_OFFSET = 4;
@@ -65,13 +65,27 @@ public final class AssemblyStateView {
      *
      * @param rpm régime du moteur, en tr/min, calculé comme le natif le rapporte
      * @param gear rapport engagé
-     * @param fuel carburant restant, en litres (ADR-176 D3)
-     * @param battery charge restante de la batterie (ADR-176 D3)
+     * @param store0 le contenu de la réserve de rang 0 (ADR-176 D3, ADR-182)
+     * @param store1 celui de la réserve de rang 1
+     * @param store2 celui de la réserve de rang 2
+     * @param store3 celui de la réserve de rang 3
      * @param wet le mouillé de la route sous le véhicule, dans [0, 1] (ADR-176 D5)
      * @param wheels ses roues, dans l'ordre de la definition
      */
-    public record Vehicle(float rpm, int gear, double fuel, double battery, double wet,
-            java.util.List<Wheel> wheels) {}
+    public record Vehicle(float rpm, int gear, double store0, double store1, double store2, double store3, double wet,
+            java.util.List<Wheel> wheels) {
+
+        /** {@return le contenu de la réserve au rang {@code slot} ; 0 hors des 4 rangs} */
+        public double store(int slot) {
+            return switch (slot) {
+                case 0 -> store0;
+                case 1 -> store1;
+                case 2 -> store2;
+                case 3 -> store3;
+                default -> 0.0;
+            };
+        }
+    }
 
     /**
      * {@return le corps racine d'un bloc, {@code null} s'il est tronqué ou sans corps}
@@ -118,7 +132,7 @@ public final class AssemblyStateView {
                     b.getFloat(w + 20), b.getFloat(w + 24), b.get(w + 28) != 0, b.getDouble(w + 32)));
         }
         return new Vehicle(rpm, gear, b.getDouble(at + 56), b.getDouble(at + 64), b.getDouble(at + 72),
-                java.util.List.copyOf(list));
+                b.getDouble(at + 80), b.getDouble(at + 88), java.util.List.copyOf(list));
     }
 
     /**
@@ -261,14 +275,18 @@ public final class AssemblyStateView {
         return worst;
     }
 
-    /** L'écart d'énergie de deux blocs (ADR-176 D3) : le plus grand écart relatif du carburant et de la batterie. */
+    /** L'écart d'énergie de deux blocs (ADR-176 D3) : le plus grand écart relatif d'une réserve. */
     private static double energy(byte[] a, byte[] b) {
         Vehicle x = vehicle(a);
         Vehicle y = vehicle(b);
         if (x == null || y == null) {
             return 0.0;
         }
-        return Math.max(relative(x.fuel(), y.fuel()), relative(x.battery(), y.battery()));
+        double worst = 0.0;
+        for (int slot = 0; slot < 4; slot++) {
+            worst = Math.max(worst, relative(x.store(slot), y.store(slot)));
+        }
+        return worst;
     }
 
     private static double relative(double a, double b) {

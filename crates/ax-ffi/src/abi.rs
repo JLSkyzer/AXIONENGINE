@@ -57,7 +57,10 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 37 depuis le matériau sous la roue (ADR-181 D1) :
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 38 depuis les réserves d'énergie (ADR-182 D1) :
+/// jusqu'à 4 réserves dans la section du véhicule de `DEFN` (en-tête de 148 octets, `DEFN` version 4), `VehicleReport`
+/// de 40 octets, `SET_ENERGY` de 24 octets, bloc d'état en version 5 (96 octets de véhicule), `SIM_OUT` au schéma 9.
+/// 37 depuis le matériau sous la roue (ADR-181 D1) :
 /// `material` dans `WheelReport`, pris sur les octets réservés, et `SIM_OUT` au schéma 8. 36 depuis les matériaux d'une
 /// tuile du monde
 /// (ADR-180) : la palette de `SET_WORLD_COLLISION` et de `SET_WORLD_HEIGHTFIELD`. 33 depuis la météo (ADR-176 D5) : `wet` dans la table des matériaux physiques (DM-07, octet 22), `wet_grip` dans chaque roue de `DEFN` (100 octets), opcode `SET_WET`, et le bloc d'état en version 4 (80 octets de véhicule). 32 depuis l'usure des pneus (ADR-176 D4) : `wear.rate` et `wear.grip_loss` dans chaque roue de `DEFN` (96 octets), `WheelReport` de 40 octets (usure), opcode `SET_WEAR`, et le bloc d'état en version 3 (40 octets par roue). 31 depuis l'énergie (ADR-176 D3) : `energy` dans la section du véhicule de `DEFN` (en-tête de 144 octèts, table de consommation en queue), `VehicleReport` de 32 octets (carburant, batterie), opcode `SET_ENERGY`, et le bloc d'état en version 2 (72 octets de véhicule). 30 depuis le démarreur du moteur (ADR-176 D1) : `starter_time` dans la section du véhicule de `DEFN` (en-tête de 120 octets), le contact dans `VehicleInput::native_flags` (octet 22), et l'état du moteur dans le bloc d'état. 29 depuis les capteurs déclarés
@@ -86,7 +89,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 37;
+pub const AXION_ABI_VERSION: u32 = 38;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

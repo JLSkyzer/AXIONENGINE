@@ -17,7 +17,7 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
     native_input_flags, transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags,
-    wheel_report_flags, VehicleDesc, VehicleInput, VehicleReport, WheelReport,
+    wheel_report_flags, VehicleDesc, VehicleInput, VehicleReport, WheelReport, MAX_STORES,
 };
 use ax_vehicle::energy::{Burn, EnergyState};
 use ax_vehicle::engine::EngineState;
@@ -440,10 +440,10 @@ impl PhysicsWorld {
         Some(non_finite)
     }
 
-    /// Pose l'énergie d'un véhicule (ADR-176 D3) : un NaN garde la valeur, une valeur négative ou au-dessus de la capacité
-    /// y est ramenée. Ne réveille pas le véhicule : un plein fait à l'arrêt n'a rien à simuler. Rend faux si l'assembly
-    /// n'est pas un véhicule.
-    pub fn set_vehicle_energy(&mut self, assembly: Handle, fuel: f32, battery: f32) -> bool {
+    /// Pose le contenu des réserves d'un véhicule (ADR-176 D3, ADR-182) : un NaN garde la valeur, une valeur négative
+    /// ou au-dessus de la capacité y est ramenée. Ne réveille pas le véhicule : un plein fait à l'arrêt n'a rien à
+    /// simuler. Rend faux si l'assembly n'est pas un véhicule.
+    pub fn set_vehicle_energy(&mut self, assembly: Handle, stores: [f32; MAX_STORES]) -> bool {
         let Some(vehicle) = self
             .vehicles
             .iter_mut()
@@ -451,11 +451,10 @@ impl PhysicsWorld {
         else {
             return false;
         };
-        if fuel.is_finite() {
-            vehicle.energy.fuel = f64::from(fuel);
-        }
-        if battery.is_finite() {
-            vehicle.energy.battery = f64::from(battery);
+        for (held, store) in vehicle.energy.stores.iter_mut().zip(stores) {
+            if store.is_finite() {
+                *held = f64::from(store);
+            }
         }
         vehicle.energy.clamp(&vehicle.desc.energy);
         true
@@ -667,8 +666,7 @@ impl PhysicsWorld {
                     gear: vehicle.gearbox.gear(),
                     flags,
                     steer: vehicle.steering.position(),
-                    fuel: vehicle.energy.fuel as f32,
-                    battery: vehicle.energy.battery as f32,
+                    stores: vehicle.energy.stores.map(|store| store as f32),
                 }
             })
             .collect()

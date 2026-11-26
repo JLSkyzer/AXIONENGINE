@@ -39,7 +39,7 @@ pub const DEFN_MAGIC: [u8; 4] = *b"DEFN";
 
 /// Version du format : 3 depuis l'antipatinage et le contrôle de stabilité de la section véhicule
 /// (ADR-159, tranche 3), 2 depuis la section véhicule (tranche 1).
-pub const DEFN_VERSION: u16 = 3;
+pub const DEFN_VERSION: u16 = 4;
 
 /// Drapeaux de [`DefinitionHeader`], champ `flags`.
 pub mod definition_flags {

@@ -1092,8 +1092,8 @@ public final class EssaiPrediction {
             int rang = table == null ? -1 : table.tuning().indexOf(masse);
             double sec = rang < 0 ? Double.NaN : table.tuning().get(rang).base();
             // Le carburant tel qu'il se dessine, des snapshots : une lecture à part de celle que la prédiction fait.
-            double carburant = vehicule.renderPose(1f).vehicle().fuelRatio() * reservoir.fuelCapacity()
-                    * reservoir.unitMass();
+            double carburant = vehicule.renderPose(1f).vehicle().storeRatio(reservoir.fuelStore())
+                    * reservoir.fuelCapacity() * reservoir.unitMass();
             float[] envoyes = ClientPrediction.sentParameters();
             double predite = envoyes == null ? Double.NaN
                     : envoyes[dev.axion.physics.SimCommandStream.PARAMETER_FIELDS.indexOf(masse)];

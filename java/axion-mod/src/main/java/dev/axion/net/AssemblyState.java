@@ -489,7 +489,8 @@ public record AssemblyState(
      * L'état d'un véhicule (ADR-163 D1), quantifié sur {@link #BYTES} octets : régime i16 par pas de
      * {@value #RPM_STEP} tr/min, charge u8 au 1/255, rapport i8, drapeaux u8, puis les entrées répliquées —
      * accélérateur u8 au 1/255, frein u8 au 1/255, direction i8 au 1/127 dans {@code [-1, 1]}, frein à main u8 au
-     * 1/255, puis le carburant et la batterie en rapport de leur capacité, u8 au 1/255 (ADR-176 D3). Le régime est d'abord
+     * 1/255, puis les 4 réserves en rapport de leur capacité (ADR-176 D3, ADR-182) et le mouillé (ADR-176 D5), u8 au
+     * 1/255. Le régime est d'abord
      * l'octet fort. {@code -32768} n'est pas un régime ni {@code -128} une direction :
      * des bornes symétriques, relues à l'identique.
      *
@@ -502,7 +503,7 @@ public record AssemblyState(
     public record Vehicle(byte[] packed) {
 
         /** Taille de l'état, en octets. */
-        public static final int BYTES = 12;
+        public static final int BYTES = 14;
 
         /** Pas du régime, en tr/min. */
         public static final int RPM_STEP = 2;
@@ -599,6 +600,26 @@ public record AssemblyState(
          */
         public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
                 float handbrake, float fuelRatio, float battery, float wet) {
+            return of(rpm, load, gear, flags, throttle, brake, steer, handbrake, new float[] {fuelRatio, battery}, wet);
+        }
+
+        /**
+         * Quantifie l'état d'un véhicule, toutes ses réserves comprises (ADR-182).
+         *
+         * @param rpm régime, en tr/min
+         * @param load charge du moteur, dans [0, 1]
+         * @param gear rapport engagé, négatif en marche arrière
+         * @param flags {@link #SHIFTING}, {@link #RUNNING}, {@link #DRIVER} ; un autre bit est ignoré
+         * @param throttle accélérateur, dans [0, 1]
+         * @param brake frein, dans [0, 1]
+         * @param steer direction, dans [-1, 1]
+         * @param handbrake frein à main, dans [0, 1]
+         * @param ratios le contenu de chaque réserve sur sa capacité, dans [0, 1], 4 au plus ; un rang absent vaut 0
+         * @param wet le mouillé de la route sous le véhicule, dans [0, 1]
+         * @return son état
+         */
+        public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake, float[] ratios, float wet) {
             short steps = (short) bounded(rpm / RPM_STEP, -Short.MAX_VALUE, Short.MAX_VALUE);
             return new Vehicle(new byte[] {
                 (byte) (steps >> 8),
@@ -610,10 +631,16 @@ public record AssemblyState(
                 (byte) bounded(brake * UNIT_STEPS, 0, 255),
                 (byte) bounded(steer * STEER_STEPS, -Byte.MAX_VALUE, Byte.MAX_VALUE),
                 (byte) bounded(handbrake * UNIT_STEPS, 0, 255),
-                (byte) bounded(fuelRatio * UNIT_STEPS, 0, 255),
-                (byte) bounded(battery * UNIT_STEPS, 0, 255),
+                ratioByte(ratios, 0),
+                ratioByte(ratios, 1),
+                ratioByte(ratios, 2),
+                ratioByte(ratios, 3),
                 (byte) bounded(wet * UNIT_STEPS, 0, 255),
             });
+        }
+
+        private static byte ratioByte(float[] ratios, int slot) {
+            return (byte) bounded((slot < ratios.length ? ratios[slot] : 0f) * UNIT_STEPS, 0, 255);
         }
 
         private static int bounded(float steps, int low, int high) {
@@ -663,19 +690,18 @@ public record AssemblyState(
             return (packed[8] & 0xFF) / UNIT_STEPS;
         }
 
-        /** {@return le carburant restant sur la capacité du réservoir, dans [0, 1] ; 0 sans réservoir} */
-        public float fuelRatio() {
-            return (packed[9] & 0xFF) / UNIT_STEPS;
-        }
-
-        /** {@return la charge de la batterie sur sa capacité, dans [0, 1] ; 0 sans batterie} */
-        public float battery() {
-            return (packed[10] & 0xFF) / UNIT_STEPS;
+        /**
+         * {@return le contenu de la réserve au rang {@code slot} sur sa capacité, dans [0, 1] ; 0 sans réserve à ce rang}
+         *
+         * @param slot le rang de la réserve, de 0 à 3
+         */
+        public float storeRatio(int slot) {
+            return slot >= 0 && slot < 4 ? (packed[9 + slot] & 0xFF) / UNIT_STEPS : 0f;
         }
 
         /** {@return le mouillé de la route sous le véhicule, dans [0, 1] (ADR-176 D5)} */
         public float wet() {
-            return (packed[11] & 0xFF) / UNIT_STEPS;
+            return (packed[13] & 0xFF) / UNIT_STEPS;
         }
 
         /** {@return les valeurs, copie} */

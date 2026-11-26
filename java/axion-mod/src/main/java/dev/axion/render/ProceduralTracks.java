@@ -61,7 +61,7 @@ import java.util.function.Consumer;
 public final class ProceduralTracks {
 
     /** Aucune piste. */
-    public static final ProceduralTracks NONE = new ProceduralTracks(new Track[0], new int[0], new double[0], 0f);
+    public static final ProceduralTracks NONE = new ProceduralTracks(new Track[0], new int[0], new double[0], EnergySpec.NONE);
 
     /** Flottants d'un delta : translation x, y, z, puis rotation x, y, z, w. */
     public static final int DELTA_FLOATS = 7;
@@ -324,16 +324,16 @@ public final class ProceduralTracks {
     private final int[] nodes;
     /** Le défaut de chaque variable de la definition, que {@code var.<n>} lit tant qu'elle n'est pas reçue. */
     private final double[] defaults;
-    /** La capacité du réservoir de la definition, en litres : de quoi lire {@code energy.fuel} (ADR-176 D3). */
-    private final float fuelCapacity;
+    /** Les réserves de la definition : de quoi lire les sources {@code energy.*} (ADR-176 D3, ADR-182). */
+    private final EnergySpec energy;
     /** Vrai si une piste pilote l'apparence d'un nœud. */
     private final boolean looked;
 
-    private ProceduralTracks(Track[] tracks, int[] nodes, double[] defaults, float fuelCapacity) {
+    private ProceduralTracks(Track[] tracks, int[] nodes, double[] defaults, EnergySpec energy) {
         this.tracks = tracks;
         this.nodes = nodes;
         this.defaults = defaults;
-        this.fuelCapacity = fuelCapacity;
+        this.energy = energy;
         boolean any = false;
         for (Track track : tracks) {
             any |= track.channel() == Channel.VISIBILITY || track.channel() == Channel.EMISSIVE
@@ -377,7 +377,7 @@ public final class ProceduralTracks {
         }
         return new ProceduralTracks(
                 tracks.toArray(new Track[0]), slots.keySet().stream().mapToInt(Integer::intValue).toArray(), defaults,
-                EnergySpec.of(root).fuelCapacity());
+                EnergySpec.of(root));
     }
 
     /**
@@ -422,7 +422,7 @@ public final class ProceduralTracks {
         for (int i = 0; i < defaults.length; i++) {
             defaults[i] = variables.get(i).initial();
         }
-        return new Probe(new ProceduralTracks(new Track[0], new int[0], defaults, EnergySpec.of(root).fuelCapacity()),
+        return new Probe(new ProceduralTracks(new Track[0], new int[0], defaults, EnergySpec.of(root)),
                 reading);
     }
 
@@ -770,9 +770,9 @@ public final class ProceduralTracks {
             case RPM -> (double) vehicle.rpm();
             case LOAD -> (double) vehicle.load();
             case RUNNING -> flag((vehicle.flags() & AssemblyState.Vehicle.RUNNING) != 0);
-            case FUEL -> (double) vehicle.fuelRatio() * fuelCapacity;
-            case FUEL_RATIO -> (double) vehicle.fuelRatio();
-            case BATTERY -> (double) vehicle.battery();
+            case FUEL -> (double) vehicle.storeRatio(energy.fuelStore()) * energy.fuelCapacity();
+            case FUEL_RATIO -> (double) vehicle.storeRatio(energy.fuelStore());
+            case BATTERY -> (double) vehicle.storeRatio(energy.batteryStore());
             case GEAR -> (double) vehicle.gear();
             case SHIFTING -> flag((vehicle.flags() & AssemblyState.Vehicle.SHIFTING) != 0);
             case SECONDS -> frame.seconds();

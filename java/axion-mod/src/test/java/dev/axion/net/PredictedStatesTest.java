@@ -44,7 +44,7 @@ class PredictedStatesTest {
                 new WheelReport(9, GEN, 0, 0, 99f, 0f, 0f, 0f, 0f),
                 new WheelReport(HANDLE, GEN, 0, 0, 31f, 0.1f, 0f, 0f, 0f));
         List<VehicleReport> moteurs = List.of(new VehicleReport(HANDLE, GEN, 3000f, 0.8f, 2, VehicleReport.RUNNING,
-                0.1f, 0f, 0f));
+                0.1f, 20f, 0.5f, 0f, 0f));
         VehicleInput entree = new VehicleInput(1f, 0f, 0.3f, 0f, 0f, (byte) 0, 0);
         AssemblyState etat = PredictedStates.of(collecte(corps, List.of(unite, unite, unite), roues, moteurs), HANDLE,
                 GEN, 3, entree, AssemblyState.VariableValues.NONE);
@@ -60,6 +60,14 @@ class PredictedStatesTest {
         assertTrue(etat.wheels().onGround(1));
         assertEquals(3000f, etat.vehicle().rpm(), 20f);
         assertEquals(1f, etat.vehicle().throttle(), 1e-2f, "l'entrée tenue au pas");
+        AssemblyState avecReserves = PredictedStates.of(collecte(corps, List.of(unite, unite, unite), roues, moteurs),
+                HANDLE, GEN, 3, entree, AssemblyState.VariableValues.NONE,
+                new dev.axion.definition.EnergySpec(List.of(
+                        new dev.axion.definition.EnergySpec.Store("fuel", 40f, 0f),
+                        new dev.axion.definition.EnergySpec.Store("battery", 1f, 0f)), 0, 1));
+        assertEquals(0.5f, avecReserves.vehicle().storeRatio(0), 1f / 255f, "20 sur 40 litres");
+        assertEquals(0.5f, avecReserves.vehicle().storeRatio(1), 1f / 255f);
+        assertEquals(0f, avecReserves.vehicle().storeRatio(2), "sans réserve à ce rang");
     }
 
     @Test

@@ -619,8 +619,8 @@ public final class PersistanceGameTests {
                 .thenWaitUntil(() -> helper.assertTrue(relue[0].vehicleReport() != null,
                         "le natif de l'assembly relue a rapporté"))
                 .thenExecute(() -> helper.assertTrue(
-                        relue[0].vehicleReport().fuel() <= sauve[0] + 1e-4 && relue[0].vehicleReport().fuel() > 0f,
-                        "le natif repart du carburant sauvé, non du plein : " + relue[0].vehicleReport().fuel()
+                        relue[0].vehicleReport().store(0) <= sauve[0] + 1e-4 && relue[0].vehicleReport().store(0) > 0f,
+                        "le natif repart du carburant sauvé, non du plein : " + relue[0].vehicleReport().store(0)
                                 + " pour " + sauve[0]))
                 .thenSucceed();
     }

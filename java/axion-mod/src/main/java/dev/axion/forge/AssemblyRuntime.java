@@ -600,7 +600,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
     private void energy(SimCommandStream stream) {
         ledger.forEachBody((index, assembly) -> {
             if (assembly.takeEnergyPush()) {
-                stream.setEnergy(index, GENERATION, (float) assembly.fuel(), (float) assembly.battery());
+                stream.setEnergy(index, GENERATION, assembly.energyAmounts());
             }
         });
     }

@@ -25,7 +25,7 @@ import java.util.function.BiConsumer;
 final class VehicleSpec {
 
     /** Taille de l'en-tête de la section, en octets. */
-    static final int HEADER_BYTES = 144;
+    static final int HEADER_BYTES = 148;
 
     /** Capacité maximale d'un réservoir, en litres (ADR-176 D3). */
     static final float MAX_FUEL_CAPACITY = 100_000f;
@@ -454,14 +454,16 @@ final class VehicleSpec {
                 number(aero, "downforce_front", DOWNFORCE), number(aero, "downforce_rear", DOWNFORCE));
         put(out, number(traction, "slip_threshold", TRACTION_SLIP_THRESHOLD),
                 number(stability, "yaw_tolerance", STABILITY_YAW_TOLERANCE));
-        // ADR-176 D3 : l'énergie. Sans réservoir ou sans batterie, la capacité vaut 0 : le moteur n'en dépend pas.
-        JsonObject energy = object(root, "energy");
-        JsonObject fuel = object(energy, "fuel");
-        JsonObject battery = object(energy, "battery");
+        // ADR-176 D3, ADR-182 : les réserves, celle que le moteur brûle et celle du démarreur (255 : aucune).
+        EnergySpec reserves = EnergySpec.of(root);
+        JsonObject battery = object(object(root, "energy"), "battery");
         out.putShort((short) consumption(root).size());
-        out.putShort((short) 0);
-        put(out, number(fuel, "capacity", 0f), number(fuel, "unit_mass", 0f), number(battery, "capacity", 0f),
-                number(battery, "starter_draw", 0f), number(battery, "charge_rate", 0f));
+        out.put((byte) reserves.fuelStore());
+        out.put((byte) reserves.batteryStore());
+        for (int slot = 0; slot < EnergySpec.MAX_STORES; slot++) {
+            out.putFloat(reserves.capacity(slot));
+        }
+        put(out, number(battery, "starter_draw", 0f), number(battery, "charge_rate", 0f));
 
         Set<String> steered = listOr(steering, "steered_wheels");
         Set<String> driven = listOr(powertrain, "drive_wheels");

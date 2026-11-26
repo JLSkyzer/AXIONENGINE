@@ -157,7 +157,8 @@ impl BufferKind {
     /// comment lire ce qui suit. Elle change avec la disposition de la charge,
     /// et le lecteur refuse une version qu'il ne connaît pas (R-262, R-491).
     ///
-    /// - `SIM_OUT` = 8 (ADR-181 D1 : chaque roue porte le matériau qu'elle touche ; 7 depuis ADR-171 D6, les
+    /// - `SIM_OUT` = 9 (ADR-182 : le rapport de chaque véhicule porte ses 4 réserves ; 8 depuis ADR-181 D1, chaque
+    ///   roue porte le matériau qu'elle touche ; 7 depuis ADR-171 D6, les
     ///   attaches, `AttachmentReport[n]`, après les états complets ; 6 depuis
     ///   ADR-168 D1 : l'état complet des assemblies exportées, après les motopropulseurs ; 5 depuis
     ///   ADR-167 D9, chaque roue portant ses glissements, 32 octets ; 4 depuis ADR-163 D1) :
@@ -184,7 +185,7 @@ impl BufferKind {
     pub const fn schema_version(self) -> u32 {
         match self {
             BufferKind::Debug | BufferKind::RenderDebug => 2,
-            BufferKind::SimOut => 8,
+            BufferKind::SimOut => 9,
             BufferKind::RenderIn => 3,
             BufferKind::RenderOut => 4,
             BufferKind::AssetOut => 1,
@@ -545,7 +546,7 @@ mod tests {
                 BufferKind::RenderOut => 4,
                 BufferKind::RenderIn => 3,
                 BufferKind::Debug | BufferKind::RenderDebug => 2,
-                BufferKind::SimOut => 8,
+                BufferKind::SimOut => 9,
                 BufferKind::AssetOut => 1,
                 _ => 0,
             };

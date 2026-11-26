@@ -108,7 +108,7 @@ public final class SimCommandStream {
     public static final int OP_SET_ENERGY = 28;
 
     /** Taille du payload {@code SetEnergy}, en octets. */
-    public static final int SET_ENERGY_BYTES = 16;
+    public static final int SET_ENERGY_BYTES = 24;
 
     /** Opcode {@code SET_WEAR} (ADR-176 D4) : l'usure d'un pneu. */
     public static final int OP_SET_WEAR = 29;
@@ -367,7 +367,7 @@ public final class SimCommandStream {
      * Le plus grand bloc d'état, en octets (miroir de {@code world::state::MAX_STATE_BYTES}) : 64 corps, 128 joints,
      * un véhicule de 32 roues.
      */
-    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 80 + 32 * 40;
+    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 96 + 32 * 40;
 
     /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
     public static final int SET_VEHICLE_INPUT_BYTES = 36;
@@ -1386,19 +1386,25 @@ public final class SimCommandStream {
     }
 
     /**
-     * Ajoute une commande {@code SET_ENERGY} (ADR-176 D3) : le carburant, en litres, et la charge de la batterie d'un
-     * véhicule. {@link Float#NaN} garde la valeur ; une valeur hors de {@code [0, capacité]} y est ramenée. Ne réveille
-     * pas le véhicule.
+     * Ajoute une commande {@code SET_ENERGY} (ADR-176 D3, ADR-182) : le contenu des 4 réserves d'un véhicule, chacune
+     * dans son unité. {@link Float#NaN} garde la valeur ; une valeur hors de {@code [0, capacité]} y est ramenée. Ne
+     * réveille pas le véhicule.
      *
      * @param handleIndex rang du handle d'assembly
      * @param handleGeneration génération du handle
-     * @param fuel le carburant, en litres, ou {@code NaN} pour le garder
-     * @param battery la charge de la batterie, ou {@code NaN} pour la garder
+     * @param stores le contenu de chaque rang, quatre valeurs
      * @return {@code this}, pour chaîner
+     * @throws IllegalArgumentException si {@code stores} n'a pas quatre valeurs
      */
-    public SimCommandStream setEnergy(int handleIndex, int handleGeneration, float fuel, float battery) {
+    public SimCommandStream setEnergy(int handleIndex, int handleGeneration, float[] stores) {
+        if (stores.length != 4) {
+            throw new IllegalArgumentException(stores.length + " réserves au lieu de 4");
+        }
         ByteBuffer command = beginCommand(OP_SET_ENERGY, SET_ENERGY_BYTES);
-        command.putInt(handleIndex).putInt(handleGeneration).putFloat(fuel).putFloat(battery);
+        command.putInt(handleIndex).putInt(handleGeneration);
+        for (float store : stores) {
+            command.putFloat(store);
+        }
         commands.add(command.array());
         return this;
     }

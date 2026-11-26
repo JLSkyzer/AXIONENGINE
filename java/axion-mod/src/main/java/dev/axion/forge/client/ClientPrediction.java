@@ -983,8 +983,8 @@ public final class ClientPrediction {
         dev.axion.net.Interpolation.VehiclePose shown = vehicle.renderPose(1f).vehicle();
         dev.axion.net.Interpolation.VehiclePose pose = new dev.axion.net.Interpolation.VehiclePose((float) view.rpm(),
                 shown.load(), view.gear(), shown.flags(), input.throttle(), input.brake(), input.steer(),
-                input.handbrake(), (float) Math.abs(view.speed()), (float) view.speed(), shown.fuelRatio(),
-                shown.battery(), shown.wet());
+                input.handbrake(), (float) Math.abs(view.speed()), (float) view.speed(), shown.store0(),
+                shown.store1(), shown.store2(), shown.store3(), shown.wet());
         float[] floats = new float[values.length];
         // ADR-174 D2 : une variable par siège ne se prédit pas ; elle se lit telle que le serveur l'a envoyée.
         dev.axion.net.AssemblyState.VariableValues received = vehicle.receivedVariables();

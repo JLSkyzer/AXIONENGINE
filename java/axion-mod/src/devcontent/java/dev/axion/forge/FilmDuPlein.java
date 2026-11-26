@@ -293,13 +293,13 @@ public final class FilmDuPlein {
             }
             case ROULE -> {
                 avant = true;
-                carburantMin = Math.min(carburantMin, recu.fuelRatio());
-                if (!tourne && recu.fuelRatio() <= 0.01f) {
+                carburantMin = Math.min(carburantMin, recu.storeRatio(vehicule.energySpec().fuelStore()));
+                if (!tourne && recu.storeRatio(vehicule.energySpec().fuelStore()) <= 0.01f) {
                     arretVu = true;
                     suivante = Etape.PANNE;
                 } else if (dansEtape >= etape.duree) {
                     throw new IllegalStateException("le réservoir n'est pas vide au bout de " + etape.duree + " s : "
-                            + recu.fuelRatio());
+                            + recu.storeRatio(vehicule.energySpec().fuelStore()));
                 }
             }
             case PANNE -> {
@@ -307,7 +307,7 @@ public final class FilmDuPlein {
                 // fait à l'arrêt.
                 avant = dansEtape < 2.0;
                 frein = dansEtape >= 2.0;
-                carburantMin = Math.min(carburantMin, recu.fuelRatio());
+                carburantMin = Math.min(carburantMin, recu.storeRatio(vehicule.energySpec().fuelStore()));
                 if (dansEtape >= etape.duree) {
                     throw new IllegalStateException("pas arrêté au bout de " + etape.duree + " s : " + vitesse + " m/s");
                 }
@@ -321,7 +321,7 @@ public final class FilmDuPlein {
             }
             case PLEIN -> {
                 arret = true;
-                carburantApresPlein = Math.max(carburantApresPlein, recu.fuelRatio());
+                carburantApresPlein = Math.max(carburantApresPlein, recu.storeRatio(vehicule.energySpec().fuelStore()));
                 if (!contactRemis && dansEtape >= 1.2) {
                     contactRemis = true;
                     auServeur(minecraft, () -> contact(true));
@@ -346,13 +346,13 @@ public final class FilmDuPlein {
         minecraft.options.keyJump.setDown(arret);
         if (tournage.imageAttendue()) {
             String valeurs = String.format(Locale.ROOT, "carburant %.0f %%   moteur %s   %.1f m/s",
-                    recu.fuelRatio() * 100f, tourne ? "en marche" : "arrêté", vitesse);
+                    recu.storeRatio(vehicule.energySpec().fuelStore()) * 100f, tourne ? "en marche" : "arrêté", vitesse);
             tournage.capturer(minecraft.getMainRenderTarget(), legende(), valeurs,
                     String.format(Locale.ROOT, "%.1f s", secondes));
         }
         if (suivante != null) {
             LOGGER.info("[film] {} -> {} à {} s : carburant {}, moteur {}", etape, suivante,
-                    String.format(Locale.ROOT, "%.1f", secondes), recu.fuelRatio(), tourne);
+                    String.format(Locale.ROOT, "%.1f", secondes), recu.storeRatio(vehicule.energySpec().fuelStore()), tourne);
             etape = suivante;
             debutEtape = secondes;
         }

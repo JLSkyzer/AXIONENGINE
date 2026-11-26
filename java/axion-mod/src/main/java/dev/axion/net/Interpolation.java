@@ -130,15 +130,57 @@ public final class Interpolation {
      * @param handbrake frein à main, dans [0, 1]
      * @param speed vitesse du corps racine, en m/s
      * @param forwardSpeed sa composante le long de l'avant du véhicule, son {@code -Z}, en m/s : négative en reculant
-     * @param fuelRatio le carburant restant sur la capacité du réservoir, dans [0, 1] (ADR-176 D3)
-     * @param battery la charge de la batterie sur sa capacité, dans [0, 1] (ADR-176 D3)
+     * @param store0 le contenu de la réserve de rang 0 sur sa capacité, dans [0, 1] (ADR-176 D3, ADR-182)
+     * @param store1 celui de la réserve de rang 1
+     * @param store2 celui de la réserve de rang 2
+     * @param store3 celui de la réserve de rang 3
      * @param wet le mouillé de la route sous le véhicule, dans [0, 1] (ADR-176 D5)
      */
     public record VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
-            float handbrake, float speed, float forwardSpeed, float fuelRatio, float battery, float wet) {
+            float handbrake, float speed, float forwardSpeed, float store0, float store1, float store2, float store3,
+            float wet) {
 
         /** Rien : ni véhicule, ni vitesse. */
-        public static final VehiclePose NONE = new VehiclePose(0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
+        public static final VehiclePose NONE =
+                new VehiclePose(0f, 0f, 0, 0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
+
+        /**
+         * Un état à deux réserves, celles des rangs 0 et 1.
+         *
+         * @param rpm régime, en tr/min
+         * @param load charge du moteur
+         * @param gear rapport engagé
+         * @param flags drapeaux du véhicule
+         * @param throttle accélérateur
+         * @param brake frein
+         * @param steer direction
+         * @param handbrake frein à main
+         * @param speed vitesse du corps racine
+         * @param forwardSpeed sa composante le long de l'avant
+         * @param first le contenu de la réserve de rang 0 sur sa capacité
+         * @param second celui de la réserve de rang 1
+         * @param wet le mouillé de la route
+         */
+        public VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake, float speed, float forwardSpeed, float first, float second, float wet) {
+            this(rpm, load, gear, flags, throttle, brake, steer, handbrake, speed, forwardSpeed, first, second, 0f, 0f,
+                    wet);
+        }
+
+        /**
+         * {@return le contenu de la réserve au rang {@code slot} sur sa capacité ; 0 sans réserve à ce rang}
+         *
+         * @param slot le rang de la réserve
+         */
+        public float storeRatio(int slot) {
+            return switch (slot) {
+                case 0 -> store0;
+                case 1 -> store1;
+                case 2 -> store2;
+                case 3 -> store3;
+                default -> 0f;
+            };
+        }
 
         /**
          * Un état sans mouillé : une route sèche.
@@ -153,12 +195,12 @@ public final class Interpolation {
          * @param handbrake frein à main
          * @param speed vitesse du corps racine
          * @param forwardSpeed sa composante le long de l'avant
-         * @param fuelRatio le carburant restant sur la capacité du réservoir
-         * @param battery la charge de la batterie sur sa capacité
+         * @param first le contenu de la réserve de rang 0 sur sa capacité
+         * @param second celui de la réserve de rang 1
          */
         public VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
-                float handbrake, float speed, float forwardSpeed, float fuelRatio, float battery) {
-            this(rpm, load, gear, flags, throttle, brake, steer, handbrake, speed, forwardSpeed, fuelRatio, battery, 0f);
+                float handbrake, float speed, float forwardSpeed, float first, float second) {
+            this(rpm, load, gear, flags, throttle, brake, steer, handbrake, speed, forwardSpeed, first, second, 0f);
         }
 
         /**
@@ -491,8 +533,12 @@ public final class Interpolation {
                 b.flags(), a.throttle() + (b.throttle() - a.throttle()) * t, a.brake() + (b.brake() - a.brake()) * t,
                 a.steer() + (b.steer() - a.steer()) * t, a.handbrake() + (b.handbrake() - a.handbrake()) * t,
                 (float) Math.sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]),
-                forwardSpeed(velocity, rotation), a.fuelRatio() + (b.fuelRatio() - a.fuelRatio()) * t,
-                a.battery() + (b.battery() - a.battery()) * t, a.wet() + (b.wet() - a.wet()) * t);
+                forwardSpeed(velocity, rotation), store(a, b, 0, t), store(a, b, 1, t), store(a, b, 2, t),
+                store(a, b, 3, t), a.wet() + (b.wet() - a.wet()) * t);
+    }
+
+    private static float store(AssemblyState.Vehicle a, AssemblyState.Vehicle b, int slot, float t) {
+        return a.storeRatio(slot) + (b.storeRatio(slot) - a.storeRatio(slot)) * t;
     }
 
     /**

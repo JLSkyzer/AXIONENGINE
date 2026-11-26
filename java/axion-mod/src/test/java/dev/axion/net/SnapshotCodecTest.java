@@ -234,7 +234,9 @@ class SnapshotCodecTest {
                 "descripteur 13, antérieur à l'usure des pneus (ADR-176 D4)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(14).varUInt(0).toByteArray(),
                 "descripteur 14, antérieur au mouillé de la route (ADR-176 D5)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(16).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(15).varUInt(0).toByteArray(),
+                "descripteur 15, antérieur aux 4 réserves (ADR-182)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(17).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -888,6 +890,13 @@ class SnapshotCodecTest {
         AssemblyState.Vehicle sec = AssemblyState.Vehicle.of(3000f, 0.5f, 2, AssemblyState.Vehicle.RUNNING, 0.5f, 0f, 0f,
                 0f, 0.5f, 0.75f, 0f);
         assertFalse(humide.equals(sec), "le mouillé fait partie de l'état");
+        AssemblyState.Vehicle reserves = AssemblyState.Vehicle.of(0f, 0f, 0, 0, 0f, 0f, 0f, 0f,
+                new float[] {0.25f, 0.5f, 0.75f, 1f}, 0.6f);
+        for (int slot = 0; slot < 4; slot++) {
+            assertEquals(0.25f * (slot + 1), reserves.storeRatio(slot), 1f / 255f, "réserve " + slot);
+        }
+        assertEquals(0f, reserves.storeRatio(4), "hors des 4 rangs");
+        assertEquals(0.6f, reserves.wet(), 1f / 255f, "le mouillé suit les réserves");
     }
 
     @Test

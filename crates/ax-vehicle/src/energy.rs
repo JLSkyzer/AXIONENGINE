@@ -1,11 +1,11 @@
-//! L'énergie du véhicule : un réservoir et une batterie (12.5, ADR-176 D3).
+//! L'énergie du véhicule : ses réserves, celle que le moteur brûle, celle du démarreur (12.5, ADR-176 D3, ADR-182).
 //!
 //! L'état est en `f64` : au ralenti, un sous-pas brûle de l'ordre de 2·10⁻⁷ litre, sous l'ulp d'un `f32` à 40 litres, et
 //! la consommation s'y perdrait. Les additions sont simples, sans `mul_add` (INV-14, le binaire est compilé sans FMA) : le
 //! pas est fixe, la consommation suit le temps simulé.
 
 use crate::engine::RPM_PER_RAD_S;
-use ax_model::dm::vehicle::EnergyDesc;
+use ax_model::dm::vehicle::{EnergyDesc, MAX_STORES, NO_STORE};
 
 /// Ce que le moteur peut attendre de l'énergie à un pas : de quoi brûler, de quoi lancer le démarreur.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,57 +24,65 @@ impl Supply {
     };
 }
 
-/// Le carburant et la batterie d'un véhicule.
+/// Le contenu des réserves d'un véhicule.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct EnergyState {
-    /// Carburant restant, en litres.
-    pub fuel: f64,
-    /// Charge restante de la batterie.
-    pub battery: f64,
+    /// Le contenu de chaque réserve, dans son unité.
+    pub stores: [f64; MAX_STORES],
 }
 
 impl EnergyState {
-    /// Un véhicule neuf : réservoir plein, batterie pleine.
+    /// Un véhicule neuf : chaque réserve pleine.
     #[must_use]
     pub fn full(desc: &EnergyDesc) -> Self {
         Self {
-            fuel: f64::from(desc.fuel_capacity),
-            battery: f64::from(desc.battery_capacity),
+            stores: desc.capacities.map(f64::from),
         }
     }
 
     /// Ramène l'état dans les capacités de la definition : un état relu ne les dépasse jamais.
     pub fn clamp(&mut self, desc: &EnergyDesc) {
-        self.fuel = clamp_to(self.fuel, f64::from(desc.fuel_capacity));
-        self.battery = clamp_to(self.battery, f64::from(desc.battery_capacity));
+        for (store, capacity) in self.stores.iter_mut().zip(desc.capacities) {
+            *store = clamp_to(*store, f64::from(capacity));
+        }
     }
 
-    /// Ce que le moteur peut attendre de l'énergie : sans réservoir, le carburant ne manque jamais, de même sans batterie.
+    /// Ce que le moteur peut attendre de l'énergie : sans réserve du moteur, le carburant ne manque jamais, de même
+    /// pour la batterie.
     #[must_use]
     pub fn supply(&self, desc: &EnergyDesc) -> Supply {
+        let filled = |store: u8| {
+            store == NO_STORE
+                || self
+                    .stores
+                    .get(usize::from(store))
+                    .is_some_and(|amount| *amount > 0.0)
+        };
         Supply {
-            fuel: desc.fuel_capacity <= 0.0 || self.fuel > 0.0,
-            battery: desc.battery_capacity <= 0.0 || self.battery > 0.0,
+            fuel: filled(desc.fuel_store),
+            battery: filled(desc.battery_store),
         }
     }
 
     /// Avance l'énergie d'un pas de `dt` secondes.
     ///
-    /// Le moteur qui tourne brûle `courbe(charge) × régime / régime_max` litres par heure et recharge la batterie ; le
-    /// démarreur qui tourne la décharge. Un moteur arrêté ne brûle rien.
+    /// Le moteur qui tourne brûle `courbe(charge) × régime / régime_max` unités par heure de sa réserve et recharge
+    /// celle du démarreur ; le démarreur qui tourne la décharge. Un moteur arrêté ne brûle rien.
     pub fn step(&mut self, desc: &EnergyDesc, burn: Burn, dt: f32) {
         let dt = f64::from(dt);
-        if desc.fuel_capacity > 0.0 && burn.running {
-            let per_hour = f64::from(consumption(&desc.consumption, burn.load))
-                * f64::from(burn.rpm / burn.max_rpm.max(f32::EPSILON)).clamp(0.0, 1.0);
-            self.fuel -= per_hour / 3600.0 * dt;
+        if let Some(fuel) = self.stores.get_mut(usize::from(desc.fuel_store)) {
+            if burn.running {
+                let per_hour = f64::from(consumption(&desc.consumption, burn.load))
+                    * f64::from(burn.rpm / burn.max_rpm.max(f32::EPSILON)).clamp(0.0, 1.0);
+                *fuel -= per_hour / 3600.0 * dt;
+            }
         }
-        if desc.battery_capacity > 0.0 {
+        if let Some(battery) = self.stores.get_mut(usize::from(desc.battery_store)) {
             if burn.cranking {
-                self.battery -= f64::from(desc.starter_draw) * dt;
+                *battery -= f64::from(desc.starter_draw) * dt;
             }
             if burn.running {
-                self.battery += f64::from(desc.charge_rate) * dt;
+                *battery += f64::from(desc.charge_rate) * dt;
             }
         }
         self.clamp(desc);
@@ -136,9 +144,9 @@ mod tests {
 
     fn energie() -> EnergyDesc {
         EnergyDesc {
-            fuel_capacity: 40.0,
-            unit_mass: 0.75,
-            battery_capacity: 1.0,
+            capacities: [40.0, 1.0, 0.0, 0.0],
+            fuel_store: 0,
+            battery_store: 1,
             starter_draw: 0.02,
             charge_rate: 0.002,
             consumption: vec![[0.0, 0.4], [1.0, 9.0]],
@@ -158,8 +166,8 @@ mod tests {
     #[test]
     fn adr176_d3_un_vehicule_neuf_a_ses_reservoirs_pleins() {
         let e = EnergyState::full(&energie());
-        assert_eq!(e.fuel, 40.0);
-        assert_eq!(e.battery, 1.0);
+        assert_eq!(e.stores[0], 40.0);
+        assert_eq!(e.stores[1], 1.0);
         assert_eq!(EnergyState::full(&EnergyDesc::NONE), EnergyState::default());
     }
 
@@ -170,7 +178,11 @@ mod tests {
         for _ in 0..3600 {
             e.step(&energie(), tourne(1.0), 1.0);
         }
-        assert!((e.fuel - 31.0).abs() < 1e-6, "9 litres brûlés : {}", e.fuel);
+        assert!(
+            (e.stores[0] - 31.0).abs() < 1e-6,
+            "9 litres brûlés : {}",
+            e.stores[0]
+        );
         // Au demi-régime, la moitié.
         let mut moitie = EnergyState::full(&energie());
         let burn = Burn {
@@ -181,16 +193,20 @@ mod tests {
             moitie.step(&energie(), burn, 1.0);
         }
         assert!(
-            (moitie.fuel - 35.5).abs() < 1e-6,
+            (moitie.stores[0] - 35.5).abs() < 1e-6,
             "4,5 litres : {}",
-            moitie.fuel
+            moitie.stores[0]
         );
         // À mi-charge, la courbe donne 4,7 l/h.
         let mut milieu = EnergyState::full(&energie());
         for _ in 0..3600 {
             milieu.step(&energie(), tourne(0.5), 1.0);
         }
-        assert!((milieu.fuel - (40.0 - 4.7)).abs() < 1e-6, "{}", milieu.fuel);
+        assert!(
+            (milieu.stores[0] - (40.0 - 4.7)).abs() < 1e-6,
+            "{}",
+            milieu.stores[0]
+        );
     }
 
     #[test]
@@ -204,7 +220,7 @@ mod tests {
         for _ in 0..240 * 60 {
             e.step(&energie(), ralenti, 1.0 / 240.0);
         }
-        let brule = 40.0 - e.fuel;
+        let brule = 40.0 - e.stores[0];
         let attendu = 0.4 * (800.0 / 7000.0) / 60.0;
         assert!(
             (brule - attendu).abs() < attendu * 1e-4,
@@ -222,7 +238,7 @@ mod tests {
         for _ in 0..600 {
             e.step(&energie(), arrete, 0.1);
         }
-        assert_eq!(e.fuel, 40.0);
+        assert_eq!(e.stores[0], 40.0);
         let demarreur = Burn {
             running: false,
             cranking: true,
@@ -231,23 +247,26 @@ mod tests {
         for _ in 0..10 {
             e.step(&energie(), demarreur, 0.5);
         }
-        assert!((e.battery - 0.9).abs() < 1e-6, "5 s à 0,02 : {}", e.battery);
+        assert!(
+            (e.stores[1] - 0.9).abs() < 1e-6,
+            "5 s à 0,02 : {}",
+            e.stores[1]
+        );
         // Le moteur qui tourne la recharge, jusqu'à la capacité.
         for _ in 0..2000 {
             e.step(&energie(), tourne(0.0), 1.0);
         }
-        assert_eq!(e.battery, 1.0, "bornée à la capacité");
+        assert_eq!(e.stores[1], 1.0, "bornée à la capacité");
     }
 
     #[test]
     fn adr176_d3_le_reservoir_vide_manque_et_ne_descend_pas_sous_zero() {
         let mut e = EnergyState {
-            fuel: 1e-9,
-            battery: 0.0,
+            stores: [1e-9, 0.0, 0.0, 0.0],
         };
         assert!(!e.supply(&energie()).battery, "batterie vide");
         e.step(&energie(), tourne(1.0), 1.0);
-        assert_eq!(e.fuel, 0.0);
+        assert_eq!(e.stores[0], 0.0);
         assert!(!e.supply(&energie()).fuel, "réservoir vide");
     }
 
@@ -263,11 +282,10 @@ mod tests {
     #[test]
     fn adr176_d3_un_etat_relu_est_borne_aux_capacites() {
         let mut e = EnergyState {
-            fuel: 1e9,
-            battery: f64::NAN,
+            stores: [1e9, f64::NAN, 0.0, 0.0],
         };
         e.clamp(&energie());
-        assert_eq!(e.fuel, 40.0);
-        assert_eq!(e.battery, 0.0);
+        assert_eq!(e.stores[0], 40.0);
+        assert_eq!(e.stores[1], 0.0);
     }
 }

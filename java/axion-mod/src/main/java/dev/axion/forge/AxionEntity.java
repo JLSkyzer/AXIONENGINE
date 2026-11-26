@@ -133,9 +133,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private VehicleReport vehicleReport;
 
-    /** Le carburant et la batterie (ADR-176 D3) ; {@code NaN} tant qu'on ne les a pas lus. */
-    private double fuel = Double.NaN;
-    private double battery = Double.NaN;
+    /** Le contenu des réserves, au rang du natif (ADR-176 D3, ADR-182) ; {@code null} tant qu'on ne les a pas lues. */
+    private double[] stores;
     /** L'usure des pneus gardée par la sauvegarde, par nom de roue, dans l'ordre où elle l'a écrite (ADR-176 D4). */
     private Map<String, Double> savedWheels = Map.of();
     /** Vrai une fois que l'usure de chaque roue a été lue de la sauvegarde, la definition connue. */
@@ -1460,7 +1459,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                 LOGGER.warn("AXION : E-7011 assembly {} — {}", getUUID(), line);
             }
             parameters = fresh;
-            if (!Double.isNaN(fuel)) {
+            if (stores != null) {
                 syncFuelMass();
             }
         } else if (held != null && (held != variedBy || held.version() != variedVersion)) {
@@ -1517,7 +1516,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private double receivedFuelMass() {
         dev.axion.definition.EnergySpec spec = energySpec();
-        return spec.unitMass() > 0f ? spec.fuelMassOfRatio(receivedVehicle.fuelRatio()) : 0.0;
+        return spec.massDeclared() ? spec.massOfRatios(receivedVehicle::storeRatio) : 0.0;
     }
 
     private dev.axion.definition.Tuning tuning() {
@@ -3322,8 +3321,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // d'une sauvegarde n'est pas partie au natif, un rapport ne la remplace pas.
         if (energySpec().declared() && !energyPending) {
             initEnergy();
-            fuel = report.fuel();
-            battery = report.battery();
+            for (int slot = 0; slot < stores.length; slot++) {
+                stores[slot] = report.store(slot);
+            }
             syncFuelMass();
         }
     }
@@ -3335,30 +3335,50 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * Donne au carburant et à la batterie leur valeur de départ, la première fois qu'on les lit : celle que la sauvegarde
-     * gardait, bornée aux capacités, ou le plein d'une assembly neuve (ADR-176 D3). L'énergie relue part au natif, qui
-     * naît plein.
+     * Donne aux réserves leur contenu de départ, la première fois qu'on les lit : celui que la sauvegarde gardait, borné
+     * aux capacités, ou le plein d'une assembly neuve (ADR-176 D3). L'énergie relue part au natif, qui naît plein.
      */
     private void initEnergy() {
-        if (!Double.isNaN(fuel)) {
+        if (stores != null) {
             return;
         }
         dev.axion.definition.EnergySpec spec = energySpec();
-        if (savedEnergy != null) {
-            fuel = Math.min(savedEnergy[0], spec.fuelCapacity());
-            battery = Math.min(savedEnergy[1], spec.batteryCapacity());
-            energyPending = true;
-        } else {
-            fuel = spec.fuelCapacity();
-            battery = spec.batteryCapacity();
+        double[] initial = new double[dev.axion.definition.EnergySpec.MAX_STORES];
+        for (int slot = 0; slot < initial.length; slot++) {
+            initial[slot] = spec.capacity(slot);
         }
+        if (savedEnergy != null) {
+            if (spec.fuelStore() >= 0) {
+                initial[spec.fuelStore()] = Math.min(savedEnergy[0], spec.fuelCapacity());
+            }
+            if (spec.batteryStore() >= 0) {
+                initial[spec.batteryStore()] = Math.min(savedEnergy[1], spec.batteryCapacity());
+            }
+            energyPending = true;
+        }
+        stores = initial;
         syncFuelMass();
+    }
+
+    /** {@return le contenu de la réserve au rang {@code slot}, 0 sans réserve à ce rang} */
+    private double stored(int slot) {
+        initEnergy();
+        return energySpec().capacity(slot) > 0f ? stores[slot] : 0.0;
+    }
+
+    /** {@return le contenu des 4 rangs, tel que {@code SET_ENERGY} le porte} */
+    float[] energyAmounts() {
+        initEnergy();
+        float[] amounts = new float[stores.length];
+        for (int slot = 0; slot < stores.length; slot++) {
+            amounts[slot] = (float) stores[slot];
+        }
+        return amounts;
     }
 
     /** {@return le carburant restant, en litres ; 0 sans réservoir (ADR-176 D3)} */
     public double fuel() {
-        initEnergy();
-        return energySpec().fuelCapacity() > 0f ? fuel : 0.0;
+        return stored(energySpec().fuelStore());
     }
 
     /**
@@ -3379,11 +3399,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return 0.0;
         }
         initEnergy();
-        double before = fuel;
-        fuel = Math.min(spec.fuelCapacity(), fuel + litres);
+        int slot = spec.fuelStore();
+        double before = stores[slot];
+        stores[slot] = Math.min(spec.fuelCapacity(), before + litres);
         energyPending = true;
         syncFuelMass();
-        return fuel - before;
+        return stores[slot] - before;
     }
 
     /**
@@ -3402,14 +3423,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return;
         }
         initEnergy();
-        battery = Math.min(spec.batteryCapacity(), charge);
+        stores[spec.batteryStore()] = Math.min(spec.batteryCapacity(), charge);
         energyPending = true;
     }
 
     /** {@return la charge de la batterie ; 0 sans batterie (ADR-176 D3)} */
     public double battery() {
-        initEnergy();
-        return energySpec().batteryCapacity() > 0f ? battery : 0.0;
+        return stored(energySpec().batteryStore());
     }
 
     /**
@@ -3432,11 +3452,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private void syncFuelMass() {
         dev.axion.definition.EnergySpec spec = energySpec();
-        if (parameters == null || level().isClientSide() || !(spec.unitMass() > 0f)) {
+        if (parameters == null || level().isClientSide() || stores == null || !spec.massDeclared()) {
             return;
         }
         parameters.engineCause(dev.axion.definition.EnergySpec.MASS_CAUSE, dev.axion.api.assembly.Parameters.MASS,
-                spec.fuelMass(fuel));
+                spec.mass(stores));
     }
 
     /**
@@ -3452,12 +3472,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         DriverInput held = driver == null ? DriverInput.ABSENT : driver;
         VehicleInput input = held.input();
         dev.axion.definition.EnergySpec energy = energySpec();
+        float[] ratios = new float[dev.axion.definition.EnergySpec.MAX_STORES];
+        for (int slot = 0; slot < ratios.length; slot++) {
+            ratios[slot] = dev.axion.net.PredictedStates.ratio(vehicleReport.store(slot), energy.capacity(slot));
+        }
         return AssemblyState.Vehicle.of(vehicleReport.rpm(), vehicleReport.load(), vehicleReport.gear(),
                 vehicleReport.flags(), input.throttle(), input.brake(), vehicleReport.steer(),
-                held.present() ? input.handbrake() : 1f,
-                dev.axion.net.PredictedStates.ratio(vehicleReport.fuel(), energy.fuelCapacity()),
-                dev.axion.net.PredictedStates.ratio(vehicleReport.battery(), energy.batteryCapacity()),
-                (float) wetness);
+                held.present() ? input.handbrake() : 1f, ratios, (float) wetness);
     }
 
     /**
@@ -3537,7 +3558,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     void forgetSimulation() {
         simulated = false;
         // Le prochain corps natif naît plein : l'énergie que Java tient lui est rendue.
-        if (!Double.isNaN(fuel) && energySpec().declared()) {
+        if (stores != null && energySpec().declared()) {
             energyPending = true;
         }
         // De même l'usure des pneus : le corps neuf naît avec des pneus neufs.
@@ -3952,8 +3973,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         wearInit = false;
         wearPending = false;
         savedEnergy = AssemblyTags.energy(stored);
-        fuel = Double.NaN;
-        battery = Double.NaN;
+        stores = null;
         energyPending = false;
         savedState = PersistedState.read(stored).orElse(null);
         if (savedState != null) {
@@ -4072,8 +4092,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-176 D3 : le carburant et la batterie, tels que le natif les a rapportés ; sans énergie déclarée, la clé
         // gardée du NBT reste.
         if (!inert && energySpec().declared()) {
-            initEnergy();
-            AssemblyTags.putEnergy(stored, fuel, battery);
+            AssemblyTags.putEnergy(stored, fuel(), battery());
         }
         // ADR-176 D4 : l'usure des pneus, par nom de roue ; celle d'une roue que la definition ne déclare plus reste.
         initWear();
