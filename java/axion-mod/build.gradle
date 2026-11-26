@@ -241,6 +241,16 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmPlein {
+            // ADR-176 : le film du plein (FilmDuPlein) : la jauge se vide, panne sèche, plein, départ.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-plein')
+            property 'axion.film', 'plein'
+            property 'axion.souris.libre', 'true'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmVues {
             // ADR-170, tranche 7b : la scene du film du vehicule, filmee par la camera de vehicule elle-meme (F5).
             parent minecraft.runs.client
@@ -688,6 +698,17 @@ tasks.matching { it.name == 'runFilmVehicule' }.configureEach {
         // Le contenu, pas le dossier : un dossier ouvert ailleurs ne doit pas faire échouer le tournage.
         delete fileTree(rootProject.file('.runs/film/axion-film'))
         delete rootProject.file('.runs/film/axion/world')
+    }
+}
+
+// Le film du plein (ADR-176), de meme.
+tasks.matching { it.name == 'runFilmPlein' }.configureEach {
+    standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/film-plein'))
+        delete rootProject.file('.runs/film-plein/saves/axion-film-plein')
+        delete fileTree(rootProject.file('.runs/film-plein/axion-film'))
+        delete rootProject.file('.runs/film-plein/axion/world')
     }
 }
 

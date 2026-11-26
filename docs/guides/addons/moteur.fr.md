@@ -66,6 +66,8 @@ Une definition au schéma 7 peut déclarer son énergie ([ADR-176](../../decisio
   démarreur ne part pas.
 - **Un véhicule endormi ne brûle rien** : la combustion suit l'éveil, comme tout le reste de la simulation.
 - Sans `energy`, rien ne change.
+- L'énergie nourrit un groupe motopropulseur : une definition sans `powertrain` — une remorque — ne peut pas la
+  déclarer.
 
 - **La masse suit le carburant** : `physics.mass` est la masse **à sec**, et le moteur y ajoute `unit_mass` × le carburant
   restant — par crans de 1/255 de la capacité, pour ne pas réveiller le véhicule à chaque goutte. La cause s'appelle

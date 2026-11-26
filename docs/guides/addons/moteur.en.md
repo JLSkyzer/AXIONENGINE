@@ -65,6 +65,7 @@ A schema 7 definition can declare its energy ([ADR-176](../../decisions/ADR-176.
   starter does not turn.
 - **A sleeping vehicle burns nothing**: combustion follows being awake, like the rest of the simulation.
 - With no `energy`, nothing changes.
+- Energy feeds a powertrain: a definition without `powertrain` — a trailer — cannot declare it.
 
 - **Mass follows fuel**: `physics.mass` is the **dry** mass, and the engine adds `unit_mass` × the remaining fuel — in steps
   of 1/255 of the capacity, so the vehicle is not woken for every drop. The cause is called `axion:energy`, it shows in

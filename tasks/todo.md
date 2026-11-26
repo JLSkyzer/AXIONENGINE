@@ -3900,9 +3900,12 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              - [x] un changement du seul modèle relie les assemblies.
            - Restes de CAP-12 et CAP-20 (cœur livré). Faits le 2026-11-25 : guide moteur (FR, EN), usure visible actée
              dans ADR-176, `energy.fuel` testé, GameTest de `/axion energy` (celui d'`Assembly.energy()` existait). Restent :
-             essai à deux processus du contact, de la masse et du mouillé prédits et GameTest des réservoirs attelés FAITS (2026-11-26 ; corrigé : la prédiction pesait sans le carburant et se dessinait sèche) ; une remorque sans moteur n'a pas de réservoir (question) ; essai à deux clients ou report ; film du
-             plein et jauge ; grille D7 d'ADR-176. Faits : annexe A.7 et A27 à jour, la neige (ADR-180 14c), le mouillé lu
-             par `/axion wear` (ADR-181, 2026-11-26).
+             essai à deux processus du contact, de la masse et du mouillé prédits (corrigé : la prédiction pesait sans le
+             carburant et se dessinait sèche), GameTest des réservoirs attelés et film du plein (`runFilmPlein`) FAITS le
+             2026-11-26. Ouverts : essai à deux clients ou report ; une remorque sans moteur n'a pas de réservoir
+             (question) ; le mouillé sans vue d'API propre (la source `vehicle.wet` le donne) ; grille D7 d'ADR-176 à
+             prononcer. Faits : annexe A.7 et A27 à jour, la neige (ADR-180 14c), le mouillé lu par `/axion wear`
+             (ADR-181, 2026-11-26).
            - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`) ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,
