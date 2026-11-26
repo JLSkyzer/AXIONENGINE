@@ -172,6 +172,7 @@ minecraft {
             parent minecraft.runs.client
             workingDirectory rootProject.file('.runs/essai-porteur')
             property 'axion.essai.porteur', (project.findProperty('essaiLatence') ?: '100').toString()
+            property 'axion.essai.gigue', (project.findProperty('essaiGigue') ?: '0').toString()
             property 'axion.essai.film', project.hasProperty('essaiFilm').toString()
             property 'axion.souris.libre', 'true'
         }

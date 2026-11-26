@@ -67,7 +67,7 @@ def valeurs_lues(releve: list[str], journal: list[str]) -> bool:
     return juste
 
 
-def essai(latence: int, film: bool, observateur: bool = False, assis: bool = False) -> bool:
+def essai(latence: int, film: bool, observateur: bool = False, assis: bool = False, gigue: int = 0) -> bool:
     """Joue l'essai ; rend vrai si le client est vert et le serveur sans correction ni expulsion."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     for fichier in (JOURNAL_SERVEUR, RAPPORT, RAPPORT_OBSERVATEUR):
@@ -102,7 +102,8 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
             regard = subprocess.Popen(commande, cwd=RACINE, stdout=sortie_regard, stderr=subprocess.STDOUT)
         journal_client = SORTIES / f"client-{latence}.log"
         with open(journal_client, "w", encoding="utf-8") as sortie:
-            commande = [str(GRADLE), ":axion-mod:runEssaiClientPorteur", f"-PessaiLatence={latence}"]
+            commande = [str(GRADLE), ":axion-mod:runEssaiClientPorteur", f"-PessaiLatence={latence}",
+                        f"-PessaiGigue={gigue}"]
             # Avec un observateur, c'est lui qu'on filme : deux clients qui encodent à la fois se ralentiraient.
             commande += ["-PessaiFilm"] if film and not observateur else []
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
@@ -164,6 +165,10 @@ def main() -> int:
                         help="filmer l'essai : le client (avec --observateur, l'observateur) tourne dans"
                              " .runs/essai-*/axion-film, tools/film/encoder.py fait le MP4")
     parser.add_argument("--observateur", action="store_true", help="un second client juge ce qu'il voit du porté")
+    parser.add_argument("--gigue", type=int, default=0, metavar="MS",
+                        help="gigue du relais : chaque envoi attend de 0 à MS millisecondes de plus, au hasard")
+    parser.add_argument("--retard", action="store_true",
+                        help="relever le retard réel du porté face à celui du serveur ; puis tools/campagne/retard.py")
     parser.add_argument("--siege", metavar="VEHICULE",
                         help="asseoir le porté dans ce véhicule d'essai : seul le verdict de l'observateur compte")
     parser.add_argument("--valeurs", action="store_true",
@@ -178,8 +183,10 @@ def main() -> int:
             os.environ["AXION_ESSAI_PLACE"] = arguments.place
         if arguments.valeurs:
             os.environ["AXION_ESSAI_VALEURS"] = "1"
+        if arguments.retard:
+            os.environ["AXION_ESSAI_RETARD"] = "1"
         vert = essai(arguments.latence, arguments.film, arguments.observateur or bool(arguments.siege),
-                     bool(arguments.siege))
+                     bool(arguments.siege), arguments.gigue)
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
         print(f"ÉCHEC : {faute}")
         vert = False

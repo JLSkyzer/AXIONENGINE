@@ -63,7 +63,14 @@ public final class EssaiPorteur {
      * et fait pleuvoir, puis dit ses valeurs, que l'observateur doit lire chez lui (ADR-176, ADR-182).
      */
     private static final boolean VALEURS = "1".equals(System.getenv("AXION_ESSAI_VALEURS"));
+    /**
+     * Sous {@code AXION_ESSAI_RETARD=1} : les deux processus disent au journal de quoi calculer le retard réel du porté face
+     * à celui que le serveur lui prête ({@code tools/campagne/retard.py}, ADR-184).
+     */
+    private static final boolean RETARD = "1".equals(System.getenv("AXION_ESSAI_RETARD"));
     private static final long DELAI_MS = Long.getLong("axion.essai.porteur", -1L);
+    /** La gigue du relais, en millisecondes : chaque morceau attend de 0 à tant de plus, au hasard. */
+    private static final long GIGUE_MS = Long.getLong("axion.essai.gigue", 0L);
     private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
 
     private static final int DUREE_SERVEUR_S = 300;
@@ -125,6 +132,16 @@ public final class EssaiPorteur {
             }
         }
 
+        /** @param event la fin d'un tick du serveur, avant le transport : la position telle que le porté l'a envoyée */
+        @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+        public static void releverLeRecu(TickEvent.ServerTickEvent event) {
+            if (SERVEUR && RETARD && event.phase == TickEvent.Phase.END && joueur != null && vehicule != null
+                    && tick >= CHARGEMENT) {
+                // Ce gestionnaire passe avant `mener`, qui compte le tick : le même numéro que son relevé.
+                LOGGER.info("[retard] recu {} {} {} {}", tick + 1, joueur.getX(), joueur.getY(), joueur.getZ());
+            }
+        }
+
         /** @param event la fin d'un tick du serveur ; relevé après le transport (ServerCarry) */
         @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
         public static void mener(TickEvent.ServerTickEvent event) {
@@ -182,6 +199,13 @@ public final class EssaiPorteur {
                 // L'observateur suit le véhicule, de trois quarts et au-dessus.
                 spectateur.teleportTo(monde, vehicule.getX() + 5.0, vehicule.getY() + 3.5, vehicule.getZ() + 6.0, 140f,
                         22f);
+            }
+            double[] gardee = RETARD && tick >= CHARGEMENT ? vehicule.carryPoses(0) : null;
+            if (gardee != null) {
+                CarrySupports.Support porte = CarrySupports.of(joueur);
+                LOGGER.info("[retard] choisi {} {} {} {} {} {} {} {} {} {}", tick, porte == null ? -1 : porte.lag(),
+                        dev.axion.forge.net.AxionNetwork.roundTripTicks(joueur.getUUID()), gardee[0], gardee[1],
+                        gardee[2], gardee[3], gardee[4], gardee[5], gardee[6]);
             }
             // Le témoin : le véhicule conduit seul, loin du joueur, avec la même commande, puis freiné.
             if (tick >= 20 && tick < CHARGEMENT) {
@@ -319,6 +343,11 @@ public final class EssaiPorteur {
                         "AXION ENGINE, ADR-178");
             }
             mesures++;
+            if (RETARD && support != null && support.assembly() == porteur && support.local() != null) {
+                double[] sienne = support.local();
+                LOGGER.info("[retard] envoye {} {} {} {} {} {}", minecraft.player.getX(), minecraft.player.getY(),
+                        minecraft.player.getZ(), sienne[0], sienne[1], sienne[2]);
+            }
             Vec3 la = porteur.position();
             parcours += la.subtract(avant).horizontalDistance();
             avant = la;
@@ -385,7 +414,7 @@ public final class EssaiPorteur {
             String adresse = HOTE + ":" + PORT;
             if (DELAI_MS > 0) {
                 try {
-                    relais = new RelaisLatence(PORT_RELAIS, HOTE, PORT, DELAI_MS, 0L);
+                    relais = new RelaisLatence(PORT_RELAIS, HOTE, PORT, DELAI_MS, GIGUE_MS);
                     adresse = HOTE + ":" + PORT_RELAIS;
                 } catch (IOException faute) {
                     LOGGER.error("[porteur] relais de latence impossible : {}", faute.toString());
