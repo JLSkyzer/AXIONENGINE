@@ -2817,3 +2817,18 @@ images/s.
 
 **Règle.** Deux passes au moins avant de publier un chiffre ; s'ils divergent, une troisième, et l'écart se dit sans
 l'expliquer.
+
+---
+
+**[2026-11-26] | Un verdict de banc rouge sur GitHub seulement, pendant une journée | Un verdict qui juge une position
+après une attente juge aussi ce qui bouge pendant l'attente.**
+
+**Ce qui a mal tourné.** ADR-158 D5 comparait la position du joueur 20 ticks après la descente à la sortie choisie :
+sur la machine plus lente de GitHub, le joueur, posé en l'air, tombait contre la caisse et la poussée d'ADR-178 le
+déplaçait de 7 à 9 cm.
+
+**Cause.** L'attente servait à laisser arriver la position, mais laissait aussi le joueur tomber ; ADR-178, livré le
+même jour, a changé ce qui lui arrive pendant la chute.
+
+**Règle.** Juger un évènement au moment où il a lieu (ou au plus près sur la fenêtre), et juger à part l'état d'après ;
+quand une nouvelle physique touche un joueur, relire les bancs qui le suivent.

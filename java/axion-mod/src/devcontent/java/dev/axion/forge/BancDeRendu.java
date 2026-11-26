@@ -449,6 +449,8 @@ public final class BancDeRendu {
 
     /** ADR-158 D5 : la sortie attendue du joueur, et sa pose d'avant, à lui rendre. */
     private static Vec3 sortieAttendue;
+    /** Le plus près de cette sortie que le client du joueur descendu soit passé, à l'horizontale. */
+    private static double sortieLaPlusProche;
     private static Vec3 joueurAvant;
     private static float lacetAvant;
     private static float tangageAvant;
@@ -874,6 +876,7 @@ public final class BancDeRendu {
                 joueur.setGameMode(GameType.CREATIVE);
                 dev.axion.seat.SeatPlacement.Pose pose = siege.seatPose(1);
                 sortieAttendue = new Vec3(pose.x(), pose.y(), pose.z() + 1.5);
+                sortieLaPlusProche = Double.POSITIVE_INFINITY;
                 passagerAssis = siege.sit(joueur, 1);
             });
             jusqua("le joueur assis chez le client", 60, mc -> mc.player.getVehicle() instanceof AxionEntity);
@@ -887,7 +890,8 @@ public final class BancDeRendu {
             une("presser sneak", mc -> mc.options.keyShift.setDown(true));
             jusqua("le joueur descendu chez le client", 60, mc -> mc.player.getVehicle() == null);
             une("relâcher sneak", mc -> mc.options.keyShift.setDown(false));
-            pendant("le joueur posé", 20);
+            pendant("le joueur posé", 20, mc -> sortieLaPlusProche = Math.min(sortieLaPlusProche,
+                    ecartALaSortie(mc.player.getX(), mc.player.getZ())));
             une("juger ADR-158 D5", BancDeRendu::jugerSortieClient);
             // ADR-158 D4 : le client envoie ses entrées, au volant ; le serveur les reçoit.
             serveur("mettre le joueur au volant", s -> passagerAssis =
@@ -2655,15 +2659,28 @@ public final class BancDeRendu {
                 pire, ecartPieds, ecartCentre, detail));
     }
 
+    private static double ecartALaSortie(double x, double z) {
+        return Math.hypot(x - sortieAttendue.x, z - sortieAttendue.z);
+    }
+
+    /**
+     * ADR-158 D5 : le client prend la sortie que le serveur a choisie, et reste là où le serveur le tient. La sortie se
+     * juge au plus près de la descente : posé en l'air, le joueur tombe ensuite, et une assembly plus large en dessous le
+     * repousse (ADR-178 D5) — sur GitHub, de 7 à 9 cm, au bord de la caisse.
+     */
     private static void jugerSortieClient(Minecraft minecraft) {
-        double horizontal = Math.hypot(minecraft.player.getX() - sortieAttendue.x, minecraft.player.getZ() - sortieAttendue.z);
-        boolean vert = passagerAssis && horizontal < 0.05;
+        net.minecraft.server.level.ServerPlayer tenu = minecraft.getSingleplayerServer() == null ? null
+                : minecraft.getSingleplayerServer().getPlayerList().getPlayers().get(0);
+        double accord = tenu == null ? Double.NaN
+                : Math.hypot(minecraft.player.getX() - tenu.getX(), minecraft.player.getZ() - tenu.getZ());
+        double horizontal = sortieLaPlusProche;
+        boolean vert = passagerAssis && horizontal < 0.05 && accord < 0.05;
         dev.axion.seat.SeatPlacement.Pose assise = siege.seatPose(1);
         // Le quaternion de la caisse au repos : (0, 0, 0, 1) à plat.
         String repos = assise == null ? "?" : String.format(Locale.ROOT, "(%.3f, %.3f, %.3f, %.3f)", assise.rotation()[0],
                 assise.rotation()[1], assise.rotation()[2], assise.rotation()[3]);
-        // Un écart qu'on ne reproduit pas en local (0,068 à 0,093 sur GitHub, 0,001 ici) se diagnostique par ses positions :
-        // le joueur, la sortie attendue, le siège au serveur et chez le client, le joueur au serveur.
+        // Un écart se diagnostique par ses positions : le joueur, la sortie attendue, le siège au serveur et chez le client,
+        // le joueur au serveur.
         String positions = "";
         if (!vert) {
             AxionEntity.RenderPose auClient = minecraft.level.getEntity(siege.getId()) instanceof AxionEntity assembly
@@ -2683,9 +2700,9 @@ public final class BancDeRendu {
                             auServeur.getY(), auServeur.getZ()));
         }
         RAPPORT.noter("ADR-158 D5", vert, String.format(Locale.ROOT,
-                "joueur assis : %s ; descendu au sneak, son client est à %.3f bloc, à l'horizontale, de la sortie que le"
-                        + " serveur a choisie (au plus 0,05) ; orientation de la caisse %s%s", passagerAssis, horizontal,
-                repos, positions));
+                "joueur assis : %s ; descendu au sneak, son client passe à %.3f bloc, à l'horizontale, de la sortie que le"
+                        + " serveur a choisie (au plus 0,05), et finit à %.3f bloc de là où le serveur le tient (au plus"
+                        + " 0,05) ; orientation de la caisse %s%s", passagerAssis, horizontal, accord, repos, positions));
     }
 
     private static void jugerSiegeClient(Minecraft minecraft) {
