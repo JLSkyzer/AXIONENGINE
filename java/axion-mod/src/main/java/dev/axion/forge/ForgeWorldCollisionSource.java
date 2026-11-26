@@ -98,13 +98,20 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
         boolean[] full = new boolean[SIZE * SIZE * SIZE];
         int[] fullMaterials = new int[SIZE * SIZE * SIZE];
         Arrays.fill(fullMaterials, -1);
-        float[] fluidHeights = new float[SIZE * SIZE * SIZE];
-        Map<String, Integer> blockCounts = new HashMap<>();
-        Map<String, BlockState> representative = new HashMap<>();
-        Map<BlockState, Integer> stateMaterials = new IdentityHashMap<>();
-        Map<Integer, Integer> materialBlocks = new HashMap<>();
+        float[] fluidHeights = null;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         boolean overBudget = false;
+        // Les états lus d'abord : le bloc au-dessus de chacun, dans la section, est déjà là (ADR-180 D3).
+        BlockState[] states = new BlockState[SIZE * SIZE * SIZE];
+        for (int lx = 0; lx < SIZE; lx++) {
+            for (int ly = 0; ly < SIZE; ly++) {
+                for (int lz = 0; lz < SIZE; lz++) {
+                    states[WorldTileGeometry.cellIndex(lx, ly, lz)] =
+                            level.getBlockState(pos.set(ox + lx, oy + ly, oz + lz));
+                }
+            }
+        }
+        Census census = new Census(mapping, fallback);
 
         // Toute la section est lue, même une fois la collision passée en champ de hauteurs :
         // l'eau, elle, se lit jusqu'au bout.
@@ -112,15 +119,20 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
             for (int ly = 0; ly < SIZE; ly++) {
                 for (int lz = 0; lz < SIZE; lz++) {
                     pos.set(ox + lx, oy + ly, oz + lz);
-                    BlockState state = level.getBlockState(pos);
+                    BlockState state = states[WorldTileGeometry.cellIndex(lx, ly, lz)];
 
                     VoxelShape shape = overBudget ? null : state.getCollisionShape(level, pos);
                     if (shape != null && !shape.isEmpty()) {
-                        // ADR-180 D1 : chaque bloc garde son matériau, résolu une fois par état.
-                        BlockState covering = coveringAbove(level, mapping, pos);
-                        int material = stateMaterials.computeIfAbsent(covering == null ? state : covering,
-                                block -> indexOf(materialOf(mapping, block, fallback)));
-                        materialBlocks.merge(material, 1, Integer::sum);
+                        // ADR-180 D1 : chaque bloc garde son matériau — ou celui du bloc qui le couvre (D3) —, résolu
+                        // une fois par état.
+                        BlockState covering = null;
+                        if (mapping.hasCovers()) {
+                            BlockPos above = pos.above();
+                            BlockState on = ly < SIZE - 1 ? states[WorldTileGeometry.cellIndex(lx, ly + 1, lz)]
+                                    : level.getBlockState(above);
+                            covering = census.covers(on) && on.getCollisionShape(level, above).isEmpty() ? on : null;
+                        }
+                        int material = census.solid(state, covering == null ? state : covering);
                         // La forme lue elle-même, et non le drapeau mis en cache par l'état :
                         // celui-ci est calculé hors contexte, la forme d'ici peut en dépendre.
                         if (Block.isShapeFullBlock(shape)) {
@@ -140,12 +152,6 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                                         });
                             }
                         }
-                        ResourceLocation id = ForgeRegistries.BLOCKS.getKey(state.getBlock());
-                        if (id != null) {
-                            String key = id.toString();
-                            blockCounts.merge(key, 1, Integer::sum);
-                            representative.putIfAbsent(key, state);
-                        }
                         // Les formes partielles seules dépassent déjà le plafond : inutile de
                         // fusionner, la section bascule en champ de hauteurs.
                         if (boxes.size() > WorldTileGeometry.MAX_TILE_BOXES) {
@@ -154,6 +160,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                     }
 
                     if (!state.getFluidState().isEmpty()) {
+                        fluidHeights = fluidHeights == null ? new float[SIZE * SIZE * SIZE] : fluidHeights;
                         fluidHeights[WorldTileGeometry.cellIndex(lx, ly, lz)] =
                                 state.getFluidState().getHeight(level, pos);
                     }
@@ -184,10 +191,11 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                     + " boîtes (plus de {}) : collision en champ de hauteurs conservateur (R-641)",
                     sectionX, sectionY, sectionZ, dimension, WorldTileGeometry.MAX_TILE_BOXES);
         }
-        BlockMaterials.Material material = dominantMaterial(mapping, blockCounts, representative, fallback);
+        BlockMaterials.Material material = census.dominant();
         // Fiche 5.30, étape 2, appliquée à l'eau (R-642) : une liste compacte, et non une boîte
         // par bloc d'eau — 3 840 pour une section de lac, que le natif garderait et parcourrait.
-        float[][] fluidBoxes = WorldTileGeometry.mergeFluids(fluidHeights).toArray(new float[0][]);
+        float[][] fluidBoxes = fluidHeights == null ? new float[0][]
+                : WorldTileGeometry.mergeFluids(fluidHeights).toArray(new float[0][]);
         float fluidDensity = fluidBoxes.length == 0 ? 0f : WATER_DENSITY;
 
         int dominant = indexOf(material);
@@ -198,7 +206,7 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
             collision = new CollisionShape.Boxes(boxes.toArray(new float[0][]), dominant);
         } else {
             WorldTileGeometry.TilePalette tile = WorldTileGeometry.palette(
-                    boxMaterials.stream().mapToInt(Integer::intValue).toArray(), materialBlocks, dominant);
+                    boxMaterials.stream().mapToInt(Integer::intValue).toArray(), census.materialBlocks(), dominant);
             collision = new CollisionShape.Boxes(boxes.toArray(new float[0][]), tile.material(), tile.palette(),
                     tile.ranks());
         }
@@ -249,25 +257,133 @@ public final class ForgeWorldCollisionSource implements WorldCollisionSource {
                 0f);
     }
 
-    private static BlockMaterials.Material dominantMaterial(
-            BlockMaterials mapping,
-            Map<String, Integer> counts,
-            Map<String, BlockState> representative,
-            BlockMaterials.Material fallback) {
-        String dominant = null;
-        int best = 0;
-        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-            if (entry.getValue() > best) {
-                best = entry.getValue();
-                dominant = entry.getKey();
+    /** Un état de bloc rencontré dans la tuile en cours de lecture. */
+    private static final class Seen {
+        /** Le contact qu'il donne aux blocs qu'il habille, -1 tant qu'il n'en a habillé aucun. */
+        private int material = -1;
+        /** Les blocs à collision qui ont son contact. */
+        private int clad;
+        /** Le compte de son bloc, {@code null} tant qu'il n'a pas eu de collision. */
+        private Tally own;
+        /** Vrai ou faux une fois demandé : le mappage le dit-il couvrant. */
+        private Boolean cover;
+    }
+
+    /** Un bloc à collision de la tuile : son premier état rencontré et son nombre. */
+    private static final class Tally {
+        private final BlockState first;
+        private int count;
+
+        private Tally(BlockState first) {
+            this.first = first;
+        }
+    }
+
+    /**
+     * Ce qu'une tuile en cours de lecture sait de ses blocs. Chaque état se résout une fois — son contact, s'il couvre —
+     * et les comptes se tiennent par état et par bloc ; le nom en texte d'un bloc ne se calcule qu'à la fin, une fois par
+     * bloc : le calculer à chaque case prenait près de la moitié du temps d'une tuile (profil du 2026-11-25).
+     */
+    private final class Census {
+        private final BlockMaterials mapping;
+        private final BlockMaterials.Material fallback;
+        private final Map<BlockState, Seen> states = new IdentityHashMap<>();
+        private final Map<Block, Tally> byBlock = new IdentityHashMap<>();
+        /** Les états qui ont donné un contact, dans l'ordre de leur première case. */
+        private final List<Seen> claddings = new ArrayList<>();
+        /** Les blocs à collision, dans l'ordre de leur première case. */
+        private final List<Tally> blocks = new ArrayList<>();
+        private BlockState lastState;
+        private Seen lastSeen;
+
+        private Census(BlockMaterials mapping, BlockMaterials.Material fallback) {
+            this.mapping = mapping;
+            this.fallback = fallback;
+        }
+
+        private Seen seen(BlockState state) {
+            return states.computeIfAbsent(state, ignored -> new Seen());
+        }
+
+        /** {@return vrai si le mappage dit cet état couvrant (ADR-180 D3)} Sa forme, elle, se lit à sa place. */
+        private boolean covers(BlockState state) {
+            if (state.isAir()) {
+                return false;
             }
+            Seen seen = seen(state);
+            if (seen.cover == null) {
+                ResourceLocation id = ForgeRegistries.BLOCKS.getKey(state.getBlock());
+                seen.cover = id != null && mapping.covers(id.toString());
+            }
+            return seen.cover;
         }
-        if (dominant == null) {
-            return fallback;
+
+        /**
+         * Compte un bloc à collision.
+         *
+         * @param state le bloc
+         * @param cladding l'état qui lui donne son contact : lui-même, ou celui qui le couvre
+         * @return l'index de son contact dans la table de la session
+         */
+        private int solid(BlockState state, BlockState cladding) {
+            // Le terrain est fait de suites du même état : la table n'est lue qu'au changement.
+            if (state != lastState) {
+                lastState = state;
+                lastSeen = seen(state);
+            }
+            Seen self = lastSeen;
+            Seen contact = cladding == state ? self : seen(cladding);
+            if (contact.material < 0) {
+                contact.material = indexOf(materialOf(mapping, cladding, fallback));
+                claddings.add(contact);
+            }
+            contact.clad++;
+            if (self.own == null) {
+                self.own = byBlock.computeIfAbsent(state.getBlock(), ignored -> {
+                    Tally tally = new Tally(state);
+                    blocks.add(tally);
+                    return tally;
+                });
+            }
+            self.own.count++;
+            return contact.material;
         }
-        List<String> tags = new ArrayList<>();
-        representative.get(dominant).getTags().forEach(tag -> tags.add(tag.location().toString()));
-        return mapping.resolve(dominant, tags);
+
+        /** {@return le nombre de blocs de chaque contact} */
+        private Map<Integer, Integer> materialBlocks() {
+            Map<Integer, Integer> counts = new HashMap<>();
+            claddings.forEach(seen -> counts.merge(seen.material, seen.clad, Integer::sum));
+            return counts;
+        }
+
+        /** {@return le contact du bloc le plus nombreux (R-643), celui de repli sans bloc à collision} */
+        private BlockMaterials.Material dominant() {
+            // Les mêmes noms, ajoutés dans l'ordre des cases : à égalité, le même bloc l'emporte qu'en comptant par nom.
+            Map<String, Integer> counts = new HashMap<>();
+            Map<String, BlockState> representative = new HashMap<>();
+            for (Tally tally : blocks) {
+                ResourceLocation id = ForgeRegistries.BLOCKS.getKey(tally.first.getBlock());
+                if (id != null) {
+                    String key = id.toString();
+                    counts.merge(key, tally.count, Integer::sum);
+                    representative.putIfAbsent(key, tally.first);
+                }
+            }
+            String dominant = null;
+            int best = 0;
+            for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+                if (entry.getValue() > best) {
+                    best = entry.getValue();
+                    dominant = entry.getKey();
+                }
+            }
+            if (dominant == null) {
+                return fallback;
+            }
+            List<String> tags = new ArrayList<>();
+            representative.get(dominant).getTags().forEach(tag -> tags.add(tag.location().toString()));
+            return mapping.resolve(dominant, tags);
+        }
     }
 
     /**

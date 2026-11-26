@@ -137,32 +137,55 @@ public final class WorldTileGeometry {
             throw new IllegalArgumentException(
                     "une grille d'occupation a " + cells + " cases, pas " + full.length);
         }
-        boolean[] free = full.clone();
+        int[] free = new int[cells];
+        for (int i = 0; i < cells; i++) {
+            free[i] = full[i] ? 0 : -1;
+        }
         List<float[]> boxes = new ArrayList<>();
+        merge(free, (box, material) -> boxes.add(box));
+        return boxes;
+    }
+
+    /**
+     * La fusion gloutonne, matériau compris : balayage en y, puis z, puis x ; chaque case libre ouvre une boîte de son
+     * matériau, étendue le long de x, puis de z, puis de y, sur les seules cases libres du même matériau. Les boîtes d'un
+     * matériau sont ainsi celles qu'il aurait seul, en un balayage pour tous.
+     *
+     * @param free le matériau de chaque case au rang {@link #cellIndex}, négatif si rien ; les cases couvertes y deviennent
+     *     négatives
+     * @param sink reçoit chaque boîte et son matériau, dans l'ordre du balayage
+     */
+    private static void merge(int[] free, java.util.function.ObjIntConsumer<float[]> sink) {
         for (int y = 0; y < SECTION_SIZE; y++) {
             for (int z = 0; z < SECTION_SIZE; z++) {
                 for (int x = 0; x < SECTION_SIZE; x++) {
-                    if (!free[cellIndex(x, y, z)]) {
+                    int material = free[cellIndex(x, y, z)];
+                    if (material < 0) {
                         continue;
                     }
                     int x1 = x + 1;
-                    while (x1 < SECTION_SIZE && free[cellIndex(x1, y, z)]) {
+                    while (x1 < SECTION_SIZE && free[cellIndex(x1, y, z)] == material) {
                         x1++;
                     }
                     int z1 = z + 1;
-                    while (z1 < SECTION_SIZE && allFree(free, x, x1, y, y + 1, z1, z1 + 1)) {
+                    while (z1 < SECTION_SIZE && allOf(free, material, x, x1, y, y + 1, z1, z1 + 1)) {
                         z1++;
                     }
                     int y1 = y + 1;
-                    while (y1 < SECTION_SIZE && allFree(free, x, x1, y1, y1 + 1, z, z1)) {
+                    while (y1 < SECTION_SIZE && allOf(free, material, x, x1, y1, y1 + 1, z, z1)) {
                         y1++;
                     }
-                    take(free, x, x1, y, y1, z, z1);
-                    boxes.add(new float[] {x, y, z, x1, y1, z1});
+                    for (int cx = x; cx < x1; cx++) {
+                        for (int cy = y; cy < y1; cy++) {
+                            for (int cz = z; cz < z1; cz++) {
+                                free[cellIndex(cx, cy, cz)] = -1;
+                            }
+                        }
+                    }
+                    sink.accept(new float[] {x, y, z, x1, y1, z1}, material);
                 }
             }
         }
-        return boxes;
     }
 
     /** Matériaux au plus dans la palette d'une tuile (ADR-180 D1). Miroir de {@code MAX_TILE_PALETTE} au natif. */
@@ -223,17 +246,16 @@ public final class WorldTileGeometry {
      * @return les boîtes
      */
     public static List<float[]> mergeByMaterial(int[] cells, java.util.List<Integer> materials) {
-        List<float[]> boxes = new ArrayList<>();
-        boolean[] mask = new boolean[cells.length];
-        for (int material : java.util.Arrays.stream(cells).filter(m -> m >= 0).distinct().sorted().toArray()) {
-            for (int i = 0; i < cells.length; i++) {
-                mask[i] = cells[i] == material;
-            }
-            for (float[] box : mergeFullBlocks(mask)) {
-                boxes.add(box);
-                materials.add(material);
-            }
+        if (cells.length != SECTION_SIZE * SECTION_SIZE * SECTION_SIZE) {
+            throw new IllegalArgumentException("une grille de matériaux a 4096 cases, pas " + cells.length);
         }
+        java.util.NavigableMap<Integer, List<float[]>> byMaterial = new java.util.TreeMap<>();
+        merge(cells.clone(), (box, material) -> byMaterial.computeIfAbsent(material, m -> new ArrayList<>()).add(box));
+        List<float[]> boxes = new ArrayList<>();
+        byMaterial.forEach((material, own) -> {
+            boxes.addAll(own);
+            materials.addAll(java.util.Collections.nCopies(own.size(), material));
+        });
         return boxes;
     }
 
@@ -309,12 +331,12 @@ public final class WorldTileGeometry {
         return true;
     }
 
-    /** {@return vrai si tous les blocs de la boîte {@code [x0, x1) × [y0, y1) × [z0, z1)} sont libres} */
-    private static boolean allFree(boolean[] free, int x0, int x1, int y0, int y1, int z0, int z1) {
+    /** {@return vrai si tous les blocs de la boîte {@code [x0, x1) × [y0, y1) × [z0, z1)} sont libres et de ce matériau} */
+    private static boolean allOf(int[] free, int material, int x0, int x1, int y0, int y1, int z0, int z1) {
         for (int x = x0; x < x1; x++) {
             for (int y = y0; y < y1; y++) {
                 for (int z = z0; z < z1; z++) {
-                    if (!free[cellIndex(x, y, z)]) {
+                    if (free[cellIndex(x, y, z)] != material) {
                         return false;
                     }
                 }

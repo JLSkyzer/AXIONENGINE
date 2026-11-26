@@ -9,7 +9,10 @@ désigne l'arbre. Le réglage du serveur (monde normal, graine) est posé pour l
 Les chiffres ne valent que pour la machine et la date, et si rien d'autre ne tourne : prendre le verrou des lancements de
 Minecraft avant, là où il y en a un.
 
-Usage : python tools/campagne/mesure_sol.py [--racine DOSSIER] [--etiquette NOM]   (JAVA_HOME : JDK 17)
+Avec --profil, le serveur s'enregistre aussi en JFR (un échantillon par milliseconde, `profil_sol.jfc`) ; les
+chiffres d'une passe profilée ne se comparent pas à ceux d'une passe simple.
+
+Usage : python tools/campagne/mesure_sol.py [--racine DOSSIER] [--etiquette NOM] [--profil]   (JAVA_HOME : JDK 17)
 Rapport : .runs/campagne/sol/rapport-<etiquette>.jsonl (dans cet arbre-ci)
 """
 
@@ -48,7 +51,7 @@ def regler(serveur: Path) -> bytes | None:
     return avant
 
 
-def mesurer(arbre: Path, etiquette: str) -> Path:
+def mesurer(arbre: Path, etiquette: str, profil: bool = False) -> Path:
     SORTIES.mkdir(parents=True, exist_ok=True)
     serveur_dir = arbre / ".runs/server"
     releve = serveur_dir / "mesure-sol/rapport.jsonl"
@@ -60,7 +63,13 @@ def mesurer(arbre: Path, etiquette: str) -> Path:
     shutil.rmtree(serveur_dir / "mesure-sol-monde", ignore_errors=True)
     avant = regler(serveur_dir)
     gradle = arbre / ("gradlew.bat" if os.name == "nt" else "gradlew")
+    enregistrement = serveur_dir / "mesure-sol/profil.jfr"
+    enregistrement.parent.mkdir(parents=True, exist_ok=True)
+    enregistrement.unlink(missing_ok=True)
     environnement = dict(os.environ, AXION_MESURE_SOL="1")
+    environnement.pop("AXION_MESURE_SOL_PROFIL", None)
+    if profil:
+        environnement["AXION_MESURE_SOL_PROFIL"] = "1"
     for autre in ("AXION_MESURE", "AXION_ESSAI_PREDICTION", "AXION_ESSAI_PORTEUR"):
         environnement.pop(autre, None)
     sortie_serveur = SORTIES / f"serveur-{etiquette}.log"
@@ -98,6 +107,10 @@ def mesurer(arbre: Path, etiquette: str) -> Path:
     histogramme = releve.with_name("histogramme.txt")
     if histogramme.exists():
         shutil.copy(histogramme, SORTIES / f"histogramme-{etiquette}.txt")
+    if profil:
+        if not enregistrement.exists():
+            raise RuntimeError("aucun enregistrement JFR")
+        shutil.copy(enregistrement, SORTIES / f"profil-{etiquette}.jfr")
     return rapport
 
 
@@ -105,9 +118,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--racine", type=Path, default=RACINE, help="l'arbre à mesurer")
     parser.add_argument("--etiquette", default="actuel")
+    parser.add_argument("--profil", action="store_true", help="enregistrer le serveur en JFR")
     arguments = parser.parse_args()
     try:
-        rapport = mesurer(arguments.racine.resolve(), arguments.etiquette)
+        rapport = mesurer(arguments.racine.resolve(), arguments.etiquette, arguments.profil)
     except (RuntimeError, OSError) as faute:
         print(f"ÉCHEC : {faute}")
         return 1

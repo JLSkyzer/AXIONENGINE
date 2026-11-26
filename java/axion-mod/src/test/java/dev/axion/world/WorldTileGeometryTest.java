@@ -357,4 +357,46 @@ class WorldTileGeometryTest {
         org.junit.jupiter.api.Assertions.assertArrayEquals(
                 WorldTileGeometry.mergeFullBlocks(full).toArray(new float[0][]), uniques.toArray(new float[0][]));
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("ADR-180 D1 : la fusion par matériau rend, matériau par matériau et dans l'ordre, les boîtes que chacun aurait seul")
+    void fusionParMateriauEgaleChaqueMateriauSeul() {
+        java.util.Random hasard = new java.util.Random(20261125L);
+        for (int essai = 0; essai < 200; essai++) {
+            int materiaux = 1 + hasard.nextInt(6);
+            // Des taches et des bruits : de grandes boîtes et des blocs isolés, des index dans le désordre.
+            int[] cells = new int[16 * 16 * 16];
+            int largeur = 1 + hasard.nextInt(7);
+            int vide = hasard.nextInt(60);
+            for (int x = 0; x < 16; x++) {
+                for (int y = 0; y < 16; y++) {
+                    for (int z = 0; z < 16; z++) {
+                        int tache = (x / largeur * 31 + y / largeur * 17 + z / largeur) % materiaux;
+                        int m = hasard.nextInt(100) < 15 ? hasard.nextInt(materiaux) : tache;
+                        cells[WorldTileGeometry.cellIndex(x, y, z)] =
+                                hasard.nextInt(100) < vide ? -1 : (m * 37 + 5) % 101;
+                    }
+                }
+            }
+            java.util.List<float[]> attendues = new java.util.ArrayList<>();
+            java.util.List<Integer> attendus = new java.util.ArrayList<>();
+            for (int m : java.util.Arrays.stream(cells).filter(c -> c >= 0).distinct().sorted().toArray()) {
+                boolean[] seul = new boolean[cells.length];
+                for (int i = 0; i < cells.length; i++) {
+                    seul[i] = cells[i] == m;
+                }
+                for (float[] boite : WorldTileGeometry.mergeFullBlocks(seul)) {
+                    attendues.add(boite);
+                    attendus.add(m);
+                }
+            }
+            java.util.List<Integer> rendus = new java.util.ArrayList<>();
+            rendus.add(-7); // la fusion ajoute à la suite de ce que la liste porte déjà (les formes partielles)
+            java.util.List<float[]> boites = WorldTileGeometry.mergeByMaterial(cells, rendus);
+            attendus.add(0, -7);
+            assertEquals(attendus, rendus, "essai " + essai);
+            org.junit.jupiter.api.Assertions.assertArrayEquals(attendues.toArray(new float[0][]),
+                    boites.toArray(new float[0][]), "essai " + essai);
+        }
+    }
 }

@@ -8445,7 +8445,7 @@ ses trouvailles s'ajoutent ici.
 | CAP-17 | Propulsion hors roues (poussée, hélice, gouvernes, rotor) et entrées de tangage, roulis et lacet | M5b |
 | CAP-18 | Flottabilité paramétrable : points de flottaison, `gravity_scale` au schéma, densité par fluide ; l'eau fait partie du monde prédit | M5b |
 | CAP-19 | Équilibre des deux-roues ; véhicules sur rails | M5b |
-| CAP-20 | Usure des pneus dans le temps ; la météo agit sur l'adhérence | M5 — usure (R-1072) et route mouillée (R-1073) par ADR-176 ; le matériau sous chaque roue et la première couche de neige par ADR-180 (R-643, R-1040, 2026-11-25) ; grilles D7 : pas d'essai à deux clients, pas de lecture du mouillé par une commande, matériau sous la roue ni à l'API ni à l'écran, coût du sol à réduire |
+| CAP-20 | Usure des pneus dans le temps ; la météo agit sur l'adhérence | M5 — usure (R-1072) et route mouillée (R-1073) par ADR-176 ; le matériau sous chaque roue et la première couche de neige par ADR-180 (R-643, R-1040, 2026-11-25) ; grilles D7 : pas d'essai à deux clients, pas de lecture du mouillé par une commande, matériau sous la roue ni à l'API ni à l'écran (ADR-181 proposé) ; coût du sol réduit le 2026-11-26 |
 | CAP-21 | Dégâts aux entités percutées réglables par definition et par part (aujourd'hui deux booléens globaux) | M6 |
 | CAP-22 | Casse de blocs par une assembly, déclarée par la definition (10.8 l'annonce sans champ ni règle) | M7 |
 | CAP-23 | Feu, fumée et explosion émis par le contenu | M7 |

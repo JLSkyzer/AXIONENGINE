@@ -2387,3 +2387,154 @@ fn adr176_cout_de_l_energie_de_l_usure_et_du_mouille() {
         );
     }
 }
+
+/// Le coût au natif d'un sol dont chaque tuile porte plusieurs matériaux (ADR-180, précision 14d) : 128 véhicules sur un
+/// sol plat de sections, en une boîte par section, en trois couches de trois colliders, et les trois couches en un seul
+/// composé. Une mesure, pas un test : `cargo test -p ax-physics --test vehicles --release -- --ignored --nocapture
+/// adr180_cout`.
+#[test]
+#[ignore = "mesure : à lancer à la main, en release"]
+fn adr180_cout_d_un_sol_a_plusieurs_materiaux() {
+    use ax_physics::{CompoundPart, Stage};
+    use std::time::Instant;
+
+    // Les couches d'un monde plat dans la section du sol, sur son épaisseur de quatre blocs : roche-mère, terre, herbe.
+    const COUCHES: [(f32, f32, f32); 3] = [(0.0, 1.0, 0.9), (1.0, 3.0, 0.7), (3.0, 4.0, 0.8)];
+
+    fn boite(bas: f32, haut: f32) -> (Vec3, Shape) {
+        (
+            Vec3::new(8.0, (bas + haut) * 0.5, 8.0),
+            Shape::Cuboid {
+                half_extents: [8.0, (haut - bas) * 0.5, 8.0],
+            },
+        )
+    }
+
+    fn colliders(forme: usize) -> Vec<BodyCollider> {
+        let un = |centre: Vec3, shape: Shape, friction: f32| BodyCollider {
+            shape,
+            density: 1.0,
+            material: contact(friction),
+            translation: centre,
+            rotation: Quat::IDENTITY,
+        };
+        match forme {
+            0 => {
+                let (centre, shape) = boite(0.0, 4.0);
+                vec![un(centre, shape, 0.8)]
+            }
+            1 => COUCHES
+                .iter()
+                .map(|&(bas, haut, friction)| {
+                    let (centre, shape) = boite(bas, haut);
+                    un(centre, shape, friction)
+                })
+                .collect(),
+            _ => {
+                let parts = COUCHES
+                    .iter()
+                    .map(|&(bas, haut, _)| {
+                        let (translation, shape) = boite(bas, haut);
+                        CompoundPart {
+                            translation,
+                            rotation: Quat::IDENTITY,
+                            shape,
+                        }
+                    })
+                    .collect();
+                vec![un(Vec3::ZERO, Shape::Compound { parts }, 0.8)]
+            }
+        }
+    }
+
+    fn passe(forme: usize) -> (f64, f64, f64) {
+        let mut world = monde();
+        for x in 0..13 {
+            for z in 0..7 {
+                let tuile = world
+                    .add_assembly(
+                        BodyKind::Static,
+                        Vec3::new(x as f32 * 16.0, 0.0, z as f32 * 16.0),
+                        Quat::IDENTITY,
+                        &colliders(forme),
+                    )
+                    .expect("tuile");
+                world.set_collision_groups(tuile, CollisionGroups::WORLD_TILE);
+            }
+        }
+        let volume = 8.0 * DEMI[0] * DEMI[1] * DEMI[2];
+        let mut handles = Vec::new();
+        for rang in 0..128u32 {
+            let position = Vec3::new(
+                10.0 + (rang % 16) as f32 * 12.0,
+                4.0 + hauteur_equilibre(),
+                10.0 + (rang / 16) as f32 * 12.0,
+            );
+            let chassis = world
+                .add_assembly(
+                    BodyKind::Dynamic,
+                    position,
+                    Quat::IDENTITY,
+                    &[collider(DEMI, MASSE / volume, 0.5)],
+                )
+                .expect("châssis");
+            let montures: Vec<WheelMount> = QUATRE
+                .iter()
+                .map(|&(x, z)| WheelMount {
+                    body: 0,
+                    center: Vec3::new(x, -REPOS, z),
+                })
+                .collect();
+            let handle = Handle::new(rang + 1, 1);
+            world.attach_vehicle(
+                handle,
+                &[chassis],
+                berline(),
+                &montures,
+                &[],
+                CollisionGroups::ALL,
+            );
+            handles.push(handle);
+        }
+        // En cercle, lentement : chacun reste sur son carré de sol.
+        for &handle in &handles {
+            world.set_vehicle_input(handle, &entree(0.15, 0.0, 1.0), true);
+        }
+        avancer(&mut world, 5.0);
+        let n = 600;
+        let (mut integration, mut vehicules) = (0u64, 0u64);
+        let debut = Instant::now();
+        for _ in 0..n {
+            world.advance(TICK);
+            integration += world.stage_duration(Stage::Integration);
+            vehicules += world.stage_duration(Stage::Vehicles);
+        }
+        let total = debut.elapsed().as_nanos() as f64 / f64::from(n) / 1e6;
+        (
+            total,
+            integration as f64 / f64::from(n) / 1e6,
+            vehicules as f64 / f64::from(n) / 1e6,
+        )
+    }
+
+    let noms = [
+        "une boite par section",
+        "trois colliders par section",
+        "un compose de trois boites",
+    ];
+    let mut mesures = [Vec::new(), Vec::new(), Vec::new()];
+    // Les formes alternent : une dérive de la machine les touche toutes.
+    for _ in 0..7 {
+        for (forme, passes) in mesures.iter_mut().enumerate() {
+            passes.push(passe(forme));
+        }
+    }
+    for (nom, mut passes) in noms.into_iter().zip(mesures) {
+        passes.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let (total, integration, vehicules) = passes[3];
+        println!(
+            "COUT {nom} : mediane {total:.3} ms/pas (minimum {:.3}), integration {integration:.3}, vehicules {vehicules:.3}",
+            passes[0].0
+        );
+    }
+}

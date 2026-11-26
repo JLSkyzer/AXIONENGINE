@@ -121,6 +121,10 @@ minecraft {
             if (System.getenv('AXION_MESURE_SOL') != null) {
                 args '--world', 'mesure-sol-monde'
                 property 'axion.content.examples', 'true'
+                // --profil : un enregistrement JFR du serveur, pour dire où passe la construction des tuiles.
+                if (System.getenv('AXION_MESURE_SOL_PROFIL') != null) {
+                    jvmArg "-XX:StartFlightRecording=filename=${rootProject.file('.runs/server/mesure-sol/profil.jfr')},settings=${rootProject.file('tools/campagne/profil_sol.jfc')},dumponexit=true"
+                }
             }
             // CAP-53, mesure du serveur (tools/campagne/mesure.py) : son propre monde, neuf à chaque campagne.
             if (System.getenv('AXION_MESURE') != null) {
