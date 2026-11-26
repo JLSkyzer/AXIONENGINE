@@ -73,6 +73,19 @@ covers that block; the files' lists add up.
 }
 ```
 
+**In Java.** A mod that computes its mappings — from its own blocks, say — registers them through the API, along with
+the rest of its content; they count as a file `block_materials/ground.json`:
+
+```java
+registrar.registerBlockMaterials("ground", BlockMaterialMapping.builder()
+        .tag("mymod:asphalts", "mymod:asphalt")   // the first tags set take priority
+        .block("mymod:ice_plate", "axion:ice")
+        .cover("mymod:powder")
+        .build());
+```
+
+`replaceBlockMaterials("othermod:ground", ...)` replaces another mod's mappings.
+
 ## On contact
 
 Each collider of an assembly takes the material of its **part** — the one whose `root_node` carries it;

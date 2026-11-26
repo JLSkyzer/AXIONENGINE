@@ -75,6 +75,36 @@ public interface ContentRegistrar {
     void replace(String target, DefinitionDocument definition);
 
     /**
+     * Enregistre des correspondances bloc vers matériau écrites en Java (§11.4, ADR-180), comme le ferait le fichier
+     * {@code block_materials/<name>.json} d'un dossier enregistré par {@link #registerFolder} : elles se fusionnent avec
+     * celles des fichiers, dans l'ordre des identifiants. Un fichier et des correspondances Java de même nom sont un
+     * doublon, refusé en nommant les deux. Une erreur de contenu ne lève pas : elle est consignée au chargement.
+     *
+     * @param name chemin dans l'espace de noms du mod, sans extension, par exemple {@code "sols"}
+     * @param mapping les correspondances
+     * @throws IllegalArgumentException si le nom est vide, porte une extension, ou sort de {@code [a-z0-9_./-]}
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void registerBlockMaterials(String name, BlockMaterialMapping mapping) {
+        throw new UnsupportedOperationException("registerBlockMaterials : ce registraire n'enregistre pas de"
+                + " correspondances");
+    }
+
+    /**
+     * Remplace les correspondances d'un autre mod par des correspondances écrites en Java, comme
+     * {@link #replace(ContentKind, String, String)} le fait par un fichier.
+     *
+     * @param target identifiant des correspondances remplacées, {@code <ns>:<chemin>}, d'un autre mod
+     * @param mapping les correspondances qui les remplacent
+     * @throws IllegalArgumentException si l'identifiant est mal formé, ou appartient à ce mod
+     * @throws IllegalStateException hors de la phase d'enregistrement
+     */
+    default void replaceBlockMaterials(String target, BlockMaterialMapping mapping) {
+        throw new UnsupportedOperationException("replaceBlockMaterials : ce registraire n'enregistre pas de"
+                + " correspondances");
+    }
+
+    /**
      * Enregistre un contrôleur de véhicule (ADR-167 D9, registre {@code axion:vehicle_controller}) : le contrôleur
      * {@code <modId>:<name>}, qu'une definition nomme ({@code vehicle.controllers}) ou que l'API attache à une
      * instance. Il s'enregistre sur le serveur comme chez le client, avec le mod qui le livre : un joueur sans ce mod ne

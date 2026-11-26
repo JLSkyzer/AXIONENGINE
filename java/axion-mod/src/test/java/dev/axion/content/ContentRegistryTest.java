@@ -5,7 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonParser;
+import dev.axion.api.content.BlockMaterialMapping;
 import dev.axion.api.content.ContentKind;
+import dev.axion.asset.AssetSource;
+import dev.axion.definition.BlockMaterialMappings;
+import dev.axion.definition.PhysicsMaterials;
+import dev.axion.world.BlockMaterials;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -67,6 +73,74 @@ class ContentRegistryTest {
         assertTrue(definition.source().contains("axion/definitions/vehicules/patrouille.json"));
         assertArrayEquals("{\"d\":1}".getBytes(StandardCharsets.UTF_8), definition.bytes());
         assertEquals(List.of(), registry.errors());
+    }
+
+    @Test
+    @DisplayName("ADR-180 : des correspondances écrites en Java gardent la priorité de leurs étiquettes (R-1040)")
+    void desCorrespondancesJavaGardentLaPrioriteDeLeursEtiquettes() throws IOException {
+        ContentRegistry registry = new ContentRegistry(Long.MAX_VALUE);
+        Function<String, Path> mod = jar("mod", Map.of(
+                "axion/physics_materials/laine.json", "{\"friction\": 0.9}",
+                "axion/physics_materials/bois.json", "{\"friction\": 0.7}"));
+        try (ContentRegistry.Session session = registry.open("mod", mod)) {
+            session.registerFolder("axion/");
+            // « wool » posée avant « logs » : l'ordre posé, et non l'ordre alphabétique, décide.
+            session.registerBlockMaterials("sols", BlockMaterialMapping.builder()
+                    .tag("minecraft:wool", "mod:laine")
+                    .tag("minecraft:logs", "mod:bois")
+                    .block("minecraft:oak_log", "mod:bois")
+                    .cover("minecraft:snow")
+                    .defaultMaterial("mod:bois")
+                    .build());
+        }
+        Map<ContentKind, List<ContentRegistry.Entry>> resolved = registry.resolve();
+        assertEquals(List.of("mod:axion/block_materials/sols.json"), keys(resolved, ContentKind.BLOCK_MATERIAL));
+        BlockMaterialMappings.Result result = BlockMaterialMappings.load(
+                source(resolved.get(ContentKind.BLOCK_MATERIAL)),
+                PhysicsMaterials.load(source(resolved.get(ContentKind.PHYSICS_MATERIAL))));
+
+        assertEquals(List.of(), result.refusals());
+        BlockMaterials mapping = result.mapping();
+        assertEquals("mod:laine", mapping.resolve("minecraft:x", List.of("minecraft:logs", "minecraft:wool")).id());
+        assertEquals("mod:bois", mapping.resolve("minecraft:oak_log", List.of("minecraft:wool")).id());
+        assertEquals("mod:bois", mapping.resolve("minecraft:stone", List.of()).id());
+        assertTrue(mapping.covers("minecraft:snow"));
+        assertEquals(List.of(), registry.errors());
+    }
+
+    @Test
+    @DisplayName("ADR-180 : les correspondances d'exemple écrites en Java disent ce que dit leur fichier")
+    void lesCorrespondancesDExempleSEcriventEnJava() throws IOException {
+        String fichier = Files.readString(Path.of(System.getProperty("axion.repo.dir"), "content", "examples",
+                "axion", "block_materials", "base.json"), StandardCharsets.UTF_8);
+        var lu = JsonParser.parseString(fichier).getAsJsonObject();
+        BlockMaterialMapping.Builder builder = BlockMaterialMapping.builder()
+                .defaultMaterial(lu.get("default").getAsString());
+        lu.getAsJsonObject("by_tag").entrySet().forEach(e -> builder.tag(e.getKey(), e.getValue().getAsString()));
+        lu.getAsJsonObject("by_block").entrySet().forEach(e -> builder.block(e.getKey(), e.getValue().getAsString()));
+        lu.getAsJsonArray("cover").forEach(e -> builder.cover(e.getAsString()));
+
+        var ecrit = JsonParser.parseString(new String(ContentRegistry.mappingBytes(builder.build()),
+                StandardCharsets.UTF_8)).getAsJsonObject();
+
+        assertEquals(lu, ecrit, "aucun champ du fichier ne manque au constructeur");
+        assertEquals(List.copyOf(lu.getAsJsonObject("by_tag").keySet()),
+                List.copyOf(ecrit.getAsJsonObject("by_tag").keySet()), "les étiquettes dans le même ordre");
+    }
+
+    /** {@return des entrées résolues, lues comme le runtime les lit} */
+    private static AssetSource source(List<ContentRegistry.Entry> entries) {
+        return new AssetSource() {
+            @Override
+            public List<String> list() {
+                return entries.stream().map(ContentRegistry.Entry::key).toList();
+            }
+
+            @Override
+            public byte[] read(String path) {
+                return entries.stream().filter(e -> e.key().equals(path)).findFirst().orElseThrow().bytes();
+            }
+        };
     }
 
     @Test

@@ -5,10 +5,12 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import dev.axion.api.content.BlockMaterialMapping;
 import dev.axion.api.content.ContentKind;
 import dev.axion.api.content.ContentRegistrar;
 import dev.axion.api.content.DefinitionDocument;
 import dev.axion.asset.AssetSiblings;
+import dev.axion.definition.BlockMaterialMappings;
 import dev.axion.definition.CanonicalJson;
 import java.io.IOException;
 import java.io.InputStream;
@@ -203,6 +205,33 @@ public final class ContentRegistry {
         return CanonicalJson.of(json(definition.root())).getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * {@return les octets d'une correspondance écrite en Java : le JSON d'un fichier, dans l'ordre posé — les étiquettes
+     * y gardent leur priorité (R-1040), que la forme canonique d'une definition trierait}
+     */
+    static byte[] mappingBytes(BlockMaterialMapping mapping) {
+        return mappingJson(mapping).toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** {@return une correspondance écrite en Java sous la forme d'un fichier au dernier schéma} */
+    private static JsonObject mappingJson(BlockMaterialMapping mapping) {
+        JsonObject root = new JsonObject();
+        root.addProperty("schema", BlockMaterialMappings.COVER_SCHEMA);
+        if (mapping.defaultMaterial() != null) {
+            root.addProperty("default", mapping.defaultMaterial());
+        }
+        JsonObject tags = new JsonObject();
+        mapping.tags().forEach(tags::addProperty);
+        root.add("by_tag", tags);
+        JsonObject blocks = new JsonObject();
+        mapping.blocks().forEach(blocks::addProperty);
+        root.add("by_block", blocks);
+        JsonArray covers = new JsonArray(mapping.covers().size());
+        mapping.covers().forEach(covers::add);
+        root.add("cover", covers);
+        return root;
+    }
+
     /** {@return une valeur de {@link DefinitionDocument} en arbre JSON} */
     private static JsonElement json(Object value) {
         if (value == null) {
@@ -227,12 +256,12 @@ public final class ContentRegistry {
         return new JsonPrimitive((Number) value);
     }
 
-    /** {@return le nom d'une definition construite en Java, vérifié : un chemin de Minecraft, sans extension} */
+    /** {@return le nom d'une entrée écrite en Java, vérifié : un chemin de Minecraft, sans extension} */
     private static String checkedName(String name) {
         Objects.requireNonNull(name, "name");
         if (!PATH.matcher(name).matches() || name.startsWith("/") || name.endsWith("/") || name.endsWith(".json")
                 || name.contains("//") || List.of(name.split("/")).contains("..")) {
-            throw new IllegalArgumentException("nom de definition attendu, chemin [a-z0-9_./-] sans extension : "
+            throw new IllegalArgumentException("nom attendu, chemin [a-z0-9_./-] sans extension : "
                     + name);
         }
         return name;
@@ -405,6 +434,28 @@ public final class ContentRegistry {
             }
             replacements.add(new Replacement(ContentKind.DEFINITION, key, modId,
                     modId + " — builder, replace(\"" + target + "\")", canonicalBytes(definition)));
+        }
+
+        @Override
+        public void registerBlockMaterials(String name, BlockMaterialMapping mapping) {
+            ensureOpen();
+            String path = checkedName(name) + ".json";
+            Objects.requireNonNull(mapping, "mapping");
+            add(new Entry(ContentKind.BLOCK_MATERIAL, key(modId, ContentKind.BLOCK_MATERIAL, path), modId,
+                    modId + " — registerBlockMaterials(\"" + name + "\")", mappingBytes(mapping)));
+        }
+
+        @Override
+        public void replaceBlockMaterials(String target, BlockMaterialMapping mapping) {
+            ensureOpen();
+            Objects.requireNonNull(mapping, "mapping");
+            String key = keyOf(ContentKind.BLOCK_MATERIAL, Objects.requireNonNull(target, "target"));
+            if (key.startsWith(modId + ":")) {
+                throw new IllegalArgumentException(modId + " ne remplace pas sa propre entrée " + target
+                        + " : il la déclare directement");
+            }
+            replacements.add(new Replacement(ContentKind.BLOCK_MATERIAL, key, modId,
+                    modId + " — replaceBlockMaterials(\"" + target + "\")", mappingBytes(mapping)));
         }
 
         @Override

@@ -3938,8 +3938,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
                  défaut trouvé et corrigé : les chocs des paires à plusieurs variétés valaient zéro (ADR-149).
            - [x] 14e (2026-11-25) — essai à deux processus sur un sol à deux matériaux (`prediction.py --sol-mixte`) ;
                  grille D7 d'ADR-180 écrite.
-           - [ ] Grille d'ADR-180, ouvert : constructeur Java de correspondances (le matériau sous la roue : ADR-181).
-                 Test combiné mouillé/usure fait le 2026-11-25.
+           - [x] Grille d'ADR-180 : constructeur Java de correspondances fait le 2026-11-26 (`registerBlockMaterials`,
+                 précision d'ADR-180) ; le matériau sous la roue : ADR-181. Test combiné mouillé/usure fait le
+                 2026-11-25.
            - [x] Coût du sol (2026-11-26, choix de Killian) : tuiles moins chères qu'avant ADR-180
                  (`docs/mesures/ADR-180-reduction-2026-11-26.md`). Reste mesuré : pas natif +11 à +14 % sur monde plat,
                  cause non établie (banc natif `adr180_cout`).

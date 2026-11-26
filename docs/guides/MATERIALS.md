@@ -73,6 +73,19 @@ matériau couvre ce bloc ; les listes des fichiers se réunissent.
 }
 ```
 
+**En Java.** Un mod qui calcule ses correspondances — de ses propres blocs, par exemple — les enregistre par l'API,
+au même endroit que son contenu ; elles valent un fichier `block_materials/sols.json` :
+
+```java
+registrar.registerBlockMaterials("sols", BlockMaterialMapping.builder()
+        .tag("monmod:asphaltes", "monmod:asphalte")   // les premières étiquettes posées priment
+        .block("monmod:plaque_de_glace", "axion:ice")
+        .cover("monmod:poudreuse")
+        .build());
+```
+
+`replaceBlockMaterials("autremod:sols", ...)` remplace les correspondances d'un autre mod.
+
 ## Au contact
 
 Chaque collider d'une assembly prend le matériau de sa **part** — celle dont le `root_node` le porte ;
