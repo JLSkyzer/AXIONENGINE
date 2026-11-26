@@ -25,7 +25,7 @@ import java.util.function.BiConsumer;
 final class VehicleSpec {
 
     /** Taille de l'en-tête de la section, en octets. */
-    static final int HEADER_BYTES = 148;
+    static final int HEADER_BYTES = 152;
 
     /** Capacité maximale d'un réservoir, en litres (ADR-176 D3). */
     static final float MAX_FUEL_CAPACITY = 100_000f;
@@ -41,6 +41,21 @@ final class VehicleSpec {
 
     /** Au plus ce nombre de points de consommation (ADR-176 D3) : {@code EnergyDesc::MAX_POINTS} du natif. */
     static final int MAX_CONSUMPTION_POINTS = 64;
+
+    /** Au plus ce nombre de moteurs électriques (ADR-182 D3) : {@code MAX_MOTORS} du natif. */
+    static final int MAX_MOTORS = 4;
+
+    /** Au plus ce nombre de points de couple d'un moteur électrique : {@code MotorDesc::MAX_POINTS} du natif. */
+    static final int MAX_MOTOR_POINTS = 64;
+
+    /** Taille de l'enregistrement d'un moteur électrique, sa courbe non comprise. */
+    static final int MOTOR_BYTES = 32;
+
+    /** Rendement en traction d'un moteur électrique, sans {@code efficiency}. */
+    static final float MOTOR_EFFICIENCY = 0.9f;
+
+    /** Rendement de la récupération d'un moteur qui déclare {@code regen} sans {@code efficiency}. */
+    static final float REGEN_EFFICIENCY = 0.7f;
 
     /** Durée minimale du démarreur, en secondes (ADR-176 D1). */
     static final float MIN_STARTER_TIME = 0.05f;
@@ -62,6 +77,7 @@ final class VehicleSpec {
     private static final int VEHICLE_ABS = 2;
     private static final int VEHICLE_TRACTION_CONTROL = 4;
     private static final int VEHICLE_STABILITY_CONTROL = 8;
+    private static final int VEHICLE_NO_ENGINE = 16;
 
     /**
      * Seuil de l'antipatinage par défaut : le glissement d'une roue motrice, rapporté à la vitesse du sol,
@@ -143,6 +159,7 @@ final class VehicleSpec {
             checkPowertrain(object(root, "powertrain"), wheels, fault);
         }
         checkEnergy(root, fault);
+        checkMotors(root, fault);
         checkSteering(object(root, "steering"), fault);
         checkBrakes(object(root, "brakes"), fault);
         checkAero(object(root, "aero"), fault);
@@ -330,19 +347,13 @@ final class VehicleSpec {
 
     private static void checkPowertrain(JsonObject powertrain, JsonArray wheels, BiConsumer<String, String> fault) {
         JsonObject engine = object(powertrain, "engine");
-        if (engine == null || !(engine.get("torque_curve") instanceof JsonArray curve) || curve.size() < 2) {
-            fault.accept("$.powertrain.engine", "un groupe motopropulseur déclare une torque_curve de 2 points au moins");
-        } else {
-            double previous = Double.NEGATIVE_INFINITY;
-            for (int i = 0; i < curve.size(); i++) {
-                JsonArray point = curve.get(i).getAsJsonArray();
-                if (point.get(0).getAsDouble() <= previous) {
-                    fault.accept("$.powertrain.engine.torque_curve[" + i + "]", "les régimes sont strictement croissants");
-                }
-                if (point.get(1).getAsDouble() < 0) {
-                    fault.accept("$.powertrain.engine.torque_curve[" + i + "]", "couple négatif");
-                }
-                previous = point.get(0).getAsDouble();
+        boolean electric = !motors(powertrain).isEmpty();
+        if (engine != null || !electric) {
+            if (engine == null || !(engine.get("torque_curve") instanceof JsonArray curve) || curve.size() < 2) {
+                fault.accept("$.powertrain.engine", "un groupe motopropulseur déclare une torque_curve de 2 points au"
+                        + " moins, ou des moteurs électriques (electric_motors)");
+            } else {
+                checkTorqueCurve(curve, "$.powertrain.engine.torque_curve", fault);
             }
         }
         String eat = "$.powertrain.engine";
@@ -387,8 +398,77 @@ final class VehicleSpec {
         for (JsonElement wheel : wheels) {
             driven |= bool(wheel.getAsJsonObject(), "powered");
         }
-        if (!driven) {
+        // Des moteurs électriques couplés à leurs roues les entraînent eux-mêmes (ADR-182 D3) ; le moteur à combustion et
+        // un moteur couplé à la boîte passent par les roues motrices.
+        boolean throughGearbox = engine != null || !electric
+                || motors(powertrain).stream().anyMatch(motor -> motor.get("coupling") == null);
+        if (!driven && throughGearbox) {
             fault.accept("$.powertrain", "un groupe motopropulseur entraîne au moins une roue");
+        }
+    }
+
+    private static void checkTorqueCurve(JsonArray curve, String at, BiConsumer<String, String> fault) {
+        double previous = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < curve.size(); i++) {
+            JsonArray point = curve.get(i).getAsJsonArray();
+            if (point.get(0).getAsDouble() <= previous) {
+                fault.accept(at + "[" + i + "]", "les régimes sont strictement croissants");
+            }
+            if (point.get(1).getAsDouble() < 0) {
+                fault.accept(at + "[" + i + "]", "couple négatif");
+            }
+            previous = point.get(0).getAsDouble();
+        }
+    }
+
+    /** {@return les moteurs électriques d'un groupe motopropulseur, dans leur ordre ; vide sans} */
+    static List<JsonObject> motors(JsonObject powertrain) {
+        List<JsonObject> found = new ArrayList<>();
+        if (powertrain != null && powertrain.get("electric_motors") instanceof JsonArray list) {
+            for (JsonElement motor : list) {
+                if (motor instanceof JsonObject declared) {
+                    found.add(declared);
+                }
+            }
+        }
+        return found;
+    }
+
+    /**
+     * ADR-182 D3 : chaque moteur électrique tire une réserve en kWh qui n'est pas le carburant, sa courbe de couple est
+     * croissante en régime, ses rendements dans ]0, 1] ou [0, 1], et, couplé à des roues, chacune une seule fois.
+     */
+    private static void checkMotors(JsonObject root, BiConsumer<String, String> fault) {
+        List<JsonObject> motors = motors(object(root, "powertrain"));
+        if (motors.isEmpty()) {
+            return;
+        }
+        EnergySpec energy = EnergySpec.of(root);
+        for (int i = 0; i < motors.size(); i++) {
+            JsonObject motor = motors.get(i);
+            String at = "$.powertrain.electric_motors[" + i + "]";
+            int store = energy.indexOf(string(motor, "store"));
+            if (store >= 0 && store == energy.fuelStore()) {
+                fault.accept(at + ".store", "le carburant que le moteur brûle ne nourrit pas un moteur électrique");
+            }
+            if (!(motor.get("torque_curve") instanceof JsonArray curve) || curve.isEmpty()) {
+                fault.accept(at + ".torque_curve", "un moteur électrique déclare sa courbe de couple : un point au moins");
+            } else {
+                if (curve.size() > MAX_MOTOR_POINTS) {
+                    fault.accept(at + ".torque_curve", "au plus " + MAX_MOTOR_POINTS + " points");
+                }
+                checkTorqueCurve(curve, at + ".torque_curve", fault);
+            }
+            fraction(motor, "efficiency", at, false, fault);
+            JsonObject regen = object(motor, "regen");
+            atLeast(regen, "lift_off", at + ".regen", true, fault);
+            atLeast(regen, "brake", at + ".regen", true, fault);
+            fraction(regen, "efficiency", at + ".regen", true, fault);
+            JsonObject coupling = object(motor, "coupling");
+            if (coupling != null && coupling.get("wheels") instanceof JsonArray named
+                    && (named.isEmpty() || names(named).size() != named.size())) {
+                fault.accept(at + ".coupling.wheels", "une roue au moins, chacune une seule fois");
+            }
         }
     }
 
@@ -491,7 +571,9 @@ final class VehicleSpec {
                 + count(engine, "torque_curve") * 8
                 + count(transmission, "gears") * 4
                 + count(aero, "surfaces") * SURFACE_BYTES
-                + consumption(root).size() * 8;
+                + consumption(root).size() * 8
+                + motors(powertrain).stream()
+                        .mapToInt(motor -> MOTOR_BYTES + count(motor, "torque_curve") * 8).sum();
     }
 
     /**
@@ -520,6 +602,7 @@ final class VehicleSpec {
         out.putShort((short) count(transmission, "gears"));
         out.putShort((short) count(aero, "surfaces"));
         out.putShort((short) ((powertrain != null ? VEHICLE_POWERTRAIN : 0) | (bool(abs, "enabled") ? VEHICLE_ABS : 0)
+                | (powertrain != null && engine == null ? VEHICLE_NO_ENGINE : 0)
                 | (bool(traction, "enabled") ? VEHICLE_TRACTION_CONTROL : 0)
                 | (bool(stability, "enabled") ? VEHICLE_STABILITY_CONTROL : 0)));
         String type = transmission == null ? "direct" : stringOr(transmission, "type", "manual");
@@ -555,6 +638,9 @@ final class VehicleSpec {
             out.putFloat(reserves.capacity(slot));
         }
         put(out, number(battery, ownStore ? "draw" : "starter_draw", 0f), number(battery, "charge_rate", 0f));
+        List<JsonObject> motors = motors(powertrain);
+        out.putShort((short) motors.size());
+        out.putShort((short) 0);
 
         Set<String> steered = listOr(steering, "steered_wheels");
         Set<String> driven = listOr(powertrain, "drive_wheels");
@@ -605,6 +691,33 @@ final class VehicleSpec {
         for (JsonElement point : consumption(root)) {
             put(out, point.getAsJsonArray().get(0).getAsFloat(), point.getAsJsonArray().get(1).getAsFloat());
         }
+        for (JsonObject motor : motors) {
+            writeMotor(motor, reserves, wheels, out);
+        }
+    }
+
+    /** Un moteur électrique et sa courbe (ADR-182 D3) : {@code MotorDesc} du natif. */
+    private static void writeMotor(JsonObject motor, EnergySpec reserves, JsonArray wheels, ByteBuffer out) {
+        JsonObject coupling = object(motor, "coupling");
+        Set<String> coupled = coupling == null ? Set.of() : listOr(coupling, "wheels");
+        int mask = 0;
+        for (int i = 0; i < wheels.size(); i++) {
+            if (coupled.contains(string(wheels.get(i).getAsJsonObject(), "node"))) {
+                mask |= 1 << i;
+            }
+        }
+        JsonArray curve = motor.getAsJsonArray("torque_curve");
+        JsonObject regen = object(motor, "regen");
+        out.put((byte) reserves.indexOf(string(motor, "store")));
+        out.put((byte) (coupling == null ? 0 : 1));
+        out.putShort((short) curve.size());
+        out.putInt(mask);
+        put(out, number(motor, "max_rpm", 0f), number(motor, "efficiency", MOTOR_EFFICIENCY),
+                number(coupling, "ratio", 0f), number(regen, "lift_off", 0f), number(regen, "brake", 0f),
+                regen == null ? 0f : number(regen, "efficiency", REGEN_EFFICIENCY));
+        for (JsonElement point : curve) {
+            put(out, point.getAsJsonArray().get(0).getAsFloat(), point.getAsJsonArray().get(1).getAsFloat());
+        }
     }
 
     /**
@@ -640,8 +753,11 @@ final class VehicleSpec {
             if (peak > 0f) {
                 out.add(Tuning.above(Parameters.ENGINE_TORQUE, "N·m", peak, 0, true));
             }
-            out.add(Tuning.above(Parameters.ENGINE_MAX_RPM, "tr/min", number(engine, "max_rpm", MAX_RPM),
-                    number(engine, "idle_rpm", IDLE_RPM), false));
+            // Un véhicule à moteurs électriques seuls n'a pas de régime maximal à régler.
+            if (engine != null) {
+                out.add(Tuning.above(Parameters.ENGINE_MAX_RPM, "tr/min", number(engine, "max_rpm", MAX_RPM),
+                        number(engine, "idle_rpm", IDLE_RPM), false));
+            }
             JsonObject transmission = object(powertrain, "transmission");
             boolean direct = transmission == null;
             out.add(Tuning.above(Parameters.FINAL_DRIVE, "",

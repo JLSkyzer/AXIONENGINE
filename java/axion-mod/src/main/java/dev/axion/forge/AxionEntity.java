@@ -2146,14 +2146,36 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     public DriverInput driverInput() {
         DriverInput base = driverInputWithoutIgnition();
         int variable = ignitionVariable();
-        AssemblyVariables held = variable < 0 ? null : variables();
-        if (held == null) {
+        java.util.List<Integer> motors = motorVariables();
+        if (variable < 0 && motors.isEmpty()) {
+            return base;
+        }
+        AssemblyVariables held = variables();
+        if (held == null && (variable >= 0 || motors.stream().anyMatch(rank -> rank >= 0))) {
             return base;
         }
         // ADR-176 D1 : le contact est la valeur de la variable que le démarreur lit, que le conducteur soit là ou non :
-        // sans conducteur, le moteur continue de tourner, et un mod ou l'API peut le couper.
+        // sans conducteur, le moteur continue de tourner, et un mod ou l'API peut le couper. ADR-182 D3 : les moteurs
+        // électriques autorisés suivent de même leurs variables.
         DriverInput carried = base == null ? DriverInput.ABSENT : base;
-        return new DriverInput(carried.input().withIgnition(held.get(variable) != 0.0), carried.present());
+        VehicleInput input = carried.input();
+        if (variable >= 0) {
+            input = input.withIgnition(held.get(variable) != 0.0);
+        }
+        input = input.withMotors(dev.axion.definition.ElectricMotors.enabled(motors, rank -> held.get(rank)));
+        return new DriverInput(input, carried.present());
+    }
+
+    /** {@return les moteurs électriques qui tirent la réserve de ce nom, dans l'ordre de la definition (ADR-182 D3)} */
+    java.util.List<String> motorsDrawing(String store) {
+        dev.axion.definition.Definition definition = document();
+        return definition == null ? java.util.List.of() : dev.axion.definition.ElectricMotors.drawing(definition.root(), store);
+    }
+
+    /** {@return pour chaque moteur électrique, le rang de la variable qui l'autorise, -1 sans (ADR-182 D3)} */
+    public java.util.List<Integer> motorVariables() {
+        dev.axion.definition.HeldDefinition tenue = held();
+        return tenue == null ? java.util.List.of() : tenue.motors();
     }
 
     /** {@return le rang de la variable que le démarreur lit comme contact (ADR-176 D1), -1 sans démarreur} */
@@ -3587,7 +3609,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         }
         return AssemblyState.Vehicle.of(vehicleReport.rpm(), vehicleReport.load(), vehicleReport.gear(),
                 vehicleReport.flags(), input.throttle(), input.brake(), vehicleReport.steer(),
-                held.present() ? input.handbrake() : 1f, ratios, (float) wetness);
+                held.present() ? input.handbrake() : 1f, ratios, (float) wetness, vehicleReport.motors());
     }
 
     /**

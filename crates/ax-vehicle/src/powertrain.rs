@@ -1,4 +1,4 @@
-//! Le groupe motopropulseur et la rotation des roues au sous-pas (12.5, ADR-159 D4, D6).
+//! Le groupe motopropulseur et la rotation des roues au sous-pas (12.5, ADR-159 D4, D6, ADR-182 D3).
 //!
 //! Moteur, embrayage, boîte, différentiel, freins et pneus s'intègrent ensemble, en micro-pas d'au
 //! plus [`MICRO_STEP`] : la roue est légère et prise entre deux masses lourdes, le moteur ramené par
@@ -10,14 +10,16 @@
 //! ainsi tout le véhicule, pas leur seule part de sa masse ; la force latérale d'un contact placé sous
 //! le centre de masse compte le roulis qu'elle provoque.
 //!
-//! Aucune force n'inverse ce qu'elle combat : le frein ramène la roue à l'arrêt sans la faire
-//! repartir, le pneu ne fait pas passer la roue ni le véhicule au-delà de la vitesse de l'autre,
-//! l'embrayage n'inverse pas l'écart de vitesses entre moteur et boîte.
+//! Aucune force n'inverse ce qu'elle combat : le frein et la récupération ramènent la roue à l'arrêt sans la
+//! faire repartir, le pneu ne fait pas passer la roue ni le véhicule au-delà de la vitesse de l'autre,
+//! l'embrayage n'inverse pas l'écart de vitesses entre moteur et boîte. Les moteurs électriques ([`crate::motor`])
+//! s'ajoutent à la sortie de la boîte ou à leurs roues.
 
+use crate::motor::Motors;
 use crate::{brakes, differential, engine, sign, tire};
 use ax_math::{Mat3, Vec3};
 use ax_model::dm::scene::NONE_U16;
-use ax_model::dm::vehicle::{transmission_kind, VehicleDesc, WheelDesc, MAX_WHEELS};
+use ax_model::dm::vehicle::{transmission_kind, vehicle_flags, VehicleDesc, WheelDesc, MAX_WHEELS};
 
 /// Durée visée d'un micro-pas, en secondes. Choix d'ADR-159 (tranche 3).
 pub const MICRO_STEP: f32 = 1.0 / 720.0;
@@ -101,6 +103,8 @@ pub struct DriveCommand {
     pub ratio: f32,
     /// Accélérateur, dans [0, 1], correcteurs compris.
     pub throttle: f32,
+    /// Pédale de frein, dans [0, 1] : la récupération des moteurs électriques la suit (ADR-182 D3).
+    pub brake: f32,
     /// Embrayage demandé, dans [0, 1] : 1 débraye.
     pub clutch: f32,
     /// Seuil de l'ABS, s'il est actif.
@@ -111,12 +115,14 @@ pub struct DriveCommand {
 }
 
 /// Avance moteur et roues d'un sous-pas de `dt`. `engine_speed` est la vitesse du moteur, en rad/s ;
-/// `wheels` suit l'ordre de `desc.wheels`. Rend `force_long` et `force_lat` moyennés sur le sous-pas.
+/// `wheels` suit l'ordre de `desc.wheels` ; `motors` porte les réserves que les moteurs électriques tirent et
+/// remplissent. Rend `force_long` et `force_lat` moyennés sur le sous-pas, et la puissance de chaque moteur.
 pub fn step(
     desc: &VehicleDesc,
     command: &DriveCommand,
     engine_speed: &mut f32,
     wheels: &mut [WheelDrive],
+    motors: &mut Motors,
     dt: f32,
 ) {
     let steps = micro_steps(dt);
@@ -132,6 +138,11 @@ pub fn step(
         idle
     };
     let band = (LAUNCH_BAND * (max - idle)).max(f32::EPSILON);
+    // Sans moteur à combustion, rien ne tourne ; un moteur arrêté d'un hybride ne se laisse pas entraîner, pour que
+    // le véhicule roule à l'électricité seule (ADR-182 D3). Un véhicule sans moteur électrique simule comme avant.
+    let no_engine = desc.flags & vehicle_flags::NO_ENGINE != 0;
+    let connected = !no_engine && (command.running || desc.motors.is_empty());
+    let electric = !desc.motors.is_empty();
     let capacity = CLUTCH_CAPACITY * engine::peak_torque(&desc.torque_curve).max(e.braking_torque);
     let ratio = command.ratio;
     let efficiency = desc.transmission.efficiency;
@@ -157,7 +168,7 @@ pub fn step(
         let carrier: f32 = wheels.iter().map(|w| w.share * w.spin).sum();
         let transmitted = ratio * carrier;
         let delta = *engine_speed - transmitted;
-        let clutch_torque = if ratio == 0.0 || reflected <= 0.0 {
+        let clutch_torque = if !connected || ratio == 0.0 || reflected <= 0.0 {
             0.0
         } else {
             let engaged = if direct {
@@ -181,20 +192,45 @@ pub fn step(
         } else {
             0.0
         };
-        let torque = engine::torque(e, &desc.torque_curve, *engine_speed, throttle);
-        *engine_speed =
-            (*engine_speed + (torque - clutch_torque) * h / engine_inertia).clamp(floor, max);
-        let shaft = clutch_torque * ratio * efficiency;
+        if no_engine {
+            *engine_speed = 0.0;
+        } else {
+            let torque = engine::torque(e, &desc.torque_curve, *engine_speed, throttle);
+            *engine_speed =
+                (*engine_speed + (torque - clutch_torque) * h / engine_inertia).clamp(floor, max);
+        }
+        let mut shaft = clutch_torque * ratio * efficiency;
+        let micro = electric.then(|| motors.micro_step(desc, command, wheels, carrier, h));
+        if let Some(micro) = &micro {
+            shaft += micro.shaft;
+        }
         // Gauss-Seidel : chaque roue voit ce que les précédentes ont déjà fait à son corps.
-        for (wheel, spec) in wheels.iter_mut().zip(&desc.wheels) {
+        for (index, (wheel, spec)) in wheels.iter_mut().zip(&desc.wheels).enumerate() {
             let body = usize::from(wheel.carrier).min(MAX_WHEELS - 1);
-            let drive = shaft * wheel.share + wheel.torque;
-            integrate(wheel, spec, drive, command.abs, h, &mut carried[body]);
+            let mut drive = shaft * wheel.share + wheel.torque;
+            let mut regen = 0.0;
+            if let Some(micro) = &micro {
+                drive += micro.drive[index];
+                regen = micro.regen[index];
+            }
+            let work = integrate(
+                wheel,
+                spec,
+                drive,
+                regen,
+                command.abs,
+                h,
+                &mut carried[body],
+            );
+            if let Some(micro) = &micro {
+                motors.recover(desc, micro, index, work);
+            }
         }
         if rate > 0.0 {
             couple(wheels, rate);
         }
     }
+    motors.finish(dt);
     // La force latérale, en deux demi-passes de sens opposés : aucune ne fait franchir à un contact la
     // vitesse latérale nulle, le mouvement que son corps a déjà reçu compris.
     let mut wanted = [0.0f32; MAX_WHEELS];
@@ -269,20 +305,22 @@ fn inertia(spec: &WheelDesc) -> f32 {
     0.5 * spec.mass * spec.radius * spec.radius
 }
 
-/// Un micro-pas d'une roue : couple d'entraînement, pneu, puis frein, dans la même intégration.
+/// Un micro-pas d'une roue : couple d'entraînement, pneu, puis frein et récupération, dans la même intégration.
 /// `carried` est ce dont le mouvement de son corps a déjà changé dans ce sous-pas ; sa force s'y
-/// ajoute.
+/// ajoute. Rend le travail, en joules, que le couple de récupération `regen` a pris à la rotation de la roue.
 fn integrate(
     wheel: &mut WheelDrive,
     spec: &WheelDesc,
     drive: f32,
+    regen: f32,
     abs: Option<f32>,
     h: f32,
     carried: &mut Motion,
-) {
+) -> f32 {
     let inertia = inertia(spec);
     let surface_speed = wheel.spin * spec.radius;
     let mut brake = wheel.brake;
+    let mut regen = regen;
     // La masse que le corps oppose à une force sur cette roue : sa translation et sa rotation.
     let body_mass = 1.0 / inverse_mass(wheel, wheel.tangent).max(f32::EPSILON);
     let (f_long, f_lat) = if wheel.grounded {
@@ -293,6 +331,8 @@ fn integrate(
         if abs.is_some_and(|threshold| brakes::abs_releases(threshold, surface_speed, ground_speed))
         {
             brake = 0.0;
+            // Une roue qui bloque ne récupère pas non plus : la récupération la bloquerait.
+            regen = 0.0;
         }
         let forces = tire::forces(spec, wheel.surface, wheel.load, slip, wheel.slip_lat);
         // ADR-159 D4 : la force ne fait franchir à aucun des deux la vitesse de l'autre. Une roue
@@ -301,7 +341,7 @@ fn integrate(
         // sur elle le corps qui la porte.
         let wheel_mass = 0.5 * spec.mass;
         let reduced = wheel_mass * body_mass / (wheel_mass + body_mass);
-        let held = brake + wheel.hold;
+        let held = brake + wheel.hold + regen;
         let bound = (reduced * slip_speed.abs() / h + held / spec.radius * reduced / wheel_mass)
             .min(body_mass * slip_speed.abs() / h);
         (forces.long.clamp(-bound, bound), forces.lat)
@@ -311,8 +351,9 @@ fn integrate(
         (0.0, 0.0)
     };
     let free = wheel.spin + (drive - f_long * spec.radius) * h / inertia;
-    // Le frein ramène la roue vers l'arrêt, sans la faire repartir dans l'autre sens.
-    let stop = (brake + wheel.hold) * h / inertia;
+    // Le frein ramène la roue vers l'arrêt, sans la faire repartir dans l'autre sens ; la récupération avec lui.
+    let held = brake + wheel.hold + regen;
+    let stop = held * h / inertia;
     wheel.spin = if free.abs() <= stop {
         0.0
     } else {
@@ -323,6 +364,14 @@ fn integrate(
     }
     wheel.force_long += f_long * h;
     wheel.force_lat += f_lat * h;
+    if regen > 0.0 {
+        // L'énergie de rotation que le freinage a prise, à la part de la récupération dans ce freinage.
+        let before = free.abs();
+        let after = wheel.spin.abs();
+        0.5 * inertia * (before - after) * (before + after) * (regen / held)
+    } else {
+        0.0
+    }
 }
 
 /// Rapproche la vitesse de chaque roue motrice de la moyenne de son groupe, de la part `rate` de
@@ -381,6 +430,7 @@ mod tests {
 
     fn commande(ratio: f32, throttle: f32) -> DriveCommand {
         DriveCommand {
+            brake: 0.0,
             ratio,
             throttle,
             clutch: 0.0,
@@ -401,7 +451,7 @@ mod tests {
         for roue in roues.iter_mut() {
             roue.ground_speed = *vitesse;
         }
-        step(v, c, moteur, roues, DT);
+        step(v, c, moteur, roues, &mut Motors::default(), DT);
         *vitesse += roues.iter().map(|r| r.force_long).sum::<f32>() * DT / MASSE;
     }
 
@@ -418,13 +468,27 @@ mod tests {
         let v = vehicule();
         let mut moteur = 0.0;
         let mut roues = quatre_roues();
-        step(&v, &commande(0.0, 0.0), &mut moteur, &mut roues, DT);
+        step(
+            &v,
+            &commande(0.0, 0.0),
+            &mut moteur,
+            &mut roues,
+            &mut Motors::default(),
+            DT,
+        );
         assert!(
             (moteur * engine::RPM_PER_RAD_S - 800.0).abs() < 1.0,
             "au ralenti"
         );
         for _ in 0..600 {
-            step(&v, &commande(0.0, 1.0), &mut moteur, &mut roues, DT);
+            step(
+                &v,
+                &commande(0.0, 1.0),
+                &mut moteur,
+                &mut roues,
+                &mut Motors::default(),
+                DT,
+            );
         }
         assert!(
             (moteur * engine::RPM_PER_RAD_S - 7000.0).abs() < 1.0,
@@ -435,7 +499,14 @@ mod tests {
             roue.hold = 1.0e5;
         }
         for _ in 0..120 {
-            step(&v, &commande(13.0, 0.0), &mut moteur, &mut roues, DT);
+            step(
+                &v,
+                &commande(13.0, 0.0),
+                &mut moteur,
+                &mut roues,
+                &mut Motors::default(),
+                DT,
+            );
         }
         assert!(moteur * engine::RPM_PER_RAD_S >= 799.0);
         assert!(roues.iter().all(|r| r.spin == 0.0));
@@ -487,9 +558,23 @@ mod tests {
         roue[0].brake = 3000.0;
         let mut v1 = v.clone();
         v1.wheels.truncate(1);
-        step(&v1, &commande(0.0, 0.0), &mut moteur, &mut roue, DT);
+        step(
+            &v1,
+            &commande(0.0, 0.0),
+            &mut moteur,
+            &mut roue,
+            &mut Motors::default(),
+            DT,
+        );
         assert_eq!(roue[0].spin, 0.0);
-        step(&v1, &commande(0.0, 0.0), &mut moteur, &mut roue, DT);
+        step(
+            &v1,
+            &commande(0.0, 0.0),
+            &mut moteur,
+            &mut roue,
+            &mut Motors::default(),
+            DT,
+        );
         assert_eq!(roue[0].spin, 0.0, "il ne repart pas");
     }
 
@@ -505,7 +590,14 @@ mod tests {
         }
         roues[2].hold = 4000.0;
         roues[3].hold = 4000.0;
-        step(&v, &commande(0.0, 0.0), &mut moteur, &mut roues, DT);
+        step(
+            &v,
+            &commande(0.0, 0.0),
+            &mut moteur,
+            &mut roues,
+            &mut Motors::default(),
+            DT,
+        );
         assert_eq!((roues[2].spin, roues[3].spin), (0.0, 0.0));
         let tenu: f32 = roues.iter().map(|r| r.force_long).sum();
         let attendu = -0.03 * MASSE / DT;
@@ -526,7 +618,14 @@ mod tests {
         roue[0].load = MASSE * GRAVITE;
         roue[0].hold = 4000.0;
         roue[0].ground_speed = 0.03;
-        step(&v, &commande(0.0, 0.0), &mut moteur, &mut roue, DT);
+        step(
+            &v,
+            &commande(0.0, 0.0),
+            &mut moteur,
+            &mut roue,
+            &mut Motors::default(),
+            DT,
+        );
         assert_eq!(roue[0].spin, 0.0);
         let attendu = -0.03 * MASSE / DT;
         assert!(
@@ -537,7 +636,14 @@ mod tests {
         // Sans frein, la roue libre ne retient presque rien : elle se met à rouler.
         let mut libre = [au_sol()];
         libre[0].ground_speed = 0.03;
-        step(&v, &commande(0.0, 0.0), &mut moteur, &mut libre, DT);
+        step(
+            &v,
+            &commande(0.0, 0.0),
+            &mut moteur,
+            &mut libre,
+            &mut Motors::default(),
+            DT,
+        );
         assert!(libre[0].force_long.abs() < 0.1 * attendu.abs());
         assert!(libre[0].spin > 0.0);
     }
@@ -554,6 +660,7 @@ mod tests {
                 roue.brake = 5000.0;
             }
             let c = DriveCommand {
+                brake: 0.0,
                 abs,
                 ..commande(0.0, 0.0)
             };
@@ -592,7 +699,14 @@ mod tests {
             roue.ground_speed = 5.0;
             roue.spin = 5.0 / 0.35;
         }
-        step(&v, &commande(13.0, 1.0), &mut moteur, &mut roues, DT);
+        step(
+            &v,
+            &commande(13.0, 1.0),
+            &mut moteur,
+            &mut roues,
+            &mut Motors::default(),
+            DT,
+        );
         let (gauche, droite) = (roues[2].force_long, roues[3].force_long);
         assert!(gauche > 100.0, "elles tirent : {gauche}");
         assert!(

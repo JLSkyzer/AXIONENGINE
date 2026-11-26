@@ -10,7 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * Épingle le décodage de {@link VehicleReport} sur la disposition figée d'ADR-163 D1 (32 octets, little-endian) et
+ * Épingle le décodage de {@link VehicleReport} sur la disposition figée d'ADR-163 D1 (72 octets, little-endian) et
  * celui de sa section dans {@code SIM_OUT}. Les octets sont posés aux offsets du natif ; si le décodeur lisait
  * ailleurs, ce test échouerait.
  */
@@ -35,12 +35,16 @@ class VehicleReportTest {
         buffer.putFloat(base + 28, 0.75f); // réserve 1 @28
         buffer.putFloat(base + 32, 0f); // réserve 2 @32
         buffer.putFloat(base + 36, 3f); // réserve 3 @36
+        for (int motor = 0; motor < 4; motor++) {
+            buffer.putFloat(base + 40 + 4 * motor, 1000f * (motor + 1)); // régimes @40
+            buffer.putFloat(base + 56 + 4 * motor, -1.5f * (motor + 1)); // puissances @56
+        }
     }
 
     @Test
-    @DisplayName("ADR-163 D1, ADR-182 : 40 octets, drapeaux du natif")
+    @DisplayName("ADR-163 D1, ADR-182 : 72 octets, drapeaux du natif")
     void tailleFigee() {
-        assertEquals(40, VehicleReport.BYTES);
+        assertEquals(72, VehicleReport.BYTES);
         assertEquals(8, VehicleReport.SECTION_HEADER_BYTES, "nombre u32 et 4 octets réservés");
         assertEquals(1, VehicleReport.SHIFTING, "vehicle_report_flags::SHIFTING");
         assertEquals(2, VehicleReport.RUNNING, "vehicle_report_flags::RUNNING");
@@ -53,9 +57,11 @@ class VehicleReportTest {
         ByteBuffer buffer = tampon(VehicleReport.BYTES);
         poser(buffer, 0);
         assertEquals(new VehicleReport(7, 3, 3125.5f, 0.75f, -1, VehicleReport.SHIFTING | VehicleReport.DRIVER, -0.5f,
-                12.5f, 0.75f, 0f, 3f),
-                VehicleReport.decode(buffer, 0));
+                12.5f, 0.75f, 0f, 3f, new dev.axion.net.MotorStates(1000f, 2000f, 3000f, 4000f, -1.5f, -3f, -4.5f,
+                        -6f)), VehicleReport.decode(buffer, 0));
         assertEquals(3f, VehicleReport.decode(buffer, 0).store(3));
+        assertEquals(4000f, VehicleReport.decode(buffer, 0).motors().rpm(3));
+        assertEquals(-6f, VehicleReport.decode(buffer, 0).motors().power(3));
     }
 
     @Test

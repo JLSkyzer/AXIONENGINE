@@ -4,10 +4,10 @@
 use ax_math::{Quat, Vec3};
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
-    differential_kind, native_input_flags, transmission_kind, vehicle_flags, vehicle_report_flags,
-    wheel_flags, wheel_report_flags, AeroDesc, AssistDesc, BrakesDesc, DifferentialDesc,
-    EnergyDesc, EngineDesc, SteeringDesc, SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc,
-    VehicleInput, WheelDesc,
+    differential_kind, motor_coupling, native_input_flags, transmission_kind, vehicle_flags,
+    vehicle_report_flags, wheel_flags, wheel_report_flags, AeroDesc, AssistDesc, BrakesDesc,
+    DifferentialDesc, EnergyDesc, EngineDesc, MotorDesc, SteeringDesc, SuspensionDesc, TireCurve,
+    TransmissionDesc, VehicleDesc, VehicleInput, VehicleReport, WheelDesc,
 };
 use ax_physics::{
     BodyCollider, BodyId, BodyKind, CellMaterials, CollisionGroups, CombineRule, ContactMaterial,
@@ -110,6 +110,7 @@ fn description(roues: usize) -> VehicleDesc {
     VehicleDesc {
         flags: 0,
         energy: EnergyDesc::NONE,
+        motors: Vec::new(),
         engine: EngineDesc {
             idle_rpm: 800.0,
             max_rpm: 7000.0,
@@ -2633,4 +2634,221 @@ fn adr181_chaque_roue_rapporte_le_materiau_qu_elle_touche() {
     avancer(&mut world, 0.05);
     assert!(world.pose(v).is_some());
     assert_eq!(materiaux(&world), vec![NO_MATERIAL; 4]);
+}
+
+// --- ADR-182 D3 : les moteurs électriques. ---
+
+/// Une berline électrique : un moteur sur les deux roues arrière, tirant la réserve de rang 0 (kWh), sans moteur à
+/// combustion, boîte directe.
+fn electrique_pure(capacite: f32) -> VehicleDesc {
+    let mut d = berline();
+    d.flags = vehicle_flags::POWERTRAIN | vehicle_flags::NO_ENGINE;
+    d.transmission.kind = transmission_kind::DIRECT;
+    d.transmission.final_drive = 1.0;
+    d.torque_curve.clear();
+    d.gears.clear();
+    d.energy = EnergyDesc {
+        capacities: [capacite, 0.0, 0.0, 0.0],
+        ..EnergyDesc::NONE
+    };
+    d.motors = vec![MotorDesc {
+        store: 0,
+        coupling: motor_coupling::WHEELS,
+        wheels: 0b1100,
+        max_rpm: 9000.0,
+        efficiency: 0.9,
+        ratio: 8.0,
+        regen_lift_off: 20.0,
+        regen_brake: 60.0,
+        regen_efficiency: 0.7,
+        torque_curve: vec![[0.0, 150.0], [4000.0, 150.0], [9000.0, 60.0]],
+    }];
+    d
+}
+
+/// L'entrée, le premier moteur électrique autorisé.
+fn moteur_autorise(e: VehicleInput) -> VehicleInput {
+    VehicleInput {
+        native_flags: native_input_flags::motor(0),
+        ..e
+    }
+}
+
+fn rapport(world: &PhysicsWorld) -> VehicleReport {
+    world.vehicle_reports()[0]
+}
+
+fn reserve(world: &PhysicsWorld) -> f64 {
+    world
+        .vehicle_snapshot(ASSEMBLY)
+        .expect("véhicule")
+        .energy
+        .stores[0]
+}
+
+/// L'énergie cinétique de translation du châssis, en kWh.
+fn cinetique(vitesse: f32) -> f64 {
+    0.5 * f64::from(MASSE) * f64::from(vitesse * vitesse) / 3.6e6
+}
+
+#[test]
+fn adr182_d3_un_vehicule_electrique_roule_sur_sa_reserve_et_paie_la_puissance() {
+    let (mut world, v) = sur_le_plat(electrique_pure(50.0), [400.0, 400.0], 1.0);
+    conduire(&mut world, moteur_autorise(entree(1.0, 0.0, 0.0)));
+    let mut par_les_rapports = 0.0f64;
+    for _ in 0..240 {
+        world.advance(TICK);
+        par_les_rapports += f64::from(rapport(&world).motor_power[0]) * f64::from(TICK) / 3600.0;
+    }
+    let vitesse = vers_l_avant(&world, v);
+    assert!(vitesse > 5.0, "il roule : {vitesse}");
+    let tiree = 50.0 - reserve(&world);
+    // La puissance rapportée est celle du dernier sous-pas de chaque tick : à quelques pour cent près.
+    assert!(
+        (par_les_rapports - tiree).abs() < tiree * 0.05,
+        "rapportée {par_les_rapports}, tirée {tiree}"
+    );
+    let mecanique = tiree * 0.9;
+    assert!(
+        mecanique > cinetique(vitesse) && mecanique < cinetique(vitesse) * 1.6,
+        "le travail du moteur couvre l'élan et les pertes : {mecanique} pour {}",
+        cinetique(vitesse)
+    );
+    let r = rapport(&world);
+    let attendu = vitesse / RAYON * 8.0 * 60.0 / std::f32::consts::TAU;
+    assert!(
+        (r.motor_rpm[0] - attendu).abs() < attendu * 0.15,
+        "le régime suit les roues : {} pour {attendu}",
+        r.motor_rpm[0]
+    );
+    assert_eq!(r.rpm, 0.0, "aucun moteur à combustion");
+    assert_eq!(r.flags & vehicle_report_flags::RUNNING, 0);
+}
+
+#[test]
+fn adr182_d3_sans_autorisation_ou_a_vide_le_moteur_ne_donne_rien() {
+    let (mut world, v) = sur_le_plat(electrique_pure(50.0), [400.0, 400.0], 1.0);
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    avancer(&mut world, 2.0);
+    assert!(vers_l_avant(&world, v).abs() < 0.05, "sans autorisation");
+    assert_eq!(reserve(&world), 50.0);
+
+    let (mut world, v) = sur_le_plat(electrique_pure(50.0), [400.0, 400.0], 1.0);
+    assert!(world.set_vehicle_energy(ASSEMBLY, [0.0, f32::NAN, f32::NAN, f32::NAN]));
+    conduire(&mut world, moteur_autorise(entree(1.0, 0.0, 0.0)));
+    avancer(&mut world, 2.0);
+    assert!(vers_l_avant(&world, v).abs() < 0.05, "réserve vide");
+    assert_eq!(reserve(&world), 0.0);
+}
+
+#[test]
+fn adr182_d3_au_lever_de_pied_il_recupere_sans_jamais_repartir_en_arriere() {
+    let lancer = |d: VehicleDesc| {
+        let (mut world, v) = sur_le_plat(d, [400.0, 400.0], 1.0);
+        conduire(&mut world, moteur_autorise(entree(1.0, 0.0, 0.0)));
+        avancer(&mut world, 4.0);
+        // La réserve à demi : de la place pour récupérer.
+        assert!(world.set_vehicle_energy(ASSEMBLY, [25.0, f32::NAN, f32::NAN, f32::NAN]));
+        conduire(&mut world, moteur_autorise(VehicleInput::NONE));
+        (world, v)
+    };
+    let (mut world, v) = lancer(electrique_pure(50.0));
+    let mut sans = electrique_pure(50.0);
+    sans.motors[0].regen_lift_off = 0.0;
+    sans.motors[0].regen_brake = 0.0;
+    let (mut libre, v_libre) = lancer(sans);
+    let au_lacher = vers_l_avant(&world, v);
+    world.advance(TICK);
+    assert!(
+        rapport(&world).motor_power[0] < 0.0,
+        "il rend de la puissance"
+    );
+    libre.advance(TICK);
+    assert_eq!(
+        rapport(&libre).motor_power[0],
+        0.0,
+        "sans récupération, rien"
+    );
+    avancer(&mut libre, 2.0);
+    let mut le_plus_bas = f32::MAX;
+    for _ in 0..120 {
+        world.advance(TICK);
+        le_plus_bas = le_plus_bas.min(vers_l_avant(&world, v));
+    }
+    assert!(
+        vers_l_avant(&world, v) < vers_l_avant(&libre, v_libre) - 0.5,
+        "la récupération freine : {} contre {}",
+        vers_l_avant(&world, v),
+        vers_l_avant(&libre, v_libre)
+    );
+    for _ in 0..2400 {
+        world.advance(TICK);
+        le_plus_bas = le_plus_bas.min(vers_l_avant(&world, v));
+    }
+    assert!(le_plus_bas > -0.05, "jamais en arrière : {le_plus_bas}");
+    assert!(
+        vers_l_avant(&world, v).abs() < 0.3,
+        "arrêté : {}",
+        vers_l_avant(&world, v)
+    );
+    let rendue = reserve(&world) - 25.0;
+    assert!(
+        rendue > cinetique(au_lacher) * 0.2 && rendue < cinetique(au_lacher) * 0.8,
+        "une part de l'élan revient : {rendue} pour {}",
+        cinetique(au_lacher)
+    );
+}
+
+#[test]
+fn adr182_d3_le_frein_recupere_davantage_et_une_reserve_pleine_ne_recupere_rien() {
+    let lancer = |plein: bool| {
+        let (mut world, v) = sur_le_plat(electrique_pure(50.0), [400.0, 400.0], 1.0);
+        conduire(&mut world, moteur_autorise(entree(1.0, 0.0, 0.0)));
+        avancer(&mut world, 4.0);
+        let contenu = if plein { 50.0 } else { 25.0 };
+        assert!(world.set_vehicle_energy(ASSEMBLY, [contenu, f32::NAN, f32::NAN, f32::NAN]));
+        (world, v)
+    };
+    let (mut pied, _) = lancer(false);
+    conduire(&mut pied, moteur_autorise(VehicleInput::NONE));
+    pied.advance(TICK);
+    let (mut frein, _) = lancer(false);
+    conduire(&mut frein, moteur_autorise(entree(0.0, 0.5, 0.0)));
+    frein.advance(TICK);
+    assert!(
+        rapport(&frein).motor_power[0] < rapport(&pied).motor_power[0] * 1.5,
+        "la pédale ajoute de la récupération : {} contre {}",
+        rapport(&frein).motor_power[0],
+        rapport(&pied).motor_power[0]
+    );
+    let (mut plein, _) = lancer(true);
+    conduire(&mut plein, moteur_autorise(VehicleInput::NONE));
+    avancer(&mut plein, 1.0);
+    assert_eq!(rapport(&plein).motor_power[0], 0.0, "plein : rien");
+    assert_eq!(reserve(&plein), 50.0);
+}
+
+#[test]
+fn adr182_d3_un_moteur_sur_la_boite_avance_et_recule_avec_le_rapport_engage() {
+    let mut d = electrique_pure(50.0);
+    d.transmission = berline().transmission;
+    d.gears = berline().gears;
+    d.motors[0].coupling = motor_coupling::TRANSMISSION;
+    d.motors[0].wheels = 0;
+    d.motors[0].ratio = 0.0;
+    let (mut world, v) = sur_le_plat(d, [400.0, 400.0], 1.0);
+    conduire(&mut world, moteur_autorise(entree(0.6, 0.0, 0.0)));
+    avancer(&mut world, 3.0);
+    assert!(vers_l_avant(&world, v) > 3.0, "{}", vers_l_avant(&world, v));
+    assert!(rapport(&world).motor_rpm[0] > 100.0);
+    assert!(reserve(&world) < 50.0);
+    // Le frein tenu à l'arrêt engage la marche arrière ; il devient alors l'accélérateur (ADR-159 D6).
+    conduire(&mut world, moteur_autorise(entree(0.0, 0.6, 0.0)));
+    avancer(&mut world, 12.0);
+    assert!(
+        vers_l_avant(&world, v) < -1.0,
+        "en arrière : {}",
+        vers_l_avant(&world, v)
+    );
+    assert_eq!(rapport(&world).gear, -1);
 }

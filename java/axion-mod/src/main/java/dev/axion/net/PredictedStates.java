@@ -149,7 +149,8 @@ public final class PredictedStates {
                     ratios[slot] = ratio(report.store(slot), energy.capacity(slot));
                 }
                 return AssemblyState.Vehicle.of(report.rpm(), report.load(), report.gear(), report.flags(),
-                        input.throttle(), input.brake(), report.steer(), input.handbrake(), ratios, wet);
+                        input.throttle(), input.brake(), report.steer(), input.handbrake(), ratios, wet,
+                        report.motors());
             }
         }
         return AssemblyState.Vehicle.NONE;

@@ -17,10 +17,12 @@ use ax_model::dm::handle::Handle;
 use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
     native_input_flags, transmission_kind, vehicle_flags, vehicle_report_flags, wheel_flags,
-    wheel_report_flags, VehicleDesc, VehicleInput, VehicleReport, WheelReport, MAX_STORES,
+    wheel_report_flags, VehicleDesc, VehicleInput, VehicleReport, WheelReport, MAX_MOTORS,
+    MAX_STORES,
 };
 use ax_vehicle::energy::{Burn, EnergyState};
 use ax_vehicle::engine::EngineState;
+use ax_vehicle::motor::Motors;
 use ax_vehicle::powertrain::{self, DriveCommand, WheelDrive};
 use ax_vehicle::steering::{self, Geometry, Steering};
 use ax_vehicle::transmission::Gearbox;
@@ -168,6 +170,9 @@ pub(super) struct Vehicle {
     /// La charge du moteur au dernier sous-pas : l'accélérateur qu'il reçoit, après l'antipatinage et la coupure
     /// d'un passage de rapport (ADR-163 D1).
     load: f32,
+    /// Le régime et la puissance de chaque moteur électrique au dernier sous-pas (ADR-182 D5).
+    motor_rpm: [f32; MAX_MOTORS],
+    motor_power: [f32; MAX_MOTORS],
 }
 
 /// La traînée d'un véhicule sur son corps racine (12.7) : la sienne, plus celle de chaque surface portante.
@@ -290,13 +295,15 @@ impl PhysicsWorld {
             .collect();
         let fronts = front.iter().filter(|f| **f).count() as f32;
         let engine = EngineState::new(desc.engine.starter_time);
-        // Un moteur qui attend son démarreur ne tourne pas : le régime part de zéro.
-        let engine_speed =
-            if desc.transmission.kind == transmission_kind::DIRECT || !engine.running() {
-                0.0
-            } else {
-                desc.engine.idle_rpm / engine::RPM_PER_RAD_S
-            };
+        // Un moteur qui attend son démarreur ne tourne pas, un moteur absent non plus : le régime part de zéro.
+        let engine_speed = if desc.transmission.kind == transmission_kind::DIRECT
+            || !engine.running()
+            || desc.flags & vehicle_flags::NO_ENGINE != 0
+        {
+            0.0
+        } else {
+            desc.engine.idle_rpm / engine::RPM_PER_RAD_S
+        };
         self.attach_aero(bodies, &desc, surfaces);
         let wheels = vec![WheelState::default(); count];
         self.vehicles.push(Vehicle {
@@ -328,6 +335,8 @@ impl PhysicsWorld {
             grounded: vec![false; count],
             traction_slip: 0.0,
             load: 0.0,
+            motor_rpm: [0.0; MAX_MOTORS],
+            motor_power: [0.0; MAX_MOTORS],
             base: desc.clone(),
             desc,
         });
@@ -426,8 +435,10 @@ impl PhysicsWorld {
             .iter_mut()
             .find(|vehicle| handle_key(vehicle.assembly) == handle_key(assembly))?;
         // Le contact change : un véhicule garé, endormi, doit voir son moteur démarrer ou s'arrêter (ADR-176 D1).
-        let ignition_changed = clean.native_flags != vehicle.input.native_flags
-            && vehicle.desc.engine.starter_time > 0.0;
+        // L'autorisation d'un moteur électrique, elle, ne réveille rien : il faut l'accélérateur.
+        let ignition_changed =
+            (clean.native_flags ^ vehicle.input.native_flags) & native_input_flags::IGNITION != 0
+                && vehicle.desc.engine.starter_time > 0.0;
         vehicle.input = clean;
         vehicle.driver = driver;
         if (driver && clean.moves()) || ignition_changed {
@@ -653,7 +664,10 @@ impl PhysicsWorld {
                 if vehicle.gearbox.shifting() {
                     flags |= vehicle_report_flags::SHIFTING;
                 }
-                if vehicle.desc.flags & vehicle_flags::POWERTRAIN != 0 && vehicle.engine.running() {
+                if vehicle.desc.flags & (vehicle_flags::POWERTRAIN | vehicle_flags::NO_ENGINE)
+                    == vehicle_flags::POWERTRAIN
+                    && vehicle.engine.running()
+                {
                     flags |= vehicle_report_flags::RUNNING;
                 }
                 if vehicle.driver {
@@ -667,6 +681,8 @@ impl PhysicsWorld {
                     flags,
                     steer: vehicle.steering.position(),
                     stores: vehicle.energy.stores.map(|store| store as f32),
+                    motor_rpm: vehicle.motor_rpm,
+                    motor_power: vehicle.motor_power,
                 }
             })
             .collect()
@@ -914,7 +930,7 @@ impl PhysicsWorld {
                 }
             }
         }
-        let running = vehicle.engine.running();
+        let running = vehicle.engine.running() && desc.flags & vehicle_flags::NO_ENGINE == 0;
         vehicle.load = if desc.flags & vehicle_flags::POWERTRAIN != 0 && running {
             throttle.clamp(0.0, 1.0)
         } else {
@@ -922,7 +938,11 @@ impl PhysicsWorld {
         };
         // Un moteur arrêté ne tient aucun rapport en automatique : la boîte passe au point mort (ADR-176 D1). En
         // manuelle, le rapport engagé reste, et les roues entraînent le moteur par l'embrayage.
-        let neutral = !running && desc.transmission.kind == transmission_kind::AUTOMATIC;
+        // Avec des moteurs électriques, la boîte garde son rapport : ils roulent sans le moteur à combustion, que
+        // l'embrayage laisse débrayé (ADR-182 D3).
+        let neutral = !running
+            && desc.transmission.kind == transmission_kind::AUTOMATIC
+            && desc.motors.is_empty();
         let command = DriveCommand {
             running,
             ratio: if desc.flags & vehicle_flags::POWERTRAIN != 0 && !neutral {
@@ -931,16 +951,25 @@ impl PhysicsWorld {
                 0.0
             },
             throttle,
+            brake: demand.brake,
             clutch: input.clutch,
             abs: (desc.flags & vehicle_flags::ABS != 0).then_some(desc.brakes.abs_slip_threshold),
         };
+        let mut motors = Motors::new(
+            (vehicle.input.native_flags & native_input_flags::MOTORS) >> 1,
+            vehicle.energy.stores,
+        );
         powertrain::step(
             desc,
             &command,
             &mut vehicle.engine_speed,
             &mut vehicle.drives,
+            &mut motors,
             dt,
         );
+        vehicle.energy.stores = motors.stores;
+        vehicle.motor_rpm = motors.rpm;
+        vehicle.motor_power = motors.power;
         // ADR-176 D3 : le moteur qui tourne brûle, le démarreur qui tourne décharge la batterie.
         vehicle.energy.step(
             &desc.energy,
@@ -990,7 +1019,11 @@ impl PhysicsWorld {
                 let work = f64::from(drive.load) * slip_speed * f64::from(dt) / 1000.0;
                 state.wear = (state.wear + f64::from(wheel.wear_rate) * work).min(1.0);
             }
-            if drive.share > 0.0 {
+            let motorised = desc
+                .motors
+                .iter()
+                .any(|motor| motor.wheels & (1 << index) != 0);
+            if drive.share > 0.0 || motorised {
                 vehicle.traction_slip = vehicle.traction_slip.max(brakes::traction_slip(
                     drive.spin * wheel.radius,
                     contact.ground_speed,

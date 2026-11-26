@@ -601,6 +601,8 @@ final class AxionCommands {
                 dev.axion.definition.EnergySpec.Store store = spec.stores().get(slot);
                 String role = slot == spec.fuelStore() ? ", brûlée par le moteur"
                         : slot == spec.batteryStore() ? ", celle du démarreur" : "";
+                role += assembly.motorsDrawing(store.name()).stream().map(motor -> ", tirée par le moteur " + motor)
+                        .collect(java.util.stream.Collectors.joining());
                 String rate = store.maxFillRate() > 0f ? String.format(java.util.Locale.ROOT, ", %.4f par seconde au plus",
                         store.maxFillRate()) : "";
                 lines.add(String.format(java.util.Locale.ROOT, "  %s (%s%s%s) : %.3f / %.3f (%.1f %%)", store.name(),

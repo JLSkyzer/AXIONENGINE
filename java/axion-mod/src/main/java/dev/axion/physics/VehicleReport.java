@@ -1,15 +1,16 @@
 package dev.axion.physics;
 
+import dev.axion.net.MotorStates;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * L'état du motopropulseur d'un véhicule à la fin d'un tick (ADR-163 D1), décodé de {@code SIM_OUT} (miroir de
- * {@code VehicleReport::write_le}) : <strong>40 octets</strong> little-endian (R-271) — le handle de l'assembly
+ * {@code VehicleReport::write_le}) : <strong>72 octets</strong> little-endian (R-271) — le handle de l'assembly
  * (index puis génération, {@code u32}), le régime et la charge ({@code f32}), le rapport ({@code i8}), les drapeaux
- * ({@code u8}), 2 octets réservés, la position de la direction, puis le contenu des 4 réserves ({@code f32}, ADR-182).
- * Un enregistrement par véhicule éveillé.
+ * ({@code u8}), 2 octets réservés, la position de la direction, le contenu des 4 réserves ({@code f32}, ADR-182), puis le
+ * régime et la puissance des 4 moteurs électriques ({@code f32}, ADR-182 D5). Un enregistrement par véhicule éveillé.
  *
  * <p>Dans {@code SIM_OUT} (schéma 4), la section des véhicules suit celle des roues : leur nombre ({@code u32}),
  * 4 octets réservés, puis les enregistrements ({@link #decodeSection}).
@@ -26,13 +27,14 @@ import java.util.List;
  * @param store1 celui de la réserve de rang 1
  * @param store2 celui de la réserve de rang 2
  * @param store3 celui de la réserve de rang 3
+ * @param motors le régime et la puissance de chaque moteur électrique ; {@link MotorStates#NONE} sans
  */
 public record VehicleReport(
         int handleIndex, int handleGeneration, float rpm, float load, int gear, int flags, float steer, float store0,
-        float store1, float store2, float store3) {
+        float store1, float store2, float store3, MotorStates motors) {
 
     /** Taille de la structure sur la frontière, en octets. */
-    public static final int BYTES = 40;
+    public static final int BYTES = 72;
 
     /** Taille de l'en-tête de la section : le nombre de véhicules et 4 octets réservés. */
     public static final int SECTION_HEADER_BYTES = 8;
@@ -65,7 +67,17 @@ public record VehicleReport(
                 buffer.getFloat(base + 24),
                 buffer.getFloat(base + 28),
                 buffer.getFloat(base + 32),
-                buffer.getFloat(base + 36));
+                buffer.getFloat(base + 36),
+                new MotorStates(
+                        buffer.getFloat(base + 40), buffer.getFloat(base + 44), buffer.getFloat(base + 48),
+                        buffer.getFloat(base + 52), buffer.getFloat(base + 56), buffer.getFloat(base + 60),
+                        buffer.getFloat(base + 64), buffer.getFloat(base + 68)));
+    }
+
+    /** Un rapport sans moteur électrique. */
+    public VehicleReport(int handleIndex, int handleGeneration, float rpm, float load, int gear, int flags,
+            float steer, float store0, float store1, float store2, float store3) {
+        this(handleIndex, handleGeneration, rpm, load, gear, flags, steer, store0, store1, store2, store3, MotorStates.NONE);
     }
 
     /** {@return le contenu de la réserve au rang {@code slot} ; 0 hors des 4 rangs} */

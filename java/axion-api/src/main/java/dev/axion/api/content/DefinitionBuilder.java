@@ -4667,6 +4667,184 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code powertrain.electric_motors[].coupling}. */
+    @Experimental
+    public static final class PowertrainElectricMotorCoupling {
+
+        private final Map<String, Object> values;
+
+        private PowertrainElectricMotorCoupling(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].coupling.ratio} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotorCoupling ratio(double value) {
+            values.put("ratio", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].coupling.wheels} : nom (wheel) dans le modèle.
+         *
+         * @param items les valeurs, dans l'ordre
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotorCoupling wheels(String... items) {
+            values.put("wheels", texts(items));
+            return this;
+        }
+    }
+
+    /** {@code powertrain.electric_motors[].regen}. */
+    @Experimental
+    public static final class PowertrainElectricMotorRegen {
+
+        private final Map<String, Object> values;
+
+        private PowertrainElectricMotorRegen(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].regen.brake}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotorRegen brake(double value) {
+            values.put("brake", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].regen.efficiency}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotorRegen efficiency(double value) {
+            values.put("efficiency", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].regen.lift_off}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotorRegen liftOff(double value) {
+            values.put("lift_off", value);
+            return this;
+        }
+    }
+
+    /** {@code powertrain.electric_motors[]}. */
+    @Experimental
+    public static final class PowertrainElectricMotor {
+
+        private final Map<String, Object> values;
+
+        private PowertrainElectricMotor(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].coupling}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor coupling(Consumer<PowertrainElectricMotorCoupling> config) {
+            Map<String, Object> nested = object(values, "coupling");
+            Objects.requireNonNull(config, "config").accept(new PowertrainElectricMotorCoupling(nested));
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].efficiency}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor efficiency(double value) {
+            values.put("efficiency", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].max_rpm} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor maxRpm(double value) {
+            values.put("max_rpm", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].name} : déclare un nom (motor).
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor name(String value) {
+            values.put("name", Objects.requireNonNull(value, "name"));
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].regen}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor regen(Consumer<PowertrainElectricMotorRegen> config) {
+            Map<String, Object> nested = object(values, "regen");
+            Objects.requireNonNull(config, "config").accept(new PowertrainElectricMotorRegen(nested));
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].store} : nom (store) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor store(String value) {
+            values.put("store", Objects.requireNonNull(value, "store"));
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].torque_curve}.
+         *
+         * @param rows les lignes, une par élément
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor torqueCurve(double[]... rows) {
+            values.put("torque_curve", rows(rows));
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors[].variable} : nom (variable) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainElectricMotor variable(String value) {
+            values.put("variable", Objects.requireNonNull(value, "variable"));
+            return this;
+        }
+    }
+
     /** {@code powertrain.engine.fuel}. */
     @Experimental
     public static final class PowertrainEngineFuel {
@@ -5008,6 +5186,37 @@ public final class DefinitionBuilder {
         public Powertrain driveWheels(String... items) {
             values.put("drive_wheels", texts(items));
             return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors} : au moins 1 élément ; au plus 4 éléments.
+         *
+         * @param name le champ obligatoire {@code name}
+         * @param store le champ obligatoire {@code store}
+         * @param maxRpm le champ obligatoire {@code max_rpm}
+         * @param config règle l'élément, ajouté à la suite des précédents
+         * @return ce réglage, pour enchaîner
+         */
+        public Powertrain electricMotor(String name, String store, double maxRpm, Consumer<PowertrainElectricMotor> config) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", Objects.requireNonNull(name, "name"));
+            item.put("store", Objects.requireNonNull(store, "store"));
+            item.put("max_rpm", maxRpm);
+            Objects.requireNonNull(config, "config").accept(new PowertrainElectricMotor(item));
+            list(values, "electric_motors").add(item);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.electric_motors} : au moins 1 élément ; au plus 4 éléments.
+         *
+         * @param name le champ obligatoire {@code name}
+         * @param store le champ obligatoire {@code store}
+         * @param maxRpm le champ obligatoire {@code max_rpm}
+         * @return ce réglage, pour enchaîner
+         */
+        public Powertrain electricMotor(String name, String store, double maxRpm) {
+            return electricMotor(name, store, maxRpm, item -> { });
         }
 
         /**

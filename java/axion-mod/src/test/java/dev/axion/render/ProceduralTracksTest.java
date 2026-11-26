@@ -175,6 +175,32 @@ class ProceduralTracksTest {
         assertEquals(1, journal.size(), journal.toString());
     }
 
+    @Test
+    @DisplayName("ADR-182 D5 : motor.<nom>.rpm et .power lisent le moteur nommé, tels que le snapshot les quantifie")
+    void sourcesDesMoteurs() {
+        dev.axion.net.MotorStates moteurs = new dev.axion.net.MotorStates(0f, 4200f, 0f, 0f, 0f, -12.5f, 0f, 0f);
+        dev.axion.net.AssemblyState.Vehicle recu = dev.axion.net.AssemblyState.Vehicle.of(0f, 0f, 1, 0, 0f, 0f, 0f, 0f,
+                new float[4], 0f, moteurs);
+        assertEquals(moteurs, recu.motors(), "au pas du régime et au dixième de kilowatt");
+        assertEquals(moteurs, new dev.axion.net.AssemblyState.Vehicle(recu.packed()).motors(), "relu du fil");
+        Interpolation.VehiclePose pose = new Interpolation.VehiclePose(0f, 0f, 1, 0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                0f, 0f, recu.motors());
+        JsonObject racine = JsonParser.parseString("{\"schema\":8,\"powertrain\":{\"electric_motors\":["
+                + "{\"name\":\"avant\"},{\"name\":\"arriere\"}]}}").getAsJsonObject();
+        for (String[] attendu : new String[][] {{"motor.arriere.rpm", "4200"}, {"motor.arriere.power", "-12.5"},
+                {"motor.avant.power", "0"}}) {
+            JsonObject piste = racine.deepCopy();
+            piste.add("procedural", JsonParser.parseString("[{\"node\":\"caisse\",\"channel\":\"translation\","
+                    + "\"axis\":\"x\",\"source\":\"" + attendu[0] + "\"}]"));
+            List<String> journal = new ArrayList<>();
+            ProceduralTracks pistes = ProceduralTracks.of(piste, NOMS, journal::add);
+            assertTrue(journal.isEmpty(), attendu[0] + " : " + journal);
+            assertEquals(Float.parseFloat(attendu[1]), translation(pistes, new ProceduralTracks.Frame(ROUES,
+                    new double[2], pose, AssemblyState.VariableValues.NONE, new boolean[0], 0, 0f, 0f, 0f)), 1e-4f,
+                    attendu[0]);
+        }
+    }
+
     private static ProceduralTracks pistesAReserves(String source, List<String> journal) {
         JsonObject racine = JsonParser.parseString("{\"schema\":8,\"energy\":{\"stores\":["
                 + "{\"name\":\"citerne\",\"capacity\":200},{\"name\":\"gazole\",\"capacity\":60}]},"

@@ -527,6 +527,66 @@ public final class VehiculesGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-182 D3 : un véhicule sans moteur à combustion roule sur sa batterie quand sa variable autorise le moteur, la
+     * récupération la remplit au lever de pied, et le moteur coupé ne donne ni ne prend rien. La source
+     * {@code motor.<nom>.power} et la commande le disent.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 600)
+    public static void adr182_LeVehiculeElectriqueRouleSurSaBatterieEtRecupere(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 9.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_electrique",
+                new Vec3(8.0, DESSUS_DALLE + 0.6, 13.0), IDENTITE);
+        Vec3[] depart = {null};
+        double[] contenu = {0.0};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.motorVariables().size() == 1
+                        && vehicule.variables() != null, "le véhicule est simulé"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.ignitionVariable() < 0, "pas de démarreur : pas de contact de moteur");
+                    depart[0] = vehicule.position();
+                    vehicule.variables().set(vehicule.motorVariables().get(0), 1.0, "test");
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.6, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.vehicleReport() != null
+                        && vehicule.vehicleReport().motors().power(0) > 0f
+                        && vehicule.vehicleReport().motors().rpm(0) > 100f
+                        && vehicule.storeAmount(0) < 1.9999 && vehicule.position().distanceTo(depart[0]) > 2.0,
+                        "il roule sur sa batterie : " + vehicule.storeAmount(0) + " kWh, "
+                                + vehicule.vehicleReport()))
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.vehicleReport().rpm() == 0f, "aucun moteur à combustion");
+                    double puissance = ForgeAxionApi.view(vehicule).source("motor.arriere.power");
+                    helper.assertTrue(puissance > 0.0, "la source dit la puissance : " + puissance);
+                    String vu = String.join(" | ", ParametresGameTests.commande(helper.getLevel().getServer(),
+                            "axion energy " + vehicule.getUUID()));
+                    helper.assertTrue(vu.contains("traction (axion:electricity") && vu.contains("tirée par le moteur arriere"),
+                            "ce que la commande voit : " + vu);
+                    // La batterie à moitié : de la place pour récupérer.
+                    vehicule.setStore(0, 1.0);
+                    contenu[0] = 1.0;
+                    vehicule.drive(dev.axion.api.vehicle.DriverInput.NONE);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.vehicleReport().motors().power(0) < 0f
+                        && vehicule.storeAmount(0) > contenu[0],
+                        "il récupère : " + vehicule.storeAmount(0) + " kWh, " + vehicule.vehicleReport()))
+                .thenExecute(() -> {
+                    vehicule.variables().set(vehicule.motorVariables().get(0), 0.0, "test");
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.6, 0, 0, 0, 0, 1));
+                })
+                .thenIdle(5)
+                .thenExecute(() -> contenu[0] = vehicule.storeAmount(0))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.vehicleReport().motors().power(0) == 0f
+                            && vehicule.storeAmount(0) == contenu[0],
+                            "coupé, il ne donne ni ne prend : " + vehicule.storeAmount(0));
+                    vehicule.discard();
+                })
+                .thenSucceed();
+    }
+
     private static double masse(AxionEntity vehicule) {
         dev.axion.entity.AssemblyParameters table = vehicule.parameters();
         return table.value(table.tuning().indexOf(dev.axion.api.assembly.Parameters.MASS));

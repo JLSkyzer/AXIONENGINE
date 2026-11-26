@@ -135,10 +135,19 @@ public final class Interpolation {
      * @param store2 celui de la réserve de rang 2
      * @param store3 celui de la réserve de rang 3
      * @param wet le mouillé de la route sous le véhicule, dans [0, 1] (ADR-176 D5)
+     * @param motors le régime et la puissance de chaque moteur électrique (ADR-182 D5)
      */
     public record VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
             float handbrake, float speed, float forwardSpeed, float store0, float store1, float store2, float store3,
-            float wet) {
+            float wet, MotorStates motors) {
+
+        /** Un état sans moteur électrique. */
+        public VehiclePose(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake, float speed, float forwardSpeed, float store0, float store1, float store2,
+                float store3, float wet) {
+            this(rpm, load, gear, flags, throttle, brake, steer, handbrake, speed, forwardSpeed, store0, store1, store2,
+                    store3, wet, MotorStates.NONE);
+        }
 
         /** Rien : ni véhicule, ni vitesse. */
         public static final VehiclePose NONE =
@@ -534,7 +543,8 @@ public final class Interpolation {
                 a.steer() + (b.steer() - a.steer()) * t, a.handbrake() + (b.handbrake() - a.handbrake()) * t,
                 (float) Math.sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]),
                 forwardSpeed(velocity, rotation), store(a, b, 0, t), store(a, b, 1, t), store(a, b, 2, t),
-                store(a, b, 3, t), a.wet() + (b.wet() - a.wet()) * t);
+                store(a, b, 3, t), a.wet() + (b.wet() - a.wet()) * t,
+                MotorStates.between(a.motors(), b.motors(), t));
     }
 
     private static float store(AssemblyState.Vehicle a, AssemblyState.Vehicle b, int slot, float t) {

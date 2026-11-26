@@ -502,8 +502,14 @@ public record AssemblyState(
      */
     public record Vehicle(byte[] packed) {
 
-        /** Taille de l'état, en octets. */
-        public static final int BYTES = 14;
+        /**
+         * Taille de l'état, en octets : 14 pour le véhicule, puis, par moteur électrique, son régime (deux octets, au pas
+         * du moteur) et sa puissance (deux octets, au dixième de kilowatt) (ADR-182 D5).
+         */
+        public static final int BYTES = 14 + 4 * MotorStates.COUNT;
+
+        /** Pas de la puissance d'un moteur électrique, en kW. */
+        public static final float POWER_STEP = 0.1f;
 
         /** Pas du régime, en tr/min. */
         public static final int RPM_STEP = 2;
@@ -539,6 +545,11 @@ public record AssemblyState(
             }
             if (packed[7] == Byte.MIN_VALUE) {
                 throw new IllegalArgumentException("direction hors de ses bornes");
+            }
+            for (int at = 14; at < BYTES; at += 2) {
+                if (packed[at] == Byte.MIN_VALUE && packed[at + 1] == 0) {
+                    throw new IllegalArgumentException("moteur électrique hors de ses bornes");
+                }
             }
             packed = packed.clone();
         }
@@ -620,8 +631,30 @@ public record AssemblyState(
          */
         public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
                 float handbrake, float[] ratios, float wet) {
+            return of(rpm, load, gear, flags, throttle, brake, steer, handbrake, ratios, wet,
+                    MotorStates.NONE);
+        }
+
+        /**
+         * Quantifie l'état d'un véhicule, ses réserves et ses moteurs électriques compris (ADR-182).
+         *
+         * @param rpm régime, en tr/min
+         * @param load charge du moteur, dans [0, 1]
+         * @param gear rapport engagé, négatif en marche arrière
+         * @param flags {@link #SHIFTING}, {@link #RUNNING}, {@link #DRIVER} ; un autre bit est ignoré
+         * @param throttle accélérateur, dans [0, 1]
+         * @param brake frein, dans [0, 1]
+         * @param steer direction, dans [-1, 1]
+         * @param handbrake frein à main, dans [0, 1]
+         * @param ratios le contenu de chaque réserve sur sa capacité, dans [0, 1], 4 au plus ; un rang absent vaut 0
+         * @param wet le mouillé de la route sous le véhicule, dans [0, 1]
+         * @param motors le régime et la puissance de chaque moteur électrique
+         * @return son état
+         */
+        public static Vehicle of(float rpm, float load, int gear, int flags, float throttle, float brake, float steer,
+                float handbrake, float[] ratios, float wet, MotorStates motors) {
             short steps = (short) bounded(rpm / RPM_STEP, -Short.MAX_VALUE, Short.MAX_VALUE);
-            return new Vehicle(new byte[] {
+            byte[] packed = Arrays.copyOf(new byte[] {
                 (byte) (steps >> 8),
                 (byte) steps,
                 (byte) bounded(load * UNIT_STEPS, 0, 255),
@@ -636,7 +669,29 @@ public record AssemblyState(
                 ratioByte(ratios, 2),
                 ratioByte(ratios, 3),
                 (byte) bounded(wet * UNIT_STEPS, 0, 255),
-            });
+            }, BYTES);
+            for (int motor = 0; motor < MotorStates.COUNT; motor++) {
+                putShort(packed, 14 + 4 * motor, motors.rpm(motor) / RPM_STEP);
+                putShort(packed, 16 + 4 * motor, motors.power(motor) / POWER_STEP);
+            }
+            return new Vehicle(packed);
+        }
+
+        private static void putShort(byte[] packed, int at, float steps) {
+            int value = bounded(steps, -Short.MAX_VALUE, Short.MAX_VALUE);
+            packed[at] = (byte) (value >> 8);
+            packed[at + 1] = (byte) value;
+        }
+
+        private float shortAt(int at) {
+            return (short) ((packed[at] & 0xFF) << 8 | packed[at + 1] & 0xFF);
+        }
+
+        /** {@return le régime et la puissance de chaque moteur électrique (ADR-182 D5)} */
+        public MotorStates motors() {
+            return new MotorStates(shortAt(14) * RPM_STEP, shortAt(18) * RPM_STEP,
+                    shortAt(22) * RPM_STEP, shortAt(26) * RPM_STEP, shortAt(16) * POWER_STEP,
+                    shortAt(20) * POWER_STEP, shortAt(24) * POWER_STEP, shortAt(28) * POWER_STEP);
         }
 
         private static byte ratioByte(float[] ratios, int slot) {

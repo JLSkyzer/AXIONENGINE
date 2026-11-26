@@ -86,8 +86,9 @@ final class SchemaOne {
             fixed("engine", "rpm", "load", "running"),
             // ADR-176 D3 : au schéma 7, le réservoir et la batterie d'un véhicule.
             fixed("energy", "fuel", "fuel_ratio", "battery").since(7),
-            // ADR-182 D5 : au schéma 8, le contenu d'une réserve nommée.
+            // ADR-182 D5 : au schéma 8, le contenu d'une réserve nommée, et le régime et la puissance d'un moteur.
             named("energy", NameCategory.STORE, "amount", "ratio").since(8),
+            named("motor", NameCategory.MOTOR, "rpm", "power").since(8),
             fixed("transmission", "gear", "shifting"),
             named("wheel", NameCategory.WHEEL, "spin_angle", "steer_angle", "compression",
                     "slip_long", "slip_lat", "on_ground", "damage", "wear").late("wear"),
@@ -476,7 +477,29 @@ final class SchemaOne {
                     .req("consumption", curve())
                     .build());
         }
-        return obj()
+        ObjBuilder powertrain = obj();
+        if (version >= 8) {
+            // ADR-182 D3 : les moteurs électriques ; sans « coupling », le couple s'ajoute à l'entrée de la boîte.
+            powertrain.opt("electric_motors", new Arr(obj()
+                    .req("name", declares(NameCategory.MOTOR))
+                    .req("store", refers(NameCategory.STORE))
+                    .opt("variable", refers(NameCategory.VARIABLE))
+                    // Exigée (VehicleSpec.checkMotors) : le builder ne prend pas de courbe obligatoire en argument.
+                    .opt("torque_curve", curve())
+                    .req("max_rpm", positive())
+                    .opt("efficiency", number())
+                    .opt("regen", obj()
+                            .opt("lift_off", number())
+                            .opt("brake", number())
+                            .opt("efficiency", number())
+                            .build())
+                    .opt("coupling", obj()
+                            .req("wheels", list(refers(NameCategory.WHEEL)))
+                            .req("ratio", positive())
+                            .build())
+                    .build(), 1, VehicleSpec.MAX_MOTORS, false));
+        }
+        return powertrain
                 .opt("engine", engine.build())
                 .opt("transmission", obj()
                         .opt("type", text())

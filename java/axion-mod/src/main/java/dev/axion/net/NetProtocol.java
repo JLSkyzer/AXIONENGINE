@@ -27,12 +27,13 @@ public final class NetProtocol {
      * et la correction de l'ensemble (ADR-171 Q8), 13 avec {@code S2C_Event}, les événements de contenu, et le
      * descripteur d'états 9, l'état des nodes (ADR-174 D2, D3), 14 avec le descripteur d'états 13, le carburant et la
      * batterie du véhicule (ADR-176 D3), 15 avec le descripteur d'états 14, l'usure du pneu de chaque roue (ADR-176 D4), 16 avec le descripteur d'états 15, le mouillé du véhicule (ADR-176 D5), 17 avec le descripteur
-     * d'états 16, les 4 réserves d'énergie du véhicule (ADR-182).
+     * d'états 16, les 4 réserves d'énergie du véhicule (ADR-182), 18 avec le descripteur d'états 17, le régime et la
+     * puissance des moteurs électriques (ADR-182 D5).
      */
-    public static final String VERSION = "AXION-17";
+    public static final String VERSION = "AXION-18";
 
     /** {@code protocol_version} du handshake (21.3) : le numéro de {@link #VERSION}. */
-    public static final int PROTOCOL_VERSION = 17;
+    public static final int PROTOCOL_VERSION = 18;
 
     /**
      * Taille maximale d'une trame AXION, en-tête de fragment compris, dans les deux sens.

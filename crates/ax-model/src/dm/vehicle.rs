@@ -9,18 +9,22 @@
 //! Little-endian, sans remplissage, à la suite des parts quand le drapeau `VEHICLE` est posé :
 //!
 //! ```text
-//! en-tête                 148 o : roues, points de couple, rapports, surfaces en u16 ;
+//! en-tête                 152 o : roues, points de couple, rapports, surfaces en u16 ;
 //!                                 drapeaux u16 ; transmission u8 ; différentiel u8 ;
 //!                                 puis 28 f32 : moteur (5), transmission (5), différentiel (2),
 //!                                 direction (5), freins (4), aéro (4), correcteurs (2) ;
 //!                                 enfin l'énergie (ADR-176 D3, ADR-182) : points de consommation u16, réserve
 //!                                 du moteur u8, réserve du démarreur u8 (255 : aucune), puis 6 f32 : la capacité
-//!                                 de chacune des 4 réserves, tirage du démarreur, charge
+//!                                 de chacune des 4 réserves, tirage du démarreur, charge ; puis les moteurs
+//!                                 électriques (ADR-182 D3) : leur nombre u16, 2 octets à zéro
 //! WheelDesc[roues]        100 o
 //! [f32; 2][points]          8 o : régime, couple
 //! f32[rapports]             4 o
 //! AeroSurfaceDesc[surfaces] 16 o
 //! [f32; 2][consommation]    8 o : charge du moteur, unités de la réserve par heure
+//! (MotorDesc, [f32; 2][points])[moteurs] : 32 o — réserve u8, couplage u8, points de couple u16, roues (masque u32),
+//!                                 6 f32 : régime maximal, rendement, rapport, récupération au lever de pied et au
+//!                                 freinage en N·m, rendement de récupération — puis sa courbe, 8 o par point
 //! ```
 
 use super::definition::DefnError;
@@ -34,6 +38,9 @@ pub const MAX_STORES: usize = 4;
 
 /// « Aucune réserve » : le moteur ou le démarreur n'en dépendent pas.
 pub const NO_STORE: u8 = u8::MAX;
+
+/// Nombre maximal de moteurs électriques d'un véhicule (ADR-182 D3).
+pub const MAX_MOTORS: usize = 4;
 
 /// Drapeaux de [`WheelReport`], champ `flags`.
 pub mod wheel_report_flags {
@@ -164,8 +171,9 @@ pub mod vehicle_report_flags {
 /// véhicules de `SIM_OUT`, après celle des roues : leur nombre (`u32`), 4 octets réservés, puis un enregistrement
 /// par véhicule éveillé.
 ///
-/// **Disposition figée** : 40 octets, alignement 4, comme [`WheelReport`] : le handle, le régime, la charge, le
-/// rapport, les drapeaux, 2 octets réservés, la direction, puis le contenu des 4 réserves (ADR-176 D3, ADR-182).
+/// **Disposition figée** : 72 octets, alignement 4, comme [`WheelReport`] : le handle, le régime, la charge, le
+/// rapport, les drapeaux, 2 octets réservés, la direction, le contenu des 4 réserves (ADR-176 D3, ADR-182), puis le
+/// régime et la puissance des 4 moteurs électriques (ADR-182 D5).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VehicleReport {
@@ -185,11 +193,16 @@ pub struct VehicleReport {
     pub steer: f32,
     /// Le contenu de chaque réserve, dans son unité ; 0 pour une réserve absente (ADR-182).
     pub stores: [f32; MAX_STORES],
+    /// Le régime de chaque moteur électrique, en tr/min, positif dans le sens engagé ; 0 pour un moteur absent.
+    pub motor_rpm: [f32; MAX_MOTORS],
+    /// La puissance électrique de chaque moteur sur le dernier sous-pas, en kW : positive tirée de sa réserve,
+    /// négative rendue par la récupération ; 0 pour un moteur absent.
+    pub motor_power: [f32; MAX_MOTORS],
 }
 
 impl VehicleReport {
     /// Taille sur la frontière, en octets.
-    pub const BYTES: usize = 40;
+    pub const BYTES: usize = 72;
 
     /// Taille de l'en-tête de la section des véhicules dans `SIM_OUT` : leur nombre et 4 octets réservés.
     pub const SECTION_HEADER_BYTES: usize = 8;
@@ -204,8 +217,13 @@ impl VehicleReport {
         out.push(self.flags);
         out.extend_from_slice(&[0u8; 2]);
         out.extend_from_slice(&self.steer.to_le_bytes());
-        for store in self.stores {
-            out.extend_from_slice(&store.to_le_bytes());
+        for value in self
+            .stores
+            .iter()
+            .chain(&self.motor_rpm)
+            .chain(&self.motor_power)
+        {
+            out.extend_from_slice(&value.to_le_bytes());
         }
     }
 
@@ -222,6 +240,8 @@ impl VehicleReport {
             flags: bytes[17],
             steer: f32::from_bits(u32_at(20)),
             stores: core::array::from_fn(|rank| f32::from_bits(u32_at(24 + 4 * rank))),
+            motor_rpm: core::array::from_fn(|rank| f32::from_bits(u32_at(40 + 4 * rank))),
+            motor_power: core::array::from_fn(|rank| f32::from_bits(u32_at(56 + 4 * rank))),
         })
     }
 
@@ -273,8 +293,11 @@ pub mod vehicle_flags {
     pub const TRACTION_CONTROL: u16 = 1 << 2;
     /// Le contrôle de stabilité est actif (R-1090, ADR-159 tranche 3).
     pub const STABILITY_CONTROL: u16 = 1 << 3;
+    /// Le groupe motopropulseur n'a pas de moteur à combustion : ses moteurs électriques le meuvent seuls
+    /// (ADR-182 D3). Rien ne tourne, rien ne brûle, et la courbe de couple peut manquer.
+    pub const NO_ENGINE: u16 = 1 << 4;
     /// Tous les drapeaux connus.
-    pub const ALL: u16 = POWERTRAIN | ABS | TRACTION_CONTROL | STABILITY_CONTROL;
+    pub const ALL: u16 = POWERTRAIN | ABS | TRACTION_CONTROL | STABILITY_CONTROL | NO_ENGINE;
 }
 
 /// Les entrées d'un conducteur (12.8), telles que la commande `SET_VEHICLE_INPUT` les porte.
@@ -405,7 +428,61 @@ pub mod native_input_flags {
     /// Le contact est mis : le démarreur d'un moteur qui en a un tourne, le moteur tourne ensuite tant qu'il l'est.
     pub const IGNITION: u8 = 1 << 0;
     /// Tous les drapeaux connus.
-    pub const ALL: u8 = IGNITION;
+    pub const ALL: u8 = IGNITION | MOTORS;
+    /// Les moteurs électriques autorisés, un bit chacun (ADR-182 D3) : voir [`motor`].
+    pub const MOTORS: u8 = 0b1111 << 1;
+
+    /// Le moteur électrique de rang `rank` est autorisé à donner et à récupérer.
+    #[must_use]
+    pub const fn motor(rank: usize) -> u8 {
+        if rank < super::MAX_MOTORS {
+            1 << (1 + rank)
+        } else {
+            0
+        }
+    }
+}
+
+/// Le couplage d'un moteur électrique (ADR-182 D3).
+pub mod motor_coupling {
+    /// Son couple s'ajoute à l'entrée de la boîte : rapports et différentiel s'y appliquent.
+    pub const TRANSMISSION: u8 = 0;
+    /// Il entraîne les roues de son masque, à parts égales, par son rapport.
+    pub const WHEELS: u8 = 1;
+    /// Le dernier couplage connu.
+    pub const LAST: u8 = WHEELS;
+}
+
+/// Un moteur électrique (ADR-182 D3).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MotorDesc {
+    /// Le rang de la réserve qu'il tire et à qui il rend, en kWh.
+    pub store: u8,
+    /// Voir [`motor_coupling`].
+    pub coupling: u8,
+    /// Les roues qu'il entraîne, une par bit au rang de `wheels` ; 0 s'il est couplé à la boîte.
+    pub wheels: u32,
+    /// Régime au-delà duquel il ne donne plus de couple, en tr/min.
+    pub max_rpm: f32,
+    /// Rendement en traction, dans ]0, 1] : l'énergie tirée est la puissance mécanique divisée par lui.
+    pub efficiency: f32,
+    /// Son rapport de réduction vers ses roues ; 0 s'il est couplé à la boîte.
+    pub ratio: f32,
+    /// Couple de récupération au lever de pied, en N·m au moteur.
+    pub regen_lift_off: f32,
+    /// Couple de récupération à pleine pédale de frein, en N·m au moteur, en plus du lever de pied.
+    pub regen_brake: f32,
+    /// Part de la puissance mécanique récupérée que la réserve reçoit, dans [0, 1].
+    pub regen_efficiency: f32,
+    /// La courbe de couple à pleine pédale : régime, couple. Strictement croissante en régime.
+    pub torque_curve: Vec<[f32; 2]>,
+}
+
+impl MotorDesc {
+    /// Taille de l'enregistrement d'un moteur, sa courbe non comprise.
+    pub const BYTES: usize = 32;
+    /// Au plus ce nombre de points de couple.
+    pub const MAX_POINTS: usize = 64;
 }
 
 /// Types de transmission (12.5, ADR-159 D6).
@@ -686,6 +763,8 @@ pub struct VehicleDesc {
     pub surfaces: Vec<AeroSurfaceDesc>,
     /// L'énergie (ADR-176 D3).
     pub energy: EnergyDesc,
+    /// Les moteurs électriques, au plus [`MAX_MOTORS`] (ADR-182 D3).
+    pub motors: Vec<MotorDesc>,
 }
 
 /// Lecteur séquentiel, little-endian.
@@ -737,6 +816,66 @@ impl Cursor<'_> {
             && curve.peak_value > 0.0
             && curve.tail_value >= 0.0;
         sound.then_some(curve).ok_or(DefnError::Field(FIELD))
+    }
+
+    /// Un moteur électrique et sa courbe, jugés : sa réserve existe et n'est pas celle du moteur à combustion, ses
+    /// roues sont des roues du véhicule.
+    fn motor(&mut self, wheels: usize, energy: &EnergyDesc) -> Result<MotorDesc, DefnError> {
+        const FIELD: &str = "motors";
+        let store = self.u8()?;
+        let coupling = self.u8()?;
+        let points = usize::from(self.u16()?);
+        let mask = self.u32()?;
+        let max_rpm = self.f32(FIELD)?;
+        let efficiency = self.f32(FIELD)?;
+        let ratio = self.f32(FIELD)?;
+        let regen_lift_off = self.f32(FIELD)?;
+        let regen_brake = self.f32(FIELD)?;
+        let regen_efficiency = self.f32(FIELD)?;
+        let all = if wheels >= 32 {
+            u32::MAX
+        } else {
+            (1u32 << wheels) - 1
+        };
+        let coupled = match coupling {
+            motor_coupling::TRANSMISSION => mask == 0 && ratio == 0.0,
+            motor_coupling::WHEELS => mask != 0 && mask & !all == 0 && ratio > 0.0,
+            _ => false,
+        };
+        let sound = coupled
+            && energy.capacity(store) > 0.0
+            && store != energy.fuel_store
+            && max_rpm > 0.0
+            && efficiency > 0.0
+            && efficiency <= 1.0
+            && regen_lift_off >= 0.0
+            && regen_brake >= 0.0
+            && (0.0..=1.0).contains(&regen_efficiency)
+            && (1..=MotorDesc::MAX_POINTS).contains(&points);
+        if !sound {
+            return Err(DefnError::Field(FIELD));
+        }
+        let mut torque_curve = Vec::with_capacity(points);
+        for _ in 0..points {
+            torque_curve.push([self.f32(FIELD)?, self.f32(FIELD)?]);
+        }
+        if torque_curve.iter().any(|p| p[1] < 0.0)
+            || torque_curve.windows(2).any(|p| p[1][0] <= p[0][0])
+        {
+            return Err(DefnError::Field("motors.torque_curve"));
+        }
+        Ok(MotorDesc {
+            store,
+            coupling,
+            wheels: mask,
+            max_rpm,
+            efficiency,
+            ratio,
+            regen_lift_off,
+            regen_brake,
+            regen_efficiency,
+            torque_curve,
+        })
     }
 
     fn wheel(&mut self) -> Result<WheelDesc, DefnError> {
@@ -832,7 +971,7 @@ fn put_curve(out: &mut Vec<u8>, curve: &TireCurve) {
 
 impl VehicleDesc {
     /// Taille de l'en-tête de la section, en octets.
-    pub const HEADER_BYTES: usize = 148;
+    pub const HEADER_BYTES: usize = 152;
 
     /// Écrit la section en little-endian à la fin de `out`.
     ///
@@ -898,6 +1037,8 @@ impl VehicleDesc {
         out.push(en.battery_store);
         put(out, &en.capacities);
         put(out, &[en.starter_draw, en.charge_rate]);
+        out.extend_from_slice(&count(self.motors.len()).to_le_bytes());
+        out.extend_from_slice(&[0u8; 2]);
         for wheel in &self.wheels {
             out.extend_from_slice(&wheel.node.to_le_bytes());
             out.extend_from_slice(&wheel.flags.to_le_bytes());
@@ -937,6 +1078,26 @@ impl VehicleDesc {
         }
         for point in &self.energy.consumption {
             put(out, point);
+        }
+        for motor in &self.motors {
+            out.push(motor.store);
+            out.push(motor.coupling);
+            out.extend_from_slice(&count(motor.torque_curve.len()).to_le_bytes());
+            out.extend_from_slice(&motor.wheels.to_le_bytes());
+            put(
+                out,
+                &[
+                    motor.max_rpm,
+                    motor.efficiency,
+                    motor.ratio,
+                    motor.regen_lift_off,
+                    motor.regen_brake,
+                    motor.regen_efficiency,
+                ],
+            );
+            for point in &motor.torque_curve {
+                put(out, point);
+            }
         }
     }
 
@@ -1046,6 +1207,17 @@ impl VehicleDesc {
         {
             return Err(DefnError::Field("energy"));
         }
+        let motor_count = usize::from(c.u16()?);
+        let reserved = c.u16()?;
+        if motor_count > MAX_MOTORS || reserved != 0 {
+            return Err(DefnError::Field("motors"));
+        }
+        let no_engine = flags & vehicle_flags::NO_ENGINE != 0;
+        if (no_engine && (motor_count == 0 || flags & vehicle_flags::POWERTRAIN == 0))
+            || (motor_count > 0 && flags & vehicle_flags::POWERTRAIN == 0)
+        {
+            return Err(DefnError::Field("vehicle.flags"));
+        }
 
         let mut wheel_table = Vec::with_capacity(wheels);
         for _ in 0..wheels {
@@ -1063,6 +1235,7 @@ impl VehicleDesc {
             torque_curve.push([c.f32("engine.torque_curve")?, c.f32("engine.torque_curve")?]);
         }
         if flags & vehicle_flags::POWERTRAIN != 0
+            && !no_engine
             && (torque_curve.len() < 2 || torque_curve.windows(2).any(|p| p[1][0] <= p[0][0]))
         {
             return Err(DefnError::Field("engine.torque_curve"));
@@ -1096,6 +1269,10 @@ impl VehicleDesc {
         {
             return Err(DefnError::Field("energy.consumption"));
         }
+        let mut motors = Vec::with_capacity(motor_count);
+        for _ in 0..motor_count {
+            motors.push(c.motor(wheels, &energy)?);
+        }
         let at = c.at;
         Ok((
             Self {
@@ -1112,6 +1289,7 @@ impl VehicleDesc {
                 gears: gear_table,
                 surfaces: surface_table,
                 energy,
+                motors,
             },
             at,
         ))
@@ -1130,6 +1308,8 @@ mod tests {
             flags: super::vehicle_report_flags::SHIFTING | super::vehicle_report_flags::DRIVER,
             steer: -0.5,
             stores: [12.5, 0.75, 0.0, 3.0],
+            motor_rpm: [4200.0, -12.5, 0.0, 0.0],
+            motor_power: [18.25, -3.5, 0.0, 0.0],
         };
         let mut out = Vec::new();
         super::VehicleReport::write_section(&[report, report], &mut out);
@@ -1261,6 +1441,7 @@ mod tests {
         VehicleDesc {
             flags: vehicle_flags::POWERTRAIN,
             energy: EnergyDesc::NONE,
+            motors: Vec::new(),
             engine: EngineDesc {
                 idle_rpm: 800.0,
                 max_rpm: 7000.0,
@@ -1386,10 +1567,18 @@ mod tests {
             handbrake: 0.0,
             gear: 4,
             flags: 0,
-            native_flags: native_input_flags::IGNITION,
+            native_flags: native_input_flags::ALL,
             _pad: 0,
         };
         assert_eq!(folle.sanitized(), (bornee, true));
+        assert_eq!(
+            native_input_flags::ALL,
+            0b1_1111,
+            "le contact et quatre moteurs"
+        );
+        assert_eq!(native_input_flags::motor(0), 0b10);
+        assert_eq!(native_input_flags::motor(3), 0b1_0000);
+        assert_eq!(native_input_flags::motor(4), 0, "pas de cinquième moteur");
         assert!(!VehicleInput::NONE.moves());
         let immobile = VehicleInput {
             handbrake: 1.0,
@@ -1516,6 +1705,86 @@ mod tests {
         assert!(
             lire(&octets(&citerne)).is_ok(),
             "des réserves sans moteur : une citerne"
+        );
+    }
+
+    /// Un moteur arrière sur la réserve de rang 2, par ses deux roues.
+    fn moteur_arriere() -> MotorDesc {
+        MotorDesc {
+            store: 2,
+            coupling: motor_coupling::WHEELS,
+            wheels: 0b10,
+            max_rpm: 9000.0,
+            efficiency: 0.9,
+            ratio: 9.0,
+            regen_lift_off: 40.0,
+            regen_brake: 120.0,
+            regen_efficiency: 0.7,
+            torque_curve: vec![[0.0, 250.0], [4000.0, 250.0], [9000.0, 110.0]],
+        }
+    }
+
+    #[test]
+    fn adr182_d3_les_moteurs_d_une_definition_se_relisent_et_leurs_refus_sont_nommes() {
+        let mut avec = vehicule();
+        avec.energy = EnergyDesc {
+            capacities: [40.0, 0.0, 55.0, 0.0],
+            fuel_store: 0,
+            consumption: vec![[0.0, 1.0]],
+            ..EnergyDesc::NONE
+        };
+        let sans = octets(&avec).len();
+        avec.motors = vec![moteur_arriere()];
+        let ecrits = octets(&avec);
+        assert_eq!(ecrits.len(), sans + MotorDesc::BYTES + 3 * 8);
+        assert_eq!(lire(&ecrits), Ok((avec.clone(), ecrits.len())));
+        let mut par_la_boite = avec.clone();
+        par_la_boite.motors[0].coupling = motor_coupling::TRANSMISSION;
+        par_la_boite.motors[0].wheels = 0;
+        par_la_boite.motors[0].ratio = 0.0;
+        assert!(lire(&octets(&par_la_boite)).is_ok(), "couplé à la boîte");
+
+        let refus = |mutation: &dyn Fn(&mut VehicleDesc)| {
+            let mut d = avec.clone();
+            mutation(&mut d);
+            lire(&octets(&d)).err()
+        };
+        let moteurs = Some(DefnError::Field("motors"));
+        assert_eq!(refus(&|d| d.motors[0].store = 1), moteurs, "réserve vide");
+        assert_eq!(refus(&|d| d.motors[0].store = 0), moteurs, "le carburant");
+        assert_eq!(refus(&|d| d.motors[0].wheels = 0), moteurs, "aucune roue");
+        assert_eq!(
+            refus(&|d| d.motors[0].wheels = 0b100),
+            moteurs,
+            "hors des roues"
+        );
+        assert_eq!(refus(&|d| d.motors[0].ratio = 0.0), moteurs);
+        assert_eq!(refus(&|d| d.motors[0].coupling = 2), moteurs);
+        assert_eq!(refus(&|d| d.motors[0].max_rpm = 0.0), moteurs);
+        assert_eq!(refus(&|d| d.motors[0].efficiency = 1.5), moteurs);
+        assert_eq!(refus(&|d| d.motors[0].regen_efficiency = -0.1), moteurs);
+        assert_eq!(refus(&|d| d.motors[0].regen_brake = -1.0), moteurs);
+        assert_eq!(refus(&|d| d.motors[0].torque_curve.clear()), moteurs);
+        assert_eq!(refus(&|d| d.motors = vec![moteur_arriere(); 5]), moteurs);
+        assert_eq!(
+            refus(&|d| d.motors[0].torque_curve[1][0] = 0.0),
+            Some(DefnError::Field("motors.torque_curve"))
+        );
+        assert_eq!(
+            refus(&|d| d.flags &= !vehicle_flags::POWERTRAIN),
+            Some(DefnError::Field("vehicle.flags")),
+            "un moteur est un groupe motopropulseur"
+        );
+
+        // Sans moteur à combustion : la courbe de couple peut manquer, un moteur électrique non.
+        let mut electrique = avec.clone();
+        electrique.flags |= vehicle_flags::NO_ENGINE;
+        electrique.torque_curve.clear();
+        assert!(lire(&octets(&electrique)).is_ok());
+        electrique.motors.clear();
+        assert_eq!(
+            lire(&octets(&electrique)).err(),
+            Some(DefnError::Field("vehicle.flags"))
         );
     }
 

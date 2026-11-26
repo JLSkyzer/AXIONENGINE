@@ -852,6 +852,35 @@ final class DefinitionChecker {
     }
 
     /**
+     * ADR-182 D3 : la variable d'un moteur électrique l'autorise : un booléen de l'assembly. Elle se sauvegarde si l'auteur
+     * le veut — un mode « tout électrique » —, un moteur autorisé ne donnant rien sans pédale.
+     */
+    private void checkMotorVariables(JsonObject root, Variables variables) {
+        if (!(root.get("powertrain") instanceof JsonObject powertrain)
+                || !(powertrain.get("electric_motors") instanceof JsonArray motors)) {
+            return;
+        }
+        for (int i = 0; i < motors.size(); i++) {
+            if (!(motors.get(i) instanceof JsonObject motor)
+                    || !(motor.get("variable") instanceof JsonPrimitive named)) {
+                continue;
+            }
+            int index = variables.indexOf(named.getAsString());
+            if (index < 0) {
+                continue; // la référence inconnue est déjà dite par le schéma
+            }
+            Variables.Variable contact = variables.get(index);
+            String path = "$.powertrain.electric_motors[" + i + "].variable";
+            if (contact.type() != Variables.Type.BOOL) {
+                invalid(path, "le contact est un booléen : « " + contact.name() + " » est de type "
+                        + contact.type().key());
+            } else if (contact.perSeat()) {
+                invalid(path, "le contact est une valeur de l'assembly, pas une valeur par siège (scope « seat »)");
+            }
+        }
+    }
+
+    /**
      * ADR-176 D1 : la variable que le démarreur lit est le contact du moteur : un booléen de l'assembly, jamais
      * sauvegardé — un contact sauvegardé « mis » ferait redémarrer le moteur à chaque chargement.
      */
@@ -911,6 +940,7 @@ final class DefinitionChecker {
             }
         }
         checkStarterVariable(root, variables);
+        checkMotorVariables(root, variables);
         if (root.get("seats") instanceof JsonArray seats) {
             for (int i = 0; i < seats.size(); i++) {
                 if (seats.get(i) instanceof JsonObject seat && seat.get("bindings") instanceof JsonArray bindings) {

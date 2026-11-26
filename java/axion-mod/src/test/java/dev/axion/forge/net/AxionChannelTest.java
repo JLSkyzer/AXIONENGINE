@@ -22,7 +22,8 @@ class AxionChannelTest {
     @DisplayName("T-419 : seul un pair AXION-4 est accepté ; canal absent et client vanilla sont refusés")
     void t419_unClientSansAxionEstRefuse() {
         assertTrue(NetProtocol.accepts(NetProtocol.VERSION));
-        assertTrue(NetProtocol.accepts("AXION-17"), "ADR-182 : les réserves d'énergie montent le protocole");
+        assertTrue(NetProtocol.accepts("AXION-18"), "ADR-182 D5 : les moteurs électriques montent le protocole");
+        assertFalse(NetProtocol.accepts("AXION-17"), "protocole des réserves, antérieur aux moteurs électriques");
         assertFalse(NetProtocol.accepts("AXION-16"), "protocole du mouillé, antérieur aux réserves");
         assertFalse(NetProtocol.accepts("AXION-15"), "protocole de l'usure des pneus, antérieur au mouillé");
         assertFalse(NetProtocol.accepts("AXION-14"), "protocole de l'énergie du véhicule, antérieur à l'usure des pneus");

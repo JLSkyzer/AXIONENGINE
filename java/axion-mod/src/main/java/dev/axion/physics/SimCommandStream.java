@@ -378,6 +378,9 @@ public final class SimCommandStream {
     /** Le contact mis, dans {@code VehicleInput::native_flags} du natif (ADR-176 D1) : {@code vehicle_input_flags::IGNITION}. */
     public static final int VEHICLE_INPUT_IGNITION = 1;
 
+    /** Le premier bit des moteurs électriques dans {@code native_flags} : {@code native_input_flags::motor(0)}. */
+    public static final int VEHICLE_INPUT_MOTORS_SHIFT = 1;
+
     /** Opcode {@code ANIMATE_ASSEMBLY} (ADR-155) : une commande d'animation pour une assembly. */
     public static final int OP_ANIMATE_ASSEMBLY = 16;
 
@@ -1154,8 +1157,10 @@ public final class SimCommandStream {
                 .putFloat(input.throttle()).putFloat(input.brake()).putFloat(input.steer())
                 .putFloat(input.clutch()).putFloat(input.handbrake())
                 .put(input.gear()).put((byte) input.flags())
-                // L'octet suivant est celui des drapeaux que le natif lit : le contact (ADR-176 D1).
-                .put((byte) (input.ignition() ? VEHICLE_INPUT_IGNITION : 0)).put((byte) 0)
+                // L'octet suivant est celui des drapeaux que le natif lit : le contact (ADR-176 D1) et les moteurs
+                // électriques autorisés (ADR-182 D3).
+                .put((byte) ((input.ignition() ? VEHICLE_INPUT_IGNITION : 0)
+                        | input.motors() << VEHICLE_INPUT_MOTORS_SHIFT)).put((byte) 0)
                 .putInt(driver ? VEHICLE_INPUT_DRIVER : 0);
         commands.add(command.array());
         return this;

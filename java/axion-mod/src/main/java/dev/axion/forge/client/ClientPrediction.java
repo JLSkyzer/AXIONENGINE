@@ -215,6 +215,10 @@ public final class ClientPrediction {
                     && ignitionVariable < variables.values().length
                     ? input.withIgnition(variables.values()[ignitionVariable] != 0.0)
                     : input;
+            // ADR-182 D3 : les moteurs électriques autorisés, de même, d'après les variables prédites.
+            double[] predicted = variables == null ? null : variables.values();
+            stepped = stepped.withMotors(dev.axion.definition.ElectricMotors.enabled(vehicle.motorVariables(),
+                    rank -> predicted != null && rank < predicted.length ? predicted[rank] : 0.0));
             lastStep = world.step(stepped, around);
             for (BodyState state : lastStep.result().bodies()) {
                 if (state.handleIndex() == world.handle() && state.handleGeneration() == PredictedWorld.GENERATION

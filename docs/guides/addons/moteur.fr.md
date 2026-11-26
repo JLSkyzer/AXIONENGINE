@@ -147,3 +147,41 @@ qui entre, quoi qu'elle demande.
 - **Sauvegarde** : chaque contenu se garde sous le nom de sa réserve. Renomme une réserve avec une migration
   `rename.stores` ([ADR-175](../../decisions/ADR-175.md)) ; une réserve retirée reste dans la sauvegarde et le journal la
   signale (`E-7012`) ; une réserve nouvelle naît pleine.
+
+## Le moteur électrique (schéma 8)
+
+Un véhicule peut avoir jusqu'à **4 moteurs électriques** ([ADR-182](../../decisions/ADR-182.md) D3), avec ou sans
+moteur à combustion.
+
+```json
+"energy": { "stores": [ { "name": "traction", "carrier": "axion:electricity", "capacity": 40.0, "max_fill_rate": 0.014 } ] },
+"powertrain": {
+  "electric_motors": [
+    { "name": "arriere", "store": "traction", "variable": "contact",
+      "torque_curve": [[0, 150], [4000, 150], [9000, 60]], "max_rpm": 9000, "efficiency": 0.92,
+      "regen": { "lift_off": 20, "brake": 60, "efficiency": 0.7 },
+      "coupling": { "wheels": ["roue_arriere_gauche", "roue_arriere_droite"], "ratio": 8.0 } }
+  ]
+}
+```
+
+- **La réserve se compte en kWh** : `capacity` 40 est une batterie de 40 kWh ; `max_fill_rate` en kWh par seconde.
+- **Couple** : la courbe (régime, N·m au moteur) multipliée par l'accélérateur, dès 0 tr/min. Au-delà de `max_rpm`, plus
+  rien. Ni ralenti, ni démarreur, ni embrayage.
+- **Consommation** : la puissance `couple × vitesse` divisée par `efficiency` (0,9 sans la déclarer). Réserve vide : le
+  moteur ne donne rien.
+- **Récupération** : accélérateur lâché, le moteur retient les roues de `lift_off` N·m, plus `brake` N·m à pleine pédale
+  de frein, et rend à sa réserve l'énergie prise, multipliée par `regen.efficiency` (0,7 sans la déclarer). Elle freine
+  comme un frein : elle peut tenir le véhicule à l'arrêt, jamais le faire repartir. Réserve pleine : pas de
+  récupération, les freins restent. L'ABS la relâche avec le frein. Sans `regen`, aucune.
+- **`coupling`** : des roues et leur rapport de réduction (couple à parts égales). Sans `coupling`, le couple s'ajoute à
+  l'entrée de la boîte : rapports, `final_drive` et différentiel s'y appliquent — sans `transmission`, la boîte directe
+  de rapport `final_drive`.
+- **Marche arrière** : le sens engagé par la boîte, comme pour un moteur à combustion (frein tenu à l'arrêt en boîte
+  directe ou automatique). Point mort : le moteur ne fait rien.
+- **`variable`** (facultatif) : un booléen de l'assembly qui autorise le moteur ; sans lui, il l'est toujours. Tu peux le
+  sauvegarder (`persist`) : un moteur autorisé ne donne rien sans pédale.
+- **Sans moteur à combustion** : omets `engine`. `engine.running` reste à 0, et le paramètre `engine.max_rpm` n'existe
+  pas. Les roues motrices (`drive_wheels`) ne sont exigées que pour un moteur couplé à la boîte.
+- **Sources** : `motor.<nom>.rpm` (tr/min, positif dans le sens engagé) et `motor.<nom>.power` (kW, négatif en
+  récupération) pour un compteur ou une animation ; `energy.<réserve>.ratio` pour la jauge de batterie.

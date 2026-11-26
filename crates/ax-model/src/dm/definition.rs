@@ -37,9 +37,10 @@ use super::vehicle::VehicleDesc;
 /// Signature d'un `DEFN`.
 pub const DEFN_MAGIC: [u8; 4] = *b"DEFN";
 
-/// Version du format : 3 depuis l'antipatinage et le contrôle de stabilité de la section véhicule
-/// (ADR-159, tranche 3), 2 depuis la section véhicule (tranche 1).
-pub const DEFN_VERSION: u16 = 4;
+/// Version du format : 5 depuis les moteurs électriques (ADR-182 D3), 4 depuis les 4 réserves d'énergie (D1), 3 depuis
+/// l'antipatinage et le contrôle de stabilité de la section véhicule (ADR-159, tranche 3), 2 depuis la section
+/// véhicule (tranche 1).
+pub const DEFN_VERSION: u16 = 5;
 
 /// Drapeaux de [`DefinitionHeader`], champ `flags`.
 pub mod definition_flags {

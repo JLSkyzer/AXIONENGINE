@@ -13,7 +13,8 @@ import dev.axion.definition.Seating;
  * @param handbrake frein à main, dans [0, 1]
  * @param gear rapport engagé
  * @param flags les commandes génériques tenues (ADR-163 D2), un bit par commande : le bit 0 pour la commande 1 ;
- *     {@link #IGNITION}, au-dessus des huit, est le contact du moteur (ADR-176 D1), que le natif lit
+ *     {@link #IGNITION}, au-dessus des huit, est le contact du moteur (ADR-176 D1) ; les quatre bits à partir de
+ *     {@link #MOTORS_SHIFT}, les moteurs électriques autorisés (ADR-182 D3) ; le natif lit ces cinq bits
  */
 public record VehicleInput(float throttle, float brake, float steer, float clutch, float handbrake, byte gear, int flags) {
 
@@ -23,6 +24,12 @@ public record VehicleInput(float throttle, float brake, float steer, float clutc
      * dans son propre octet, à part des commandes qu'il ignore.
      */
     public static final int IGNITION = 1 << 8;
+
+    /** Le premier bit des moteurs électriques autorisés, au-dessus du contact : un par moteur, dans l'ordre déclaré. */
+    public static final int MOTORS_SHIFT = 9;
+
+    /** Les bits des quatre moteurs électriques (ADR-182 D3). */
+    private static final int MOTORS_MASK = 0xF << MOTORS_SHIFT;
 
     /** Aucune entrée : ce qu'un siège libre ou muet commande. */
     public static final VehicleInput NONE = new VehicleInput(0f, 0f, 0f, 0f, 0f, (byte) 0, 0);
@@ -72,6 +79,22 @@ public record VehicleInput(float throttle, float brake, float steer, float clutc
     public VehicleInput withIgnition(boolean on) {
         int next = on ? flags | IGNITION : flags & ~IGNITION;
         return next == flags ? this : new VehicleInput(throttle, brake, steer, clutch, handbrake, gear, next);
+    }
+
+    /**
+     * {@return cette entrée, les moteurs électriques de {@code mask} autorisés, les autres coupés} Comme le contact, le
+     * serveur et le client qui prédit les posent d'après les variables de la definition.
+     *
+     * @param mask un bit par moteur, le bit 0 pour le premier
+     */
+    public VehicleInput withMotors(int mask) {
+        int next = flags & ~MOTORS_MASK | (mask << MOTORS_SHIFT) & MOTORS_MASK;
+        return next == flags ? this : new VehicleInput(throttle, brake, steer, clutch, handbrake, gear, next);
+    }
+
+    /** {@return les moteurs électriques autorisés, un bit par moteur} */
+    public int motors() {
+        return (flags & MOTORS_MASK) >>> MOTORS_SHIFT;
     }
 
     /** {@return vrai si le contact est mis} */

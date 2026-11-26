@@ -95,6 +95,7 @@ public final class ProceduralTracks {
         SPEED, FORWARD_SPEED, THROTTLE, BRAKE, STEER, HANDBRAKE, WET,
         RPM, LOAD, RUNNING,
         FUEL, FUEL_RATIO, BATTERY, STORE_AMOUNT, STORE_RATIO,
+        MOTOR_RPM, MOTOR_POWER,
         GEAR, SHIFTING,
         SEAT_OCCUPIED,
         SENSOR_COUNT,
@@ -360,12 +361,13 @@ public final class ProceduralTracks {
         Map<String, Integer> sensors = ranks(root, "sensors", "name");
         Variables variables = Variables.of(root);
         EnergySpec energy = EnergySpec.of(root);
+        List<String> motors = dev.axion.definition.ElectricMotors.names(root);
         Map<Integer, Integer> slots = new LinkedHashMap<>();
         List<Track> tracks = new ArrayList<>();
         Set<String> notes = new LinkedHashSet<>();
         for (JsonElement entry : entries) {
             if (entry instanceof JsonObject track) {
-                read(track, wheels, seats, sockets, sensors, variables, energy, nodeNames, slots, tracks, notes);
+                read(track, wheels, seats, sockets, sensors, variables, energy, motors, nodeNames, slots, tracks, notes);
             }
         }
         notes.forEach(journal);
@@ -415,7 +417,8 @@ public final class ProceduralTracks {
     public static Probe probe(JsonObject root, String source) {
         Variables variables = Variables.of(root);
         Reading reading = reading(source, ranks(root, "wheels", "node"), ranks(root, "seats", "name"),
-                ranks(root, "sockets", "name"), ranks(root, "sensors", "name"), variables, EnergySpec.of(root));
+                ranks(root, "sockets", "name"), ranks(root, "sensors", "name"), variables, EnergySpec.of(root),
+                dev.axion.definition.ElectricMotors.names(root));
         if (reading == null) {
             return null;
         }
@@ -442,18 +445,18 @@ public final class ProceduralTracks {
 
     private static void read(JsonObject entry, Map<String, Integer> wheels, Map<String, Integer> seats,
             Map<String, Integer> sockets, Map<String, Integer> sensors,
-            Variables variables, EnergySpec energy, List<String> names, Map<Integer, Integer> slots,
+            Variables variables, EnergySpec energy, List<String> motors, List<String> names, Map<Integer, Integer> slots,
             List<Track> tracks, Set<String> notes) {
         String source = text(entry, "source");
         String name = text(entry, "node") != null ? text(entry, "node") : text(entry, "bone");
-        Reading reading = reading(source, wheels, seats, sockets, sensors, variables, energy);
+        Reading reading = reading(source, wheels, seats, sockets, sensors, variables, energy, motors);
         if (reading == null) {
             notes.add("piste procédurale ignorée : source « " + source + " » non prise en charge");
             return;
         }
         Reading gate = null;
         if (entry.has("gate")) {
-            gate = reading(text(entry, "gate"), wheels, seats, sockets, sensors, variables, energy);
+            gate = reading(text(entry, "gate"), wheels, seats, sockets, sensors, variables, energy, motors);
             if (gate == null) {
                 notes.add("piste procédurale ignorée : gate « " + text(entry, "gate") + " » non prise en charge");
                 return;
@@ -491,9 +494,10 @@ public final class ProceduralTracks {
     /** {@return ce que lit une source, ou {@code null} si ce jeu ne la prend pas en charge ou que son élément manque} */
     private static Reading reading(String source, Map<String, Integer> wheels, Map<String, Integer> seats,
             Map<String, Integer> sockets, Map<String, Integer> sensors,
-            Variables variables, EnergySpec energy) {
+            Variables variables, EnergySpec energy, List<String> motors) {
         Source kind = kind(source);
-        Integer index = kind == null ? null : index(kind, source, wheels, seats, sockets, sensors, variables, energy);
+        Integer index = kind == null ? null
+                : index(kind, source, wheels, seats, sockets, sensors, variables, energy, motors);
         if (kind == null || index == null) {
             return null;
         }
@@ -601,6 +605,12 @@ public final class ProceduralTracks {
                 case "battery" -> Source.BATTERY;
                 default -> null;
             };
+            // ADR-182 D5 : le régime et la puissance d'un moteur électrique nommé.
+            case "motor" -> !named ? null : switch (field) {
+                case "rpm" -> Source.MOTOR_RPM;
+                case "power" -> Source.MOTOR_POWER;
+                default -> null;
+            };
             case "transmission" -> named ? null : switch (field) {
                 case "gear" -> Source.GEAR;
                 case "shifting" -> Source.SHIFTING;
@@ -622,8 +632,12 @@ public final class ProceduralTracks {
     /** {@return le rang de la roue ou du siège qu'une source nomme, 0 pour une autre, {@code null} s'il manque} */
     private static Integer index(Source kind, String source, Map<String, Integer> wheels, Map<String, Integer> seats,
             Map<String, Integer> sockets, Map<String, Integer> sensors,
-            Variables variables, EnergySpec energy) {
+            Variables variables, EnergySpec energy, List<String> motors) {
         return switch (kind) {
+            case MOTOR_RPM, MOTOR_POWER -> {
+                int motor = motors.indexOf(element(source));
+                yield motor < 0 ? null : motor;
+            }
             case STORE_AMOUNT, STORE_RATIO -> {
                 int slot = energy.indexOf(element(source));
                 yield slot < 0 ? null : slot;
@@ -780,6 +794,8 @@ public final class ProceduralTracks {
             case RPM -> (double) vehicle.rpm();
             case LOAD -> (double) vehicle.load();
             case RUNNING -> flag((vehicle.flags() & AssemblyState.Vehicle.RUNNING) != 0);
+            case MOTOR_RPM -> (double) vehicle.motors().rpm(track.index());
+            case MOTOR_POWER -> (double) vehicle.motors().power(track.index());
             case STORE_AMOUNT -> (double) vehicle.storeRatio(track.index()) * energy.capacity(track.index());
             case STORE_RATIO -> (double) vehicle.storeRatio(track.index());
             case FUEL -> (double) vehicle.storeRatio(energy.fuelStore()) * energy.fuelCapacity();

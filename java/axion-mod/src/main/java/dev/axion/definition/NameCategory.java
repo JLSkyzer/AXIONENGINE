@@ -40,6 +40,8 @@ enum NameCategory {
     SENSOR("capteur", true),
     /** Réserve d'énergie, {@code energy.stores[].name} (schéma 8, ADR-182 D1). */
     STORE("réserve", true),
+    /** Moteur électrique, {@code powertrain.electric_motors[].name} (schéma 8, ADR-182 D3). */
+    MOTOR("moteur électrique", true),
     /** Vue de véhicule, {@code cameras[].name} (ADR-170). */
     CAMERA("vue", true),
     /** Jauge du tableau de bord, {@code dashboard.gauges[].name} (ADR-170). */

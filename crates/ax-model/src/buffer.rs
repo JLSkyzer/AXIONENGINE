@@ -185,7 +185,7 @@ impl BufferKind {
     pub const fn schema_version(self) -> u32 {
         match self {
             BufferKind::Debug | BufferKind::RenderDebug => 2,
-            BufferKind::SimOut => 9,
+            BufferKind::SimOut => 10,
             BufferKind::RenderIn => 3,
             BufferKind::RenderOut => 4,
             BufferKind::AssetOut => 1,
@@ -546,7 +546,7 @@ mod tests {
                 BufferKind::RenderOut => 4,
                 BufferKind::RenderIn => 3,
                 BufferKind::Debug | BufferKind::RenderDebug => 2,
-                BufferKind::SimOut => 9,
+                BufferKind::SimOut => 10,
                 BufferKind::AssetOut => 1,
                 _ => 0,
             };

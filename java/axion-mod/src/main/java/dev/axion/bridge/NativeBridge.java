@@ -31,7 +31,8 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 38 depuis les 4 réserves d'énergie (ADR-182) ; 37 depuis le matériau sous la roue (ADR-181) :
+     * {@code E-1002}. 39 depuis les moteurs électriques (ADR-182 D3) : {@code DEFN} version 5,
+     * {@code VehicleReport} de 72 octets et {@code SIM_OUT} au schéma 10 ; 38 depuis les 4 réserves d'énergie (ADR-182) ; 37 depuis le matériau sous la roue (ADR-181) :
      * {@code material} dans le rapport des roues, {@code SIM_OUT} au schéma 8 ; 30 à 36, voir {@code abi.rs}. 29 depuis les capteurs déclarés (ADR-174 D5) : {@code SET_SENSOR}, et le rang du capteur dans
      * les événements {@code SENSOR_ENTER} et {@code SENSOR_EXIT}. 28 depuis le poids d'une couche réglé sans relancer son clip (ADR-174 D4) : action
      * {@code SET_WEIGHT} des commandes d'animation. 27 depuis les attaches entre assemblies (ADR-171 D6) : {@code ATTACH}, {@code DETACH},
@@ -59,7 +60,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 38;
+    public static final int EXPECTED_ABI_VERSION = 39;
 
     /** Succès. */
     public static final int OK = 0;

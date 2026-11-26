@@ -197,6 +197,89 @@ class VehicleSpecTest {
         assertEquals(9f, in.getFloat(points + 12));
     }
 
+    private static String electrique(String moteurs, String groupe) {
+        return "{\"schema\": 8, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"vehicle\","
+                + " \"wheels\": [{\"node\": \"a\", \"radius\": 0.3}, {\"node\": \"b\", \"radius\": 0.3,"
+                + " \"powered\": true}], \"energy\": {\"stores\": [{\"name\": \"traction\", \"capacity\": 40}]},"
+                + " \"powertrain\": {" + groupe + "\"electric_motors\": [" + moteurs + "]}}";
+    }
+
+    private static final String ARRIERE = "{\"name\": \"arriere\", \"store\": \"traction\","
+            + " \"torque_curve\": [[0, 150], [9000, 60]], \"max_rpm\": 9000, \"regen\": {\"lift_off\": 20,"
+            + " \"brake\": 60}, \"coupling\": {\"wheels\": [\"b\"], \"ratio\": 8}}";
+
+    @Test
+    @DisplayName("ADR-182 D3 : sans moteur à combustion, la section le dit et porte chaque moteur, ses défauts compris")
+    void moteursElectriquesDansLaSection() throws DefinitionException {
+        ByteBuffer in = section(electrique(ARRIERE, ""), TireProfiles.empty());
+        assertEquals(1 | 16, in.getShort(8) & 0xFFFF, "groupe motopropulseur, sans moteur à combustion");
+        assertEquals(1, in.getShort(148), "un moteur");
+        assertEquals(0, in.getShort(150), "réservé");
+        int moteur = VehicleSpec.HEADER_BYTES + 2 * VehicleSpec.WHEEL_BYTES;
+        assertEquals(0, in.get(moteur), "sa réserve");
+        assertEquals(1, in.get(moteur + 1), "couplé à des roues");
+        assertEquals(2, in.getShort(moteur + 2), "points de couple");
+        assertEquals(0b10, in.getInt(moteur + 4), "la roue de rang 1");
+        float[] attendus = {9000f, VehicleSpec.MOTOR_EFFICIENCY, 8f, 20f, 60f, VehicleSpec.REGEN_EFFICIENCY};
+        for (int i = 0; i < attendus.length; i++) {
+            assertEquals(attendus[i], in.getFloat(moteur + 8 + 4 * i), "champ " + i);
+        }
+        assertEquals(60f, in.getFloat(moteur + VehicleSpec.MOTOR_BYTES + 12), "second point de la courbe");
+        assertEquals(moteur + VehicleSpec.MOTOR_BYTES + 16, in.limit());
+
+        String boite = ARRIERE.replace(", \"coupling\": {\"wheels\": [\"b\"], \"ratio\": 8}", "")
+                .replace(", \"regen\": {\"lift_off\": 20, \"brake\": 60}", "");
+        ByteBuffer couple = section(electrique(boite, ""), TireProfiles.empty());
+        assertEquals(0, couple.get(moteur + 1), "couplé à la boîte");
+        assertEquals(0f, couple.getFloat(moteur + 8 + 4 * 5), "sans regen, rien ne se récupère");
+    }
+
+    @Test
+    @DisplayName("ADR-182 D3 : les refus d'un moteur électrique, chacun à son chemin")
+    void refusDesMoteursElectriques() throws DefinitionException {
+        lire(electrique(ARRIERE, ""));
+        assertEquals("$.powertrain.electric_motors[0].torque_curve",
+                refus(electrique(ARRIERE.replace(" \"torque_curve\": [[0, 150], [9000, 60]],", ""), "")));
+        assertEquals("$.powertrain.electric_motors[0].torque_curve[1]",
+                refus(electrique(ARRIERE.replace("[9000, 60]", "[0, 60]"), "")));
+        assertEquals("$.powertrain.electric_motors[0].efficiency",
+                refus(electrique(ARRIERE.replace("\"max_rpm\": 9000,", "\"max_rpm\": 9000, \"efficiency\": 1.2,"), "")));
+        assertEquals("$.powertrain.electric_motors[0].coupling.wheels",
+                refus(electrique(ARRIERE.replace("[\"b\"]", "[\"b\", \"b\"]"), "")));
+        assertEquals("$.powertrain.electric_motors[0].regen.brake",
+                refus(electrique(ARRIERE.replace("\"brake\": 60", "\"brake\": -1"), "")));
+        // Un moteur à combustion, ou un moteur couplé à la boîte, exigent des roues motrices.
+        String sansMotrice = electrique(ARRIERE.replace(", \"coupling\": {\"wheels\": [\"b\"], \"ratio\": 8}", ""), "")
+                .replace(", \"powered\": true", "");
+        assertEquals("$.powertrain", refus(sansMotrice));
+        lire(electrique(ARRIERE, "").replace(", \"powered\": true", ""));
+        // Le carburant ne nourrit pas un moteur électrique.
+        String hybride = electrique(ARRIERE, "\"engine\": {\"torque_curve\": [[0, 0], [1000, 180]],"
+                + " \"fuel\": {\"store\": \"traction\", \"consumption\": [[0, 1]]}}, ");
+        assertEquals("$.powertrain.electric_motors[0].store", refus(hybride));
+        assertEquals("$.powertrain.electric_motors",
+                refus(electrique(String.join(", ", java.util.stream.IntStream.range(0, 5)
+                        .mapToObj(i -> ARRIERE.replace("\"arriere\"", "\"m" + i + "\"")).toList()), "")));
+        assertThrows(DefinitionException.class,
+                () -> lire(electrique(ARRIERE, "").replace("\"schema\": 8", "\"schema\": 7")));
+    }
+
+    @Test
+    @DisplayName("ADR-182 D3 : la variable d'un moteur est un booléen de l'assembly ; sans elle, il est toujours autorisé")
+    void variableDUnMoteur() throws DefinitionException {
+        String avec = electrique(ARRIERE.replace("\"store\": \"traction\",", "\"store\": \"traction\","
+                + " \"variable\": \"marche\","), "").replace("\"schema\": 8,", "\"schema\": 8, \"variables\":"
+                + " {\"marche\": {\"type\": \"bool\", \"default\": false, \"persist\": true, \"replicate\": \"all\"}},");
+        Definition definition = lire(avec);
+        List<Integer> rangs = ElectricMotors.variables(definition.root(), Variables.of(definition.root()));
+        assertEquals(List.of(0), rangs);
+        assertEquals(0, ElectricMotors.enabled(rangs, rang -> 0.0));
+        assertEquals(1, ElectricMotors.enabled(rangs, rang -> 1.0));
+        assertEquals(1, ElectricMotors.enabled(List.of(-1), rang -> 0.0), "sans variable");
+        assertEquals("$.powertrain.electric_motors[0].variable",
+                refus(avec.replace("\"type\": \"bool\", \"default\": false", "\"type\": \"int\", \"default\": 0")));
+    }
+
     @Test
     @DisplayName("R-1090, ADR-159 tranche 3 : antipatinage et stabilité, désactivés par défaut, actifs par leur drapeau")
     void correcteurs() throws DefinitionException {

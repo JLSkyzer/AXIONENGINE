@@ -58,7 +58,8 @@ import java.util.Set;
 public record SnapshotMessage(int sequence, long serverTick, int descriptor, List<Entry> entries) {
 
     /**
-     * Le descripteur d'états procéduraux (ADR-150 D6) : 16 depuis les 4 réserves d'énergie du véhicule (ADR-182) ; 13
+     * Le descripteur d'états procéduraux (ADR-150 D6) : 17 depuis les moteurs électriques du véhicule (ADR-182 D5) ;
+     * 16 depuis les 4 réserves d'énergie du véhicule (ADR-182) ; 13
      * à 15 pour son énergie, l'usure de ses pneus et son mouillé (ADR-176) ; 12 depuis le compte des capteurs (ADR-174 D5) ; 11 depuis les variables par siège (ADR-174 D2) ; 10 depuis le masque de nodes d'une couche d'animation
      * (ADR-174 D4) ; 9 depuis l'état des nodes (ADR-174 D3) ; 8 depuis les réglages
      * des attaches ; 7 depuis les attaches (ADR-171 D7) ; 6 depuis les
@@ -66,7 +67,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
      * l'état du véhicule et les drapeaux sur 16 bits (5, ADR-163 D1), les roues (4, ADR-159 D9), l'animation (3,
      * ADR-155), les corps autres que le corps racine et les joints (2, ADR-151 D8).
      */
-    public static final int DESCRIPTOR_VERSION = 16;
+    public static final int DESCRIPTOR_VERSION = 17;
 
     /**
      * La longueur maximale d'une cause ou d'un nom de paramètre sur le fil, en octets : {@link Modifier#MAX_LENGTH}

@@ -822,6 +822,7 @@ mod tests {
         VehicleDesc {
             flags: 0,
             energy: EnergyDesc::NONE,
+            motors: Vec::new(),
             engine: EngineDesc {
                 idle_rpm: 800.0,
                 max_rpm: 7000.0,

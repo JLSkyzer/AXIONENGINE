@@ -242,7 +242,8 @@ public final class DefinitionCompilation {
         }
         return Optional.of(new HeldDefinition(definition, summary, seating, tuning,
                 nodeNames.getOrDefault(id, List.of()), bodyRests.getOrDefault(id, BodyRests.NONE),
-                Ignition.variable(definition.root(), seating.variables()), EnergySpec.of(definition.root()),
+                Ignition.variable(definition.root(), seating.variables()),
+                ElectricMotors.variables(definition.root(), seating.variables()), EnergySpec.of(definition.root()),
                 assetStamps.getOrDefault(id, "")));
     }
 

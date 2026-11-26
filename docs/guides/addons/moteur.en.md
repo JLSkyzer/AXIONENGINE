@@ -139,3 +139,41 @@ whatever it asks for.
 - **Saving**: each content is kept under its store's name. Rename a store with a `rename.stores` migration
   ([ADR-175](../../decisions/ADR-175.md)); a removed store stays in the save and the log says so (`E-7012`); a new store
   starts full.
+
+## The electric motor (schema 8)
+
+A vehicle can have up to **4 electric motors** ([ADR-182](../../decisions/ADR-182.md) D3), with or without a combustion
+engine.
+
+```json
+"energy": { "stores": [ { "name": "traction", "carrier": "axion:electricity", "capacity": 40.0, "max_fill_rate": 0.014 } ] },
+"powertrain": {
+  "electric_motors": [
+    { "name": "rear", "store": "traction", "variable": "ignition",
+      "torque_curve": [[0, 150], [4000, 150], [9000, 60]], "max_rpm": 9000, "efficiency": 0.92,
+      "regen": { "lift_off": 20, "brake": 60, "efficiency": 0.7 },
+      "coupling": { "wheels": ["rear_left_wheel", "rear_right_wheel"], "ratio": 8.0 } }
+  ]
+}
+```
+
+- **The store is counted in kWh**: a `capacity` of 40 is a 40 kWh battery; `max_fill_rate` is in kWh per second.
+- **Torque**: the curve (rpm, N·m at the motor) times the throttle, from 0 rpm. Beyond `max_rpm`, nothing. No idle, no
+  starter, no clutch.
+- **Consumption**: the power `torque × speed` divided by `efficiency` (0.9 when undeclared). Empty store: the motor gives
+  nothing.
+- **Regeneration**: with the throttle released, the motor holds the wheels with `lift_off` N·m, plus `brake` N·m at full
+  brake pedal, and returns the energy taken to its store, times `regen.efficiency` (0.7 when undeclared). It brakes like a
+  brake: it can hold the vehicle at rest, never drive it back. Full store: no regeneration, the brakes remain. ABS releases
+  it with the brake. Without `regen`, none.
+- **`coupling`**: wheels and their reduction ratio (torque shared equally). Without `coupling`, the torque adds at the
+  gearbox input: gears, `final_drive` and differential apply — without `transmission`, the direct gearbox of ratio
+  `final_drive`.
+- **Reverse**: the direction the gearbox engaged, as for a combustion engine (brake held at rest with a direct or
+  automatic gearbox). Neutral: the motor does nothing.
+- **`variable`** (optional): a boolean of the assembly that enables the motor; without it, it always is. You may save it
+  (`persist`): an enabled motor gives nothing without a pedal.
+- **Without a combustion engine**: omit `engine`. `engine.running` stays 0, and the `engine.max_rpm` parameter does not
+  exist. Driven wheels (`drive_wheels`) are required only for a motor coupled to the gearbox.
+- **Sources**: `motor.<name>.rpm` (rpm, positive in the engaged direction) and `motor.<name>.power` (kW, negative while
+  regenerating) for a gauge or an animation; `energy.<store>.ratio` for the battery gauge.

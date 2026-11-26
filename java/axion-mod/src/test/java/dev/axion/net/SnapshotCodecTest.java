@@ -236,7 +236,9 @@ class SnapshotCodecTest {
                 "descripteur 14, antérieur au mouillé de la route (ADR-176 D5)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(15).varUInt(0).toByteArray(),
                 "descripteur 15, antérieur aux 4 réserves (ADR-182)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(17).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(16).varUInt(0).toByteArray(),
+                "descripteur 16, antérieur aux moteurs électriques (ADR-182 D5)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(18).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");

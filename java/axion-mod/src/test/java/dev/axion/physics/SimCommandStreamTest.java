@@ -483,6 +483,15 @@ class SimCommandStreamTest {
                 .setVehicleInput(7, 3, entree.withIgnition(true), true).toBytes());
         assertEquals(SimCommandStream.VEHICLE_INPUT_IGNITION, contact.get(46), "le contact est mis");
         assertEquals(0, contact.get(45), "les commandes n'en savent rien");
+        // ADR-182 D3 : les moteurs électriques autorisés suivent le contact dans le même octet.
+        ByteBuffer moteurs = wrap(new SimCommandStream()
+                .setVehicleInput(7, 3, entree.withIgnition(true).withMotors(0b1010), true).toBytes());
+        assertEquals(SimCommandStream.VEHICLE_INPUT_IGNITION | 0b1010 << SimCommandStream.VEHICLE_INPUT_MOTORS_SHIFT,
+                moteurs.get(46), "le contact et les moteurs 1 et 3");
+        assertEquals(0, moteurs.get(45), "les commandes n'en savent rien");
+        assertEquals(0b1010, entree.withMotors(0b1010).motors());
+        assertEquals(entree.withIgnition(true), entree.withIgnition(true).withMotors(0b1).withMotors(0),
+                "couper les moteurs rend l'entrée d'avant");
         assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 40), "commande suivante, alignée");
         byte[] sans = new SimCommandStream().setVehicleInput(7, 3, VehicleInput.NONE, false).toBytes();
         assertEquals(0, wrap(sans).getInt(48), "siège libre");
@@ -498,6 +507,8 @@ class SimCommandStreamTest {
         assertTrue(vehicule.contains("pub mod native_input_flags {"));
         assertTrue(vehicule.contains("pub const IGNITION: u8 = 1 << " + Integer.numberOfTrailingZeros(
                 SimCommandStream.VEHICLE_INPUT_IGNITION) + ";"), "le bit du contact, au natif");
+        assertTrue(vehicule.contains("1 << (" + SimCommandStream.VEHICLE_INPUT_MOTORS_SHIFT + " + rank)"),
+                "le premier bit des moteurs, au natif");
     }
 
     @Test
