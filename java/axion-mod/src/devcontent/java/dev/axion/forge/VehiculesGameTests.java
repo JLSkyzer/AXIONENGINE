@@ -386,6 +386,60 @@ public final class VehiculesGameTests {
     }
 
     /**
+     * ADR-176, « Ensemble » (grille d'ADR-160 D7) : deux véhicules à réservoir attelés ne se partagent rien. Celui qui
+     * tire brûle son carburant ; celui qui est tiré, contact coupé, garde le sien au litre près ; chacun pèse sa masse à
+     * sec plus son propre carburant, et le plein de l'un ne touche pas l'autre.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 400)
+    public static void adr176_DeuxReservoirsAttelesNeSePartagentRien(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 9.0));
+        AxionEntity tracteur = AssembliesDeTest.poser(helper, "axion:test/vehicule_reservoir_attelage",
+                new Vec3(8.0, DESSUS_DALLE + 0.6, 8.0), IDENTITE);
+        AxionEntity tire = AssembliesDeTest.poser(helper, "axion:test/vehicule_reservoir_attelage",
+                new Vec3(8.0, DESSUS_DALLE + 0.6, 13.0), IDENTITE);
+        Vec3[] departs = {null, null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(tracteur.hasPhysicalBounds() && tire.hasPhysicalBounds()
+                        && tracteur.ignitionVariable() >= 0 && tracteur.parameters() != null && tire.parameters() != null,
+                        "les deux véhicules sont simulés"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    dev.axion.api.attach.AttachResult corde = ForgeAxionApi.view(tracteur).attachments().attach(
+                            "attelage", ForgeAxionApi.view(tire), "attelage", "rope");
+                    helper.assertTrue(corde.attached(), "la corde : " + corde.message());
+                    departs[0] = tracteur.position();
+                    departs[1] = tire.position();
+                    // Sans conducteur le frein de stationnement reste serré : une entrée neutre le relâche.
+                    tire.drive(dev.axion.api.vehicle.DriverInput.NONE);
+                    tracteur.variables().set(tracteur.ignitionVariable(), 1.0, "test");
+                    tracteur.drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(tracteur.fuel() < 39.9995
+                        && tire.position().distanceTo(departs[1]) > 0.5,
+                        "le premier brûle et tire le second : " + tracteur.fuel() + " l, "
+                                + tire.position().distanceTo(departs[1]) + " bloc(s)"))
+                .thenExecute(() -> {
+                    tracteur.drive(new dev.axion.api.vehicle.DriverInput(0, 1.0, 0, 0, 0, 1));
+                    helper.assertTrue(tire.fuel() == 40.0, "le tiré n'a rien brûlé : " + tire.fuel());
+                    helper.assertTrue(masse(tire) == 370.0, "340 kg à sec + ses 40 l × 0,75 : " + masse(tire));
+                    helper.assertTrue(masse(tracteur) > 369.5 && masse(tracteur) <= 370.0,
+                            "le sien, au cran près : " + masse(tracteur));
+                    helper.assertTrue(tire.refuel(5.0) == 0.0, "le tiré est plein");
+                    double entre = tracteur.refuel(100.0);
+                    helper.assertTrue(entre > 0.0 && tracteur.fuel() == 40.0 && tire.fuel() == 40.0,
+                            "le plein du premier n'en prend rien au second : " + entre);
+                    tracteur.discard();
+                    tire.discard();
+                })
+                .thenSucceed();
+    }
+
+    private static double masse(AxionEntity vehicule) {
+        dev.axion.entity.AssemblyParameters table = vehicule.parameters();
+        return table.value(table.tuning().indexOf(dev.axion.api.assembly.Parameters.MASS));
+    }
+
+    /**
      * ADR-176 D4 : le profil de pneu d'une roue arrive au natif ({@code wear.rate} de {@code axion:tire/test/usable}) : plein
      * gaz de l'arrêt, les roues motrices patinent et s'usent, plus que les roues avant, qui roulent ; le rapport du natif
      * en porte l'usure.

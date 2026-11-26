@@ -132,6 +132,9 @@ public final class EssaiPrediction {
      */
     private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
 
+    /** ADR-176 D5 : sous {@code AXION_ESSAI_PLUIE=1}, le serveur fait pleuvoir sur la piste. */
+    private static final boolean PLUIE = "1".equals(System.getenv("AXION_ESSAI_PLUIE"));
+
     /** Vrai pour le serveur d'un essai filmé : par temps clair ({@code AXION_ESSAI_FILM=1}). */
     private static final boolean FILM_SERVEUR = "1".equals(System.getenv("AXION_ESSAI_FILM"));
 
@@ -241,6 +244,14 @@ public final class EssaiPrediction {
                 if (serveur.getPlayerList().getPlayers().isEmpty()) {
                     return;
                 }
+                if (PLUIE) {
+                    // ADR-176 D5 : il pleut sur la piste, à ciel ouvert. Le biome du monde de l'essai est quelconque — sans
+                    // pluie, ou enneigé — : le bout de piste que le véhicule parcourt devient une plaine.
+                    serveur.getCommands().performPrefixedCommand(serveur.createCommandSourceStack(), String.format(
+                            Locale.ROOT, "fillbiome 0 %d %d 15 %d %d minecraft:plains", SOL_Y, SOL_LONGUEUR - 64, SOL_Y + 7,
+                            SOL_LONGUEUR - 1));
+                    serveur.overworld().setWeatherParameters(0, 20 * 60 * 20, true, false);
+                }
                 if (FILM_SERVEUR) {
                     // Le film se tourne par temps clair : la pluie cache le véhicule.
                     serveur.overworld().setWeatherParameters(20 * 60 * 20, 0, false, false);
@@ -327,6 +338,10 @@ public final class EssaiPrediction {
                         + " accélérateur %.2f, corrections parties %d (retenues %d)", vehicule.getX(), vehicule.getZ(),
                         vehicule.driverSequence(), siege < 0 ? -1f : vehicule.seatInput(siege).throttle(),
                         corrections[0], corrections[1]));
+                if (PLUIE) {
+                    LOGGER.info("[essai] serveur : mouillé {}, pluie sur le véhicule {}", vehicule.wetness(),
+                            monde.isRainingAt(vehicule.blockPosition().above(2)));
+                }
                 long[] cadence = siege < 0 ? null : vehicule.seatCadence(siege);
                 if (cadence != null) {
                     // ADR-168 D3, 6e : la cadence des entrées, relevée dans la file même ; la profondeur trouvée à
@@ -346,8 +361,12 @@ public final class EssaiPrediction {
         /** Les phases de la conduite, en ticks du client. */
         private static final int ATTENTE = 40;
 
-        /** Le tick où la commande liée à {@link EssaiPrediction#BASCULER} s'enfonce, un tick, en pleine accélération. */
-        static final int BASCULE = 60;
+        /**
+         * Le tick où la commande liée à {@link EssaiPrediction#BASCULER} s'enfonce, un tick : en pleine accélération par
+         * défaut ; avant elle pour le contact d'un véhicule à démarreur ({@code -PessaiBasculeTick}), le frein à main tenu
+         * jusque-là : endormi, un véhicule n'est pas prédit.
+         */
+        static final int BASCULE = Integer.getInteger("axion.essai.bascule_tick", 60);
         private static final int ACCELERE = 80;
         private static final int BRAQUE = 30;
         private static final int RELACHE = 40;
@@ -633,6 +652,9 @@ public final class EssaiPrediction {
             }
             boolean avant = tick >= ATTENTE && tick < ATTENTE + ACCELERE + BRAQUE;
             boolean gauche = tick >= ATTENTE + ACCELERE && tick < ATTENTE + ACCELERE + BRAQUE;
+            if (BASCULE < ATTENTE) {
+                minecraft.options.keyJump.setDown(tick < ATTENTE);
+            }
             minecraft.options.keyUp.setDown(avant);
             minecraft.options.keyLeft.setDown(gauche);
             // Prolongé, l'essai freine après le virage : sans quoi le véhicule sort du sol, tombe, et sa culbute
@@ -975,6 +997,11 @@ public final class EssaiPrediction {
                         + " correction(s) rejouée(s) depuis la bascule", BASCULER, BASCULE, basculePredite, basculeRecue,
                         basculeParametres, rejeuxAvant < 0 ? -1 : boucle.replays() - rejeuxAvant));
             }
+            AxionEntity pilote = ClientPrediction.vehicle();
+            if (pilote != null && pilote.energySpec().fuelCapacity() > 0f) {
+                rapport.add(energie(pilote));
+                rapport.add(mouille(pilote));
+            }
             long[] ensemble = dev.axion.forge.client.ClientPrediction.ensembleStats();
             rapport.add(String.format(Locale.ROOT, "ensemble : %d correction(s), dont %d à plusieurs états ; %d membre(s)"
                     + " prédit(s) au plus ; octets d'états %.0f en moyenne, %d au plus par correction",
@@ -1051,6 +1078,45 @@ public final class EssaiPrediction {
                     + " proxy(s) périmé(s), %d assembly(s) dessinée(s) avec asset ; %d correction(s) après la reprise,"
                     + " pire écart %.4f m (au moins 10, sous 0,3 m)", reussi ? "réussi" : "ÉCHOUÉ", suivie, tickRemplacee,
                     ouverte, perimes, dessinees, apres.length, pire);
+        }
+
+        /**
+         * {@return ce que la prédiction sait de l'énergie (ADR-176 D1, D3) : le contact qu'elle voit au tick de la bascule,
+         * avant le serveur, et la masse que le monde prédit a reçue en dernier — celle à sec plus le carburant reçu, à
+         * deux crans près}
+         */
+        private static String energie(AxionEntity vehicule) {
+            dev.axion.definition.EnergySpec reservoir = vehicule.energySpec();
+            dev.axion.entity.AssemblyParameters table = vehicule.parameters();
+            String masse = dev.axion.api.assembly.Parameters.MASS;
+            int rang = table == null ? -1 : table.tuning().indexOf(masse);
+            double sec = rang < 0 ? Double.NaN : table.tuning().get(rang).base();
+            // Le carburant tel qu'il se dessine, des snapshots : une lecture à part de celle que la prédiction fait.
+            double carburant = vehicule.renderPose(1f).vehicle().fuelRatio() * reservoir.fuelCapacity()
+                    * reservoir.unitMass();
+            float[] envoyes = ClientPrediction.sentParameters();
+            double predite = envoyes == null ? Double.NaN
+                    : envoyes[dev.axion.physics.SimCommandStream.PARAMETER_FIELDS.indexOf(masse)];
+            double cran = reservoir.fuelCapacity() * reservoir.unitMass() / 255.0;
+            boolean contact = !Double.isNaN(avantPredite) && basculePredite >= BASCULE && basculePredite <= BASCULE + 1
+                    && basculeRecue > basculePredite;
+            boolean pesee = carburant > 2 * cran && Math.abs(predite - sec - carburant) <= 2 * cran;
+            return String.format(Locale.ROOT, "ENERGIE : %s — contact basculé au tick %d, prédit au tick %d, reçu du"
+                    + " serveur au tick %d ; masse du monde prédit %.3f kg, pour %.3f kg à sec et %.3f kg de carburant"
+                    + " reçu (à %.3f kg près)", contact && pesee ? "réussi" : "ÉCHOUÉ", BASCULE, basculePredite,
+                    basculeRecue, predite, sec, carburant, 2 * cran);
+        }
+
+        /**
+         * {@return le mouillé que la prédiction lit (ADR-176 D5), contre celui que le véhicule dessiné montre} Sous la pluie
+         * ({@code AXION_ESSAI_PLUIE=1}), les deux sont à un au bout de l'essai.
+         */
+        private static String mouille(AxionEntity vehicule) {
+            float lu = vehicule.receivedWet();
+            float dessine = vehicule.renderPose(1f).vehicle().wet();
+            boolean reussi = dessine > 0.9f && Math.abs(lu - dessine) <= 2f / 255f;
+            return String.format(Locale.ROOT, "MOUILLE : %s — mouillé lu par la prédiction %.3f, dessiné %.3f (sous la pluie :"
+                    + " plus de 0,9, les deux à deux crans près)", reussi ? "réussi" : "ÉCHOUÉ", lu, dessine);
         }
 
         /**

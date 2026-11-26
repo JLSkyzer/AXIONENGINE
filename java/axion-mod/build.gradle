@@ -173,6 +173,8 @@ minecraft {
             property 'axion.essai.recharge', project.hasProperty('essaiRecharge').toString()
             // -PessaiBasculer=<variable> : la commande liée à cette variable s'enfonce un tick (ADR-168 D6, 6d-2).
             property 'axion.essai.basculer', (project.findProperty('essaiBasculer') ?: '').toString()
+            // -PessaiBasculeTick=<n> : le tick de cette bascule (60, en pleine accélération ; 20 pour un contact, avant elle).
+            property 'axion.essai.bascule_tick', (project.findProperty('essaiBasculeTick') ?: '60').toString()
             // -PessaiRapports=<n> : rapports passés avant d'accélérer (la première d'une boîte manuelle).
             property 'axion.essai.rapports', (project.findProperty('essaiRapports') ?: '0').toString()
             // -PessaiGigue=<ms> : le relais retarde chaque morceau de 0 à <ms> de plus, au hasard, l'ordre gardé.

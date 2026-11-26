@@ -20,6 +20,12 @@ plus lourd — et le client juge ce qu'il en suit (verdict RECHARGE, ADR-175 D5)
 Avec --sol-mixte, les roues gauches passent un tronçon sur deux sur de la glace (ADR-180) : les verdicts T-415 et T-416
 valent sur ce sol, et le rapport dit les sections à plusieurs matériaux que le client coupe.
 
+Avec --energie (ADR-176), le véhicule est celui à démarreur et réservoir, sous la pluie ; le client met le contact
+avant d'accélérer et juge en plus les verdicts ENERGIE — le contact prédit avant la réponse du serveur, la masse du
+carburant dans le monde prédit — et MOUILLE — le mouillé que la prédiction lit. Seuls ces deux verdicts comptent :
+T-415 et T-416 se jugent sur leur véhicule de référence, au sec ; plus lourd et sur route mouillée, celui-ci démarre
+sous le seuil de 1 mm de T-415 au premier tick.
+
 Usage : python tools/campagne/prediction.py [--reglage LATENCE:GIGUE ...]   (JAVA_HOME doit désigner un JDK 17)
 Défaut : 100 ms par sens et 20 ms de gigue (un aller-retour de 200 ms au moins, celui de T-413), puis 50:20.
 Le véhicule est celui de l'essai, `axion:test/vehicule`, sauf `AXION_ESSAI_VEHICULE` dans l'environnement.
@@ -60,10 +66,12 @@ def arreter(processus: subprocess.Popen) -> None:
 
 
 def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
-          sol_mixte: bool = False) -> dict[str, str]:
+          sol_mixte: bool = False, energie: bool = False) -> dict[str, str]:
     """Joue un essai à deux processus ; rend le verdict de chaque test, ou lève RuntimeError."""
     SORTIES.mkdir(parents=True, exist_ok=True)
-    vehicule = os.environ.get("AXION_ESSAI_VEHICULE", "axion:test/vehicule").rsplit("/", 1)[-1]
+    defaut = "axion:test/vehicule_reservoir" if energie else "axion:test/vehicule"
+    pose = os.environ.get("AXION_ESSAI_VEHICULE", defaut)
+    vehicule = pose.rsplit("/", 1)[-1]
     nom = f"{vehicule}-{latence}-{gigue}" + ("-mixte" if sol_mixte else "")
     for fichier in (JOURNAL_SERVEUR, RAPPORT):
         fichier.unlink(missing_ok=True)
@@ -72,13 +80,16 @@ def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
     for dossier in (RACINE / ".runs/server/config", ESSAI / "config"):
         for fichier in ("axion-common.toml", "axion-client.toml", "axion-server.toml"):
             (dossier / fichier).unlink(missing_ok=True)
-    environnement = dict(os.environ, AXION_ESSAI_PREDICTION="1")
+    environnement = dict(os.environ, AXION_ESSAI_PREDICTION="1", AXION_ESSAI_VEHICULE=pose)
     environnement.pop("AXION_ESSAI_RECHARGE", None)
     if recharge:
         environnement["AXION_ESSAI_RECHARGE"] = "1"
     environnement.pop("AXION_ESSAI_SOL_MIXTE", None)
     if sol_mixte:
         environnement["AXION_ESSAI_SOL_MIXTE"] = "1"
+    environnement.pop("AXION_ESSAI_PLUIE", None)
+    if energie:
+        environnement["AXION_ESSAI_PLUIE"] = "1"
     if film:
         # Le serveur d'un essai filmé met le temps au clair ; le client filme (Tournage, tools/film/encoder.py).
         environnement["AXION_ESSAI_FILM"] = "1"
@@ -97,7 +108,8 @@ def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
         with open(SORTIES / f"client-{nom}.log", "w", encoding="utf-8") as sortie:
             commande = [str(GRADLE), ":axion-mod:runEssaiClientPrediction", f"-PessaiLatence={latence}",
                         f"-PessaiGigue={gigue}"] + (["-PessaiFilm"] if film else []) + (
-                            ["-PessaiRecharge", "-PessaiProlonger=3"] if recharge else [])
+                            ["-PessaiRecharge", "-PessaiProlonger=3"] if recharge else []) + (
+                            ["-PessaiBasculer=contact", "-PessaiBasculeTick=20"] if energie else [])
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
         if client.returncode != 0:
@@ -117,7 +129,8 @@ def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
         if (ESSAI / releve).exists():
             (SORTIES / f"{releve[:-4]}-{nom}.csv").write_bytes((ESSAI / releve).read_bytes())
     verdicts = {}
-    for test in ("RECHARGE",) if recharge else VERDICTS:
+    attendus = ("RECHARGE",) if recharge else ("ENERGIE", "MOUILLE") if energie else VERDICTS
+    for test in attendus:
         ligne = next((l for l in lignes if l.startswith(test + " : ")), None)
         if ligne is None:
             raise RuntimeError(f"{test} absent du rapport")
@@ -135,13 +148,16 @@ def main() -> int:
                         help="recharger les definitions pendant la conduite (ADR-175 D5) ; seul le verdict RECHARGE compte")
     parser.add_argument("--sol-mixte", action="store_true",
                         help="roues gauches sur la glace un tronçon sur deux (ADR-180)")
+    parser.add_argument("--energie", action="store_true",
+                        help="réservoir, démarreur et pluie : seuls les verdicts ENERGIE et MOUILLE comptent (ADR-176)")
     arguments = parser.parse_args()
     reglages = [tuple(int(x) for x in r.split(":")) for r in (arguments.reglage or ["100:20", "50:20"])]
     echecs = 0
     for latence, gigue in reglages:
         print(f"--- {latence} ms par sens, gigue de 0 à {gigue} ms", flush=True)
         try:
-            verdicts = essai(latence, gigue, arguments.film, arguments.recharge, arguments.sol_mixte)
+            verdicts = essai(latence, gigue, arguments.film, arguments.recharge, arguments.sol_mixte,
+                             arguments.energie)
         except RuntimeError as faute:
             print(f"ÉCHEC : {faute}")
             echecs += 1

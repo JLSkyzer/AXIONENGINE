@@ -178,6 +178,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** Les modificateurs du plus récent snapshot reçu (client, ADR-167 D8), et ceux dont le miroir est fait. */
     private AssemblyState.Modifiers receivedParameters = AssemblyState.Modifiers.NONE;
+    /**
+     * L'état du véhicule du plus récent snapshot reçu (client) : ce que la prédiction lit du carburant et du mouillé
+     * (ADR-176 D3, D5). {@link #netState}, lui, n'est rempli qu'au serveur.
+     */
+    private AssemblyState.Vehicle receivedVehicle = AssemblyState.Vehicle.NONE;
     /** Les attaches qu'elle a posées, reçues du serveur (client, ADR-171 D7). */
     private AssemblyState.Links receivedLinks = AssemblyState.Links.NONE;
 
@@ -1512,11 +1517,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      */
     private double receivedFuelMass() {
         dev.axion.definition.EnergySpec spec = energySpec();
-        AssemblyState received = netState;
-        if (!(spec.unitMass() > 0f) || received == null || received.vehicle() == null) {
-            return 0.0;
-        }
-        return spec.fuelMassOfRatio(received.vehicle().fuelRatio());
+        return spec.unitMass() > 0f ? spec.fuelMassOfRatio(receivedVehicle.fuelRatio()) : 0.0;
     }
 
     private dev.axion.definition.Tuning tuning() {
@@ -3464,8 +3465,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * prédit le reçoit, au cran du serveur.
      */
     public float receivedWet() {
-        AssemblyState received = netState;
-        return received == null || received.vehicle() == null ? 0f : received.vehicle().wet();
+        return receivedVehicle.wet();
     }
 
     private AssemblyState.Wheels wheelStates() {
@@ -3736,6 +3736,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             // refait à la lecture suivante.
             receivedParameters = state.parameters();
             receivedVariables = state.variables();
+            receivedVehicle = state.vehicle();
             // ADR-171 D7 : les attaches qu'elle a posées, telles que le serveur les a vues ; les cordes et les sources
             // attach.* les lisent.
             receivedLinks = state.links();

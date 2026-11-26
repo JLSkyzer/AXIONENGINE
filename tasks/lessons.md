@@ -2737,3 +2737,14 @@ entité reçoit sur un tick entier.
 
 **Règle.** Quand on change la cadence ou l'agrégation d'un événement, chercher chaque consommateur et ce qu'il
 additionne, compte ou compare ; poser un test qui compare le tick à une grandeur physique (`m·g·dt`).
+
+## 2026-11-26 | La prédiction pesait sans le carburant : le client lisait un champ du serveur
+
+**Ce qui a mal tourné.** Au client, la masse du carburant et le mouillé prédits valaient toujours zéro, depuis leur
+livraison.
+
+**Cause.** `AxionEntity` sert les deux côtés ; `netState` n'est rempli qu'au serveur, et le client range ses snapshots
+ailleurs. Les tests unitaires prouvaient les calculs, aucun ne prouvait que le client leur donnait une valeur.
+
+**Règle.** Dans une classe commune aux deux côtés, vérifier qui **écrit** un champ avant de le lire côté client. Toute
+valeur « prédite » se prouve à deux processus, contre ce que le serveur a, avec un cas où elle diffère de zéro.
