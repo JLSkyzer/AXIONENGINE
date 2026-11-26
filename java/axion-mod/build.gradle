@@ -159,6 +159,7 @@ minecraft {
             parent minecraft.runs.client
             workingDirectory rootProject.file('.runs/essai-observateur')
             property 'axion.essai.observateur', 'true'
+            property 'axion.essai.film', project.hasProperty('essaiFilm').toString()
             property 'axion.souris.libre', 'true'
             args '--username', 'Observateur'
         }

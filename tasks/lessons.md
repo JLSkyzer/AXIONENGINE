@@ -2832,3 +2832,26 @@ même jour, a changé ce qui lui arrive pendant la chute.
 
 **Règle.** Juger un évènement au moment où il a lieu (ou au plus près sur la fenêtre), et juger à part l'état d'après ;
 quand une nouvelle physique touche un joueur, relire les bancs qui le suivent.
+
+## 2026-11-26 | `CONFIGURATION.md` modifié à la main : le build de l'essai a échoué après quatre minutes d'attente du verrou
+
+**Ce qui a mal tourné.** Pour préciser `physics.carry_max_entities`, `docs/guides/CONFIGURATION.md` (FR et EN) a été
+édité directement. Le fichier est généré par `ax-model` : `codegen-parity` a refusé le build de l'essai à deux joueurs.
+
+**Cause.** L'en-tête « ce fichier est généré » n'a pas été relu avant d'écrire ; la CI locale venait de passer **avant**
+la modification des docs.
+
+**Règle.** Une description d'option se change dans `crates/ax-model/src/config/defaults.rs`, puis `gen_config_docs` et
+`gen_java_config`. La CI locale se rejoue après la **dernière** modification, docs comprises, avant de prendre le verrou.
+
+## 2026-11-26 | ADR-184 : vert au premier passage, rouge filmé au second
+
+**Ce qui a mal tourné.** Le premier passage vert aurait pu clore la tranche. Le second, filmé, était rouge (1,35 bloc) :
+la machine chargée fait varier le retard que le serveur estime pour le porté, et la place répliquée en dépend.
+
+**Cause.** La conception fait calculer au serveur une place dans le temps (le retard du porté) ; son erreur ne paraît
+que quand la gigue grandit, ce qu'un essai sur une machine au repos ne provoque pas.
+
+**Règle.** Un comportement réseau se prouve au moins **deux fois**, dont une sous charge (filmer suffit à en donner une),
+et un relevé tick par tick vaut mieux qu'un verdict seul. Un verdict d'essai juge ce que l'écran dessine, pas seulement
+des positions de tick, qui comptent l'ordre de mise à jour des entités.

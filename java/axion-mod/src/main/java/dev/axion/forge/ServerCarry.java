@@ -2,6 +2,7 @@ package dev.axion.forge;
 
 import dev.axion.AxionMod;
 import dev.axion.bridge.NativeBridge;
+import dev.axion.net.AssemblyState;
 import dev.axion.physics.BodyFrame;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +36,10 @@ import net.minecraftforge.fml.common.Mod;
  *
  * <p>Dans les deux cas, la place de l'entité dans le corps se retient : la physique voit une entité portée <b>là où elle est sur
  * son support aujourd'hui</b> ({@link EntityPresenceBridge#candidateOf}), d'où l'ordre : avant le pas de la simulation.
+ *
+ * <p>Chaque assembly apprend enfin qui elle a porté ce tick, et où (ADR-184 D1), au plus
+ * {@code physics.carry_max_entities} entités, les joueurs d'abord : ses snapshots le disent aux clients, qui les dessinent
+ * sur le corps qu'ils dessinent.
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ServerCarry {
@@ -65,17 +70,35 @@ public final class ServerCarry {
             for (AxionEntity assembly : assemblies) {
                 assembly.rememberCarryPoses();
             }
-            if (!AxionEntities.carry()) {
-                continue;
+            Map<AxionEntity, List<AssemblyState.CarriedEntity>> riders = new HashMap<>();
+            if (AxionEntities.carry()) {
+                for (ServerPlayer player : level.players()) {
+                    carryPlayer(player, assemblies);
+                    note(riders, player);
+                }
+                // ADR-178 D7 : au deuxième palier, le gouverneur coupe le transport des entités autres que les joueurs ;
+                // jamais la collision ni celui d'un joueur.
+                if (AxionEntities.degradationLevel() < 2) {
+                    carryOthers(level, riders);
+                }
             }
-            for (ServerPlayer player : level.players()) {
-                carryPlayer(player, assemblies);
+            for (AxionEntity assembly : assemblies) {
+                assembly.carriedOnNet(AssemblyState.Carried.of(riders.getOrDefault(assembly, List.of())));
             }
-            // ADR-178 D7 : au deuxième palier, le gouverneur coupe le transport des entités autres que les joueurs ;
-            // jamais la collision ni celui d'un joueur.
-            if (AxionEntities.degradationLevel() < 2) {
-                carryOthers(level);
-            }
+        }
+    }
+
+    /** Note une entité portée ce tick pour les snapshots de son assembly (ADR-184 D1), dans la limite par assembly. */
+    private static void note(Map<AxionEntity, List<AssemblyState.CarriedEntity>> riders, Entity entity) {
+        CarrySupports.Support support = CarrySupports.of(entity);
+        double[] local = support == null ? null : support.local();
+        if (local == null) {
+            return;
+        }
+        List<AssemblyState.CarriedEntity> carried = riders.computeIfAbsent(support.assembly(), a -> new ArrayList<>());
+        long cap = Math.min(AxionEntities.carryMaxEntities(), AssemblyState.Carried.MAX);
+        if (carried.size() < cap) {
+            carried.add(AssemblyState.CarriedEntity.of(entity.getId(), support.body(), local));
         }
     }
 
@@ -147,7 +170,7 @@ public final class ServerCarry {
     }
 
     /** Les entités que le serveur déplace lui-même : portées à la pose du tick, dans la limite par assembly. */
-    private static void carryOthers(ServerLevel level) {
+    private static void carryOthers(ServerLevel level, Map<AxionEntity, List<AssemblyState.CarriedEntity>> riders) {
         long cap = AxionEntities.carryMaxEntities();
         Map<AxionEntity, Integer> carried = new HashMap<>();
         for (Map.Entry<Entity, CarrySupports.Support> entry : CarrySupports.serverEntries()) {
@@ -172,6 +195,7 @@ public final class ServerCarry {
             double[] world = BodyFrame.toWorld(now, support.body(), local);
             entity.setPos(world[0], world[1], world[2]);
             support.place(BodyFrame.toLocal(now, support.body(), world[0], world[1], world[2]));
+            note(riders, entity);
         }
     }
 

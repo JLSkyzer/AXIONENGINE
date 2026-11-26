@@ -264,7 +264,7 @@ public final class ConfigSchema {
                     new Domain(DomainKind.INT_RANGE, 0.0, 1024.0, List.of()),
                     false,
                     true,
-                    "Nombre maximal d'entités, hors joueurs, qu'une assembly porte."),
+                    "Nombre maximal d'entités, hors joueurs, qu'une assembly porte ; les snapshots les disent aux autres joueurs avec les joueurs."),
             new Option(
                     "physics.player_proxy_mass",
                     Kind.FLOAT,

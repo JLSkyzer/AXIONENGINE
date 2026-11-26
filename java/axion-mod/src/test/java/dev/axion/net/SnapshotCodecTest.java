@@ -238,7 +238,9 @@ class SnapshotCodecTest {
                 "descripteur 15, antérieur aux 4 réserves (ADR-182)");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(16).varUInt(0).toByteArray(),
                 "descripteur 16, antérieur aux moteurs électriques (ADR-182 D5)");
-        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(18).varUInt(0).toByteArray(),
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(17).varUInt(0).toByteArray(),
+                "descripteur 17, antérieur aux entités portées (ADR-184)");
+        assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(19).varUInt(0).toByteArray(),
                 "autre descripteur");
         assertRefuse(new WireWriter().u8(MessageKinds.SNAPSHOT).varUInt(1).varULong(1).u8(v)
                 .varUInt(SnapshotMessage.MAX_ENTRIES + 1).toByteArray(), "trop d'entrées");
@@ -609,6 +611,9 @@ class SnapshotCodecTest {
                 AssemblyState.Velocity.ZERO, null, true).withWheels(roues(0f, 0f))
                 .withVehicle(vehicule(AssemblyState.Vehicle.DRIVER));
         assertEquals(SnapshotSender.Frequency.LOW, SnapshotSender.Frequency.of(dort));
+        assertEquals(SnapshotSender.Frequency.NORMAL, SnapshotSender.Frequency.of(dort.withCarried(
+                AssemblyState.Carried.of(List.of(AssemblyState.CarriedEntity.of(7, 0, new double[3]))))),
+                "ADR-184 D2 : endormie mais portant quelqu'un qui peut y marcher, deux descripteurs en 500 ms le saccaderaient");
     }
 
     private static AssemblyState.Vehicle vehicule(int drapeaux) {
@@ -919,5 +924,66 @@ class SnapshotCodecTest {
         AssemblyState.Wheels autreCran = AssemblyState.Wheels.of(new float[] {0.5f, 0f}, new float[] {10f, 0f},
                 new float[] {0.5f, 0f}, new boolean[] {true, false}, new float[] {0.4f + 0.01f, 1f});
         assertFalse(roues.equals(autreCran), "au franchissement d'un cran, il change");
+    }
+
+    @Test
+    @DisplayName("ADR-184 D1 : les entités portées font l'aller-retour au 1/256 de bloc ; un delta ne les porte que changées")
+    void adr184EntitesPortees() throws MalformedPacketException {
+        AssemblyState.CarriedEntity proche = AssemblyState.CarriedEntity.of(1200, 0, new double[] {0.5, 1.0, -2.25});
+        AssemblyState.CarriedEntity loin = AssemblyState.CarriedEntity.of(7, 3, new double[] {-200.123, 0.001, 300.5});
+        assertArrayEquals(new double[] {0.5, 1.0, -2.25}, proche.local(), 0.0, "des multiples du pas, exacts");
+        assertArrayEquals(new double[] {-200.123, 0.001, 300.5}, loin.local(), 0.5 / 256, "à un demi-pas près, sans borne");
+        AssemblyState.Carried portees = AssemblyState.Carried.of(List.of(proche, loin));
+        assertEquals(portees, AssemblyState.Carried.of(List.of(loin, proche)), "l'ordre ne compte pas : triées par identifiant");
+
+        AssemblyState etat = avecRoues(roues(0.5f, 10f)).withCarried(portees);
+        SnapshotMessage.Entry complete = SnapshotMessage.Entry.full(5, etat);
+        byte[] octets = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(complete)).encode();
+        assertEquals(SnapshotMessage.headerSize(2, 40L, 1) + SnapshotMessage.encodedSize(complete), octets.length);
+        assertEquals(etat, SnapshotMessage.decode(octets).entries().get(0).resolve(null));
+        assertNull(SnapshotMessage.Entry.full(5, avecRoues(roues(0.5f, 10f))).carried(), "personne : rien à dire");
+
+        assertNull(SnapshotMessage.Entry.delta(5, 1, etat, etat).carried(), "inchangées : tues");
+        AssemblyState descendu = etat.withCarried(AssemblyState.Carried.NONE);
+        byte[] enDelta = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION,
+                List.of(SnapshotMessage.Entry.delta(5, 1, etat, descendu))).encode();
+        assertEquals(descendu, SnapshotMessage.decode(enDelta).entries().get(0).resolve(etat), "retirées : dit");
+    }
+
+    @Test
+    @DisplayName("ADR-184 D1 : le coût d'une entité portée, mesuré : identifiant, corps, place — 9 octets près de l'origine")
+    void adr184CoutDUneEntitePortee() {
+        AssemblyState nu = avecRoues(roues(0.5f, 10f));
+        AssemblyState un = nu.withCarried(AssemblyState.Carried.of(List.of(
+                AssemblyState.CarriedEntity.of(1200, 0, new double[] {0.5, 1.0, -2.25}))));
+        int sans = SnapshotMessage.encodedSize(SnapshotMessage.Entry.full(5, nu));
+        int avec = SnapshotMessage.encodedSize(SnapshotMessage.Entry.full(5, un));
+        // Le nombre (1) ; l'identifiant 1200 (2) ; le corps (1) ; trois places en zigzag, 2 octets chacune.
+        assertEquals(1 + 2 + 1 + 3 * 2, avec - sans);
+    }
+
+    @Test
+    @DisplayName("ADR-184 D1 : des entités portées mal formées sont refusées, à la construction comme à la lecture (R-1650)")
+    void adr184EntitesPorteesMalFormees() {
+        double[] place = {0, 0, 0};
+        assertThrows(IllegalArgumentException.class, () -> AssemblyState.CarriedEntity.of(-1, 0, place), "identifiant");
+        assertThrows(IllegalArgumentException.class,
+                () -> AssemblyState.CarriedEntity.of(1, AssemblyState.MAX_BODIES + 1, place), "corps");
+        assertThrows(IllegalArgumentException.class,
+                () -> AssemblyState.CarriedEntity.of(1, 0, new double[] {Double.NaN, 0, 0}), "place non finie");
+        AssemblyState.CarriedEntity une = AssemblyState.CarriedEntity.of(3, 0, place);
+        assertThrows(IllegalArgumentException.class, () -> AssemblyState.Carried.of(List.of(une, une)), "en double");
+
+        byte[] sain = new SnapshotMessage(2, 40L, SnapshotMessage.DESCRIPTOR_VERSION, List.of(SnapshotMessage.Entry.full(5,
+                avecRoues(roues(0.5f, 10f)).withCarried(AssemblyState.Carried.of(List.of(une)))))).encode();
+        // Les entités portées terminent le message : n = 1, identifiant 3, corps 0, trois places nulles.
+        byte[] corps = sain.clone();
+        corps[corps.length - 4] = (byte) (AssemblyState.MAX_BODIES + 1);
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(corps), "corps hors borne");
+        byte[] trop = sain.clone();
+        trop[trop.length - 6] = (byte) 2;
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(trop), "une annoncée de trop");
+        byte[] tronque = Arrays.copyOf(sain, sain.length - 1);
+        assertThrows(MalformedPacketException.class, () -> SnapshotMessage.decode(tronque), "tronqué");
     }
 }

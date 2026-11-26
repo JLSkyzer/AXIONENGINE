@@ -39,7 +39,8 @@ public final class SnapshotSender {
         LOW;
 
         /**
-         * La fréquence d'une assembly : endormie, {@link #LOW} ; un véhicule au siège {@code driver} occupé,
+         * La fréquence d'une assembly : endormie et ne portant personne, {@link #LOW} ; endormie mais portant des
+         * entités, qui peuvent y marcher, {@link #NORMAL} (ADR-184 D2) ; un véhicule au siège {@code driver} occupé,
          * {@link #HIGH} (R-1662, ADR-159 D9) — son état le dit depuis le descripteur 5 (ADR-163 D1) ; sinon
          * {@link #NORMAL}, où les roues d'un véhicule sans conducteur se voient encore tourner, interpolées. La
          * distance qui rendra une assembly « lointaine » viendra avec les niveaux du chantier LOD.
@@ -49,7 +50,7 @@ public final class SnapshotSender {
          */
         public static Frequency of(AssemblyState state) {
             if (state.sleeping()) {
-                return LOW;
+                return state.carried().entities().isEmpty() ? LOW : NORMAL;
             }
             return (state.vehicle().flags() & AssemblyState.Vehicle.DRIVER) != 0 ? HIGH : NORMAL;
         }

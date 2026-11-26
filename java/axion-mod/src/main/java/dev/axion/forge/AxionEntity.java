@@ -312,6 +312,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * {@code null} avant le premier (ADR-150 D6).
      */
     private AssemblyState netState;
+    /** Qui l'assembly porte, tel que les snapshots reçus le disent (client, ADR-184 D2). */
+    private final dev.axion.net.CarriedTrack carriedTrack = new dev.axion.net.CarriedTrack();
+    /** Qui l'assembly porte, tel que les snapshots le disent (serveur, ADR-184 D1). */
+    private AssemblyState.Carried netCarried = AssemblyState.Carried.NONE;
 
     /** Clés {@code axion:*} du NBT, gardées pour être réécrites telles quelles. */
     private CompoundTag stored = new CompoundTag();
@@ -3786,6 +3790,15 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         return taken;
     }
 
+    /**
+     * Retient qui l'assembly porte (serveur, ADR-184 D1) : ce que ses snapshots diront.
+     *
+     * @param riders les entités portées au dernier tick
+     */
+    void carriedOnNet(AssemblyState.Carried riders) {
+        netCarried = riders;
+    }
+
     /** {@return vrai si la physique a endormi l'assembly} */
     boolean netSleeping() {
         return sleeping;
@@ -3868,6 +3881,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             if (!counts.equals(netState.sensors())) {
                 netState = netState.withSensors(counts);
             }
+        }
+        // ADR-184 D1 : qui elle porte, et où sur ses corps, tel que le dernier tick l'a porté.
+        if (netState != null && !level().isClientSide() && !netState.carried().equals(netCarried)) {
+            netState = netState.withCarried(netCarried);
         }
         // ADR-171 D7 : les attaches qu'elle a posées, vivantes, avec leur longueur, leur écart et leur tension.
         if (netState != null && !level().isClientSide()) {
@@ -3999,6 +4016,22 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             }
             receivedJointsTick = serverTick;
         }
+        // ADR-184 D2 : les entités portées, datées de leur tick ; leur place s'interpole au temps de rendu.
+        carriedTrack.push(serverTick, state.carried());
+    }
+
+    /**
+     * Les entités que l'assembly porte à un instant, et leur place sur ses corps (client, ADR-184 D2) : au même temps de
+     * rendu que ce qui est dessiné d'elle.
+     *
+     * @param nanos l'heure locale, en nanosecondes ; {@code 0} : celle de l'image en cours
+     * @return la place de chaque entité portée, par identifiant réseau ; vide sans snapshot ou sans personne
+     */
+    public java.util.Map<Integer, dev.axion.net.CarriedTrack.Place> carriedAt(long nanos) {
+        if (clock == null || carriedTrack.empty()) {
+            return java.util.Map.of();
+        }
+        return carriedTrack.at(clock.renderMillis(nanos == 0L ? clock.frameNanos() : nanos));
     }
 
     /**

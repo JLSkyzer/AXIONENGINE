@@ -182,8 +182,8 @@ pub const COMMON: &[ConfigOption] = &[
     // ADR-178 D7 : un joueur, ou toute entité, ne traverse plus une assembly (CAP-14) ; faux rend le jeu d'avant.
     srv(b("physics.player_carry", true, "Les entités et les joueurs sont arrêtés par les colliders d'une assembly, et un joueur debout dessus est porté."))
         .en("Entities and players are stopped by an assembly's colliders, and a player standing on one is carried."),
-    srv(i("physics.carry_max_entities", 64, 0, 1024, "Nombre maximal d'entités, hors joueurs, qu'une assembly porte."))
-        .en("Maximum number of entities, players excepted, that one assembly carries."),
+    srv(i("physics.carry_max_entities", 64, 0, 1024, "Nombre maximal d'entités, hors joueurs, qu'une assembly porte ; les snapshots les disent aux autres joueurs avec les joueurs."))
+        .en("Maximum number of entities, players excepted, that one assembly carries; snapshots tell other players about them along with players."),
     srv(f("physics.player_proxy_mass", 80.0, 0.0, 6000.0, "Masse prêtée au joueur par la physique, en kg : il pèse sur ce qu'il touche et ralentit ce qui le heurte ; 0 : masse infinie, un mur."))
         .en("Mass the physics lends a player, in kg: they weigh on what they touch and slow what hits them; 0: infinite mass, a wall."),
     srv(f("physics.push_speed_max", 10.0, 0.0, 100.0, "Vitesse la plus grande, en m/s, à laquelle une assembly qui avance dans un joueur le repousse."))

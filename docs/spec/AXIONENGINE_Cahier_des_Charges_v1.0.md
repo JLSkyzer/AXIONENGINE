@@ -5183,13 +5183,18 @@ Entrée d'assembly dans un snapshot :
   moteurs électriques (descripteur 17, protocole 18, amendement A33) : l'état du véhicule passe à
                   30 octets : pour chacun des 4 moteurs, son régime i16 au pas de 2 tr/min puis sa
                   puissance i16 au dixième de kW
+  entités portées (descripteur 18, protocole 20, amendement A35) : le nombre d'entités que
+                  l'assembly porte, puis pour chacune son identifiant réseau varint, le corps u8
+                  et sa place dans le repère de ce corps, 3 x varint zigzag au 1/256 de bloc ;
+                  rangées par identifiant, 1024 au plus
 ```
 
 - R-1660 : la quantification est **déclarée par champ**, jamais implicite.
 - R-1661 : delta par rapport au dernier snapshot **acquitté** (fenêtre de 32) ; sinon snapshot complet.
-- R-1662 : fréquence adaptative par assembly : `HIGH` 20 Hz (pilotée par un joueur proche), `NORMAL` 10 Hz, `LOW` 2 Hz (endormie ou lointaine, débris), `NONE` hors `net.sync_radius` (96 blocs).
+- R-1662 : fréquence adaptative par assembly : `HIGH` 20 Hz (pilotée par un joueur proche), `NORMAL` 10 Hz, `LOW` 2 Hz (endormie ou lointaine, débris), `NONE` hors `net.sync_radius` (96 blocs). Une assembly endormie qui porte des entités part à `NORMAL` (R-1665).
 - R-1663 : une assembly endormie et inchangée n'envoie **rien**.
 - R-1664 : débit plafonné par joueur (`net.max_bytes_per_second_per_player`, défaut 32 KiB/s) ; au-delà, dégradation par priorité, jamais omission silencieuse.
+- R-1665 : **ce que les autres voient d'une entité portée** (ADR-184, amendement A35, CAP-14). Le serveur dit dans les snapshots d'une assembly ce qu'elle a porté au tick — les joueurs d'abord, les autres entités dans la limite de `physics.carry_max_entities` — et leur place sur le corps ; une entrée ne le porte que changé depuis sa base. Un client autre que le porté dessine chacune à chaque image à cette place sur le corps qu'il dessine, interpolée au temps de rendu entre les deux descripteurs qui l'encadrent ; l'animation et l'orientation du corps d'un être vivant ne lisent que son mouvement sur lui ; plus listée, il revient à la position de Minecraft en 200 ms.
 
 ## 21.6 Réplication de la déformation (mécanisme central)
 
@@ -8019,7 +8024,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A32 | 2026-11-26 | ADR-181, accepté par Killian, Q1 à Q3 comme recommandé | R-1074 : le matériau touché dans le rapport de roue (ABI 37, `SIM_OUT` au schéma 8), `WheelView.surface()`, `/axion wear` ; aucun changement de protocole ni de sauvegarde |
 | A33 | 2026-11-26 | ADR-182, accepté par Killian, Q1 à Q6 comme recommandé (tranche par tranche) | ANNEXE A.7 : CAP-76, affectée à M5 ; chaque tranche (14a à 14d) précise 12.5, 23.2, 23.4, 21.5, 22.2 et A.4 ; 14a1 le 2026-11-26 : 12.5 R-1092, ABI 38, `SIM_OUT` 9, descripteur 16 et AXION-17 au 21.5 ; 14a2 le 2026-11-26 : 12.5 R-1093, schéma de definition 8 (R-1783), 22.2 `axion:energy` par nom, A.4 `energy.<réserve>.amount|ratio`, A.1 `E-7012` ; 14b le 2026-11-26 : 12.5 R-1094, 12.8 `native_flags`, ABI 39, `SIM_OUT` 10, descripteur 17 et AXION-18 au 21.5 (les descripteurs 15 et 16, omis alors, y entrent avec lui), A.4 `motor.<n>.rpm|power` ; 14c le 2026-11-26 : 12.5 R-1095, `motor.<nom>.torque` à R-1084, ABI 40, AXION-19 |
 | A34 | 2026-11-26 | ADR-183, accepté par Killian, Q1 à Q4 comme recommandé (tranche par tranche) | forces et couples d'un tick, `MOVE_ASSEMBLY`, assembly figée et `setKinematicTransform`, `/axion tp|freeze|rename` (CAP-34, CAP-11) ; chaque tranche précise 22.2, 23.2, C-71 et l'ABI |
-| A35 | 2026-11-26 | ADR-184, accepté par Killian, Q1 et Q2 comme recommandé | 21.5 : le serveur réplique les entités qu'une assembly porte, le corps et leur place dans son repère ; le client les dessine sur le corps qu'il dessine (CAP-14) |
+| A35 | 2026-11-26 | ADR-184, accepté par Killian, Q1 et Q2 comme recommandé ; mis en œuvre le jour même | 21.5 : le serveur réplique les entités qu'une assembly porte, le corps et leur place dans son repère ; le client les dessine sur le corps qu'il dessine (CAP-14) ; descripteur 18, protocole 20, R-1665, R-1662 précisée |
 
 ---
 

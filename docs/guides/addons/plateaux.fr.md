@@ -19,6 +19,10 @@ se tient debout sur un plateau qui roule, un ascenseur monte ceux qu'il porte, u
   (`physics.player_proxy_mass`) : ce qui le heurte garde de l'élan, au lieu de s'arrêter net comme contre un mur.
 - Les autres entités (mobs, objets) sont arrêtées et portées au serveur. Portées, elles pèsent comme un joueur
   (`physics.player_proxy_mass`) : un véhicule chargé accélère un peu moins vite, sans être arrêté.
+- **Vu par les autres** : le serveur dit à chaque client qui une assembly porte, et à quelle place sur elle. Un autre joueur voit un
+  passager debout, un mob ou un objet à cette place sur le véhicule **tel que lui le voit**, sans que ses jambes marchent s'il ne
+  bouge pas ; un joueur ou un mob descendu rejoint sa position en un cinquième de seconde. **Limite connue** : sur un serveur
+  ou un PC surchargé, cette place peut encore glisser le long du véhicule (jusqu'à un bloc relevé à l'essai).
 
 ## Une assembly qui ne porte rien
 

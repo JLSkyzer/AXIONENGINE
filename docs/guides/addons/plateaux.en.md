@@ -19,6 +19,10 @@ the collision reads its colliders.
   what hits them keeps some momentum, instead of stopping dead as against a wall.
 - Other entities (mobs, items) are stopped and carried on the server. While carried, they weigh like a player
   (`physics.player_proxy_mass`): a loaded vehicle accelerates a little slower, without being stopped.
+- **Seen by others**: the server tells every client whom an assembly carries, and where on it. Another player sees a standing
+  passenger, a mob or an item at that place on the vehicle **as they see it**, with still legs if it does not move; once off, a
+  player or a mob reaches its position within a fifth of a second. **Known limit**: on an overloaded server or computer, that place
+  can still slide along the vehicle (up to one block measured in testing).
 
 ## An assembly that carries nothing
 

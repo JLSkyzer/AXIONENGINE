@@ -110,7 +110,8 @@ public final class CollisionGameTests {
 
     /**
      * ADR-178 D4 : une entité que le serveur déplace lui-même reste à sa place sur une assembly qui tombe, et les écouteurs
-     * d'un mod apprennent qu'elle monte puis qu'elle descend.
+     * d'un mod apprennent qu'elle monte puis qu'elle descend. ADR-184 D1 : les snapshots la listent à sa place sur le
+     * corps, puis plus une fois descendue.
      */
     @GameTest(template = "test/plancher_16", timeoutTicks = 200)
     public static void uneEntiteSuitLAssemblyQuiTombeEtSesEcouteursLApprennent(GameTestHelper helper) {
@@ -158,6 +159,15 @@ public final class CollisionGameTests {
                             cochon.getX(), cochon.getY(), cochon.getZ());
                     System.arraycopy(local, 0, place, 0, 3);
                     depart[0] = assembly.carryPoses(0)[1];
+                    var portees = assembly.netState().carried().entities();
+                    helper.assertTrue(portees.size() == 1 && portees.get(0).entity() == cochon.getId()
+                            && portees.get(0).body() == CarrySupports.of(cochon).body(), "les snapshots le listent : " + portees);
+                    double[] dite = portees.get(0).local();
+                    double[] tenue = CarrySupports.of(cochon).local();
+                    for (int axe = 0; axe < 3; axe++) {
+                        helper.assertTrue(Math.abs(dite[axe] - tenue[axe]) <= 0.01, "à sa place sur le corps : "
+                                + dite[axe] + " pour " + tenue[axe]);
+                    }
                 })
                 .thenWaitUntil(() -> {
                     double tombee = depart[0] - assembly.carryPoses(0)[1];
@@ -176,6 +186,10 @@ public final class CollisionGameTests {
                     cochon.move(MoverType.SELF, new Vec3(0.0, -0.1, 0.0));
                     ContentListeners.publishCarry(avant);
                     helper.assertTrue(journal.equals(List.of("monte", "descend")), "les écouteurs : " + journal);
+                })
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    helper.assertTrue(assembly.netState().carried().entities().isEmpty(), "descendu : plus listé");
                     cochon.discard();
                 })
                 .thenSucceed();

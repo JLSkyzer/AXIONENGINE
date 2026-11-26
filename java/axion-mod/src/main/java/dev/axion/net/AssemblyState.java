@@ -32,6 +32,7 @@ import java.util.Set;
  * @param links les attaches vivantes qu'elle a posées, {@link Links#NONE} sans (ADR-171 D7, descripteur 8)
  * @param nodes l'état des nodes que ses actions ont changé, {@link NodeStates#NONE} sans (ADR-174 D3, descripteur 9)
  * @param sensors ce que compte chaque capteur déclaré, {@link SensorCounts#NONE} sans (ADR-174 D5, descripteur 12)
+ * @param carried les entités qu'elle porte, {@link Carried#NONE} sans (ADR-184 D1, descripteur 18)
  */
 public record AssemblyState(
         long x,
@@ -50,7 +51,8 @@ public record AssemblyState(
         Modifiers parameters,
         Links links,
         NodeStates nodes,
-        SensorCounts sensors) {
+        SensorCounts sensors,
+        Carried carried) {
 
     /**
      * Ce que compte chaque capteur déclaré d'une assembly (ADR-174 D5, descripteur 12) : la source
@@ -95,6 +97,96 @@ public record AssemblyState(
          */
         public int count(int sensor) {
             return sensor >= 0 && sensor < counts.size() ? counts.get(sensor) : 0;
+        }
+    }
+
+    /**
+     * Les entités qu'une assembly porte (ADR-184 D1, descripteur 18) : pour chacune, son identifiant réseau, le corps qui
+     * la porte et sa place dans le repère de ce corps. Un autre client la dessine sur le corps qu'il dessine, et non à la
+     * position brute qu'elle a au serveur. Rangées par identifiant, pour qu'un même ensemble ne renvoie rien.
+     *
+     * @param entities les entités portées ; copie triée
+     */
+    public record Carried(List<CarriedEntity> entities) {
+
+        /** Entités portées par une assembly, au plus : la borne haute de {@code physics.carry_max_entities}. */
+        public static final int MAX = 1024;
+
+        /** Personne. */
+        public static final Carried NONE = new Carried(List.of());
+
+        /** Refuse trop d'entités ou une entité en double, et les range par identifiant. */
+        public Carried {
+            if (entities.size() > MAX) {
+                throw new IllegalArgumentException(entities.size() + " entités portées, au-delà de " + MAX);
+            }
+            entities = entities.stream().sorted(java.util.Comparator.comparingInt(CarriedEntity::entity)).toList();
+            for (int index = 1; index < entities.size(); index++) {
+                if (entities.get(index - 1).entity() == entities.get(index).entity()) {
+                    throw new IllegalArgumentException("entité " + entities.get(index).entity() + " portée deux fois");
+                }
+            }
+        }
+
+        /**
+         * {@return ces entités portées}
+         *
+         * @param entities les entités
+         */
+        public static Carried of(List<CarriedEntity> entities) {
+            return entities.isEmpty() ? NONE : new Carried(entities);
+        }
+    }
+
+    /**
+     * Une entité portée (ADR-184 D1) : sa place dans le repère du corps, au 1/256 de bloc.
+     *
+     * @param entity identifiant réseau de l'entité
+     * @param body rang du corps qui la porte
+     * @param x place x dans le repère du corps, en pas de 1/256 de bloc
+     * @param y place y
+     * @param z place z
+     */
+    public record CarriedEntity(int entity, int body, int x, int y, int z) {
+
+        /** Pas de quantification d'une place, par bloc. */
+        public static final int STEPS_PER_BLOCK = 256;
+
+        /** Refuse un identifiant négatif ou un corps hors de ceux d'une assembly. */
+        public CarriedEntity {
+            if (entity < 0) {
+                throw new IllegalArgumentException("identifiant d'entité négatif : " + entity);
+            }
+            if (body < 0 || body > MAX_BODIES) {
+                throw new IllegalArgumentException("corps porteur " + body + " hors de [0, " + MAX_BODIES + "]");
+            }
+        }
+
+        /**
+         * Quantifie la place d'une entité.
+         *
+         * @param entity identifiant réseau
+         * @param body rang du corps
+         * @param local place dans le repère du corps, en blocs
+         * @return l'entité portée
+         * @throws IllegalArgumentException si la place n'est pas finie ou ne tient pas sur 32 bits en pas
+         */
+        public static CarriedEntity of(int entity, int body, double[] local) {
+            return new CarriedEntity(entity, body, steps(local[0]), steps(local[1]), steps(local[2]));
+        }
+
+        private static int steps(double blocks) {
+            double steps = Math.rint(blocks * STEPS_PER_BLOCK);
+            if (!(Math.abs(steps) <= Integer.MAX_VALUE)) {
+                throw new IllegalArgumentException("place portée non représentable : " + blocks);
+            }
+            return (int) steps;
+        }
+
+        /** {@return la place dans le repère du corps, en blocs} */
+        public double[] local() {
+            return new double[] {(double) x / STEPS_PER_BLOCK, (double) y / STEPS_PER_BLOCK,
+                    (double) z / STEPS_PER_BLOCK};
         }
     }
 
@@ -1089,9 +1181,10 @@ public record AssemblyState(
             throw new IllegalArgumentException("vitesse absente");
         }
         if (bodies == null || joints == null || animation == null || wheels == null || vehicle == null
-                || variables == null || parameters == null || links == null || nodes == null || sensors == null) {
+                || variables == null || parameters == null || links == null || nodes == null || sensors == null
+                || carried == null) {
             throw new IllegalArgumentException("corps, joints, animation, roues, véhicule, variables, modificateurs,"
-                    + " attaches, nodes ou capteurs absents");
+                    + " attaches, nodes, capteurs ou entités portées absents");
         }
         if (bodies.size() > MAX_BODIES) {
             throw new IllegalArgumentException(bodies.size() + " corps secondaires, au-delà de " + MAX_BODIES);
@@ -1284,7 +1377,7 @@ public record AssemblyState(
      */
     public AssemblyState withLinks(Links attached) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, parameters, attached, nodes, sensors);
+                vehicle, variables, parameters, attached, nodes, sensors, carried);
     }
 
     /**
@@ -1362,7 +1455,7 @@ public record AssemblyState(
      */
     public AssemblyState with(List<Body> otherBodies, JointBits jointBits) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, otherBodies, jointBits, animation,
-                wheels, vehicle, variables, parameters, links, nodes, sensors);
+                wheels, vehicle, variables, parameters, links, nodes, sensors, carried);
     }
 
     /**
@@ -1371,7 +1464,7 @@ public record AssemblyState(
      */
     public AssemblyState withAnimation(AnimationLayers layers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, layers, wheels, vehicle,
-                variables, parameters, links, nodes, sensors);
+                variables, parameters, links, nodes, sensors, carried);
     }
 
     /**
@@ -1380,7 +1473,7 @@ public record AssemblyState(
      */
     public AssemblyState withWheels(Wheels states) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, states,
-                vehicle, variables, parameters, links, nodes, sensors);
+                vehicle, variables, parameters, links, nodes, sensors, carried);
     }
 
     /**
@@ -1389,7 +1482,7 @@ public record AssemblyState(
      */
     public AssemblyState withVehicle(Vehicle state) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                state, variables, parameters, links, nodes, sensors);
+                state, variables, parameters, links, nodes, sensors, carried);
     }
 
     /**
@@ -1398,7 +1491,7 @@ public record AssemblyState(
      */
     public AssemblyState withVariables(VariableValues values) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, values, parameters, links, nodes, sensors);
+                vehicle, values, parameters, links, nodes, sensors, carried);
     }
 
     /**
@@ -1407,7 +1500,7 @@ public record AssemblyState(
      */
     public AssemblyState withNodes(NodeStates states) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, parameters, links, states, sensors);
+                vehicle, variables, parameters, links, states, sensors, carried);
     }
 
     /**
@@ -1416,7 +1509,7 @@ public record AssemblyState(
      */
     public AssemblyState withSensors(SensorCounts counts) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, parameters, links, nodes, counts);
+                vehicle, variables, parameters, links, nodes, counts, carried);
     }
 
     /**
@@ -1448,12 +1541,49 @@ public record AssemblyState(
 
 
     /**
+     * @param riders les entités qu'elle porte (ADR-184 D1)
+     * @return cet état, avec ces entités portées
+     */
+    public AssemblyState withCarried(Carried riders) {
+        return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
+                vehicle, variables, parameters, links, nodes, sensors, riders);
+    }
+
+    /**
+     * Un état sans entité portée.
+     *
+     * @param x position x
+     * @param y position y
+     * @param z position z
+     * @param rotation rotation
+     * @param velocity vitesses
+     * @param bounds emprise
+     * @param sleeping le corps dort
+     * @param bodies corps secondaires
+     * @param joints bits des joints
+     * @param animation état d'animation
+     * @param wheels état des roues
+     * @param vehicle état du véhicule
+     * @param variables variables de contenu
+     * @param parameters modificateurs posés
+     * @param links attaches vivantes
+     * @param nodes état des nodes
+     * @param sensors comptes des capteurs
+     */
+    public AssemblyState(long x, long y, long z, int rotation, Velocity velocity, Bounds bounds, boolean sleeping,
+            List<Body> bodies, JointBits joints, AnimationLayers animation, Wheels wheels, Vehicle vehicle,
+            VariableValues variables, Modifiers parameters, Links links, NodeStates nodes, SensorCounts sensors) {
+        this(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels, vehicle, variables,
+                parameters, links, nodes, sensors, Carried.NONE);
+    }
+
+    /**
      * @param modifiers les modificateurs posés sur ses paramètres
      * @return cet état, avec ces modificateurs
      */
     public AssemblyState withParameters(Modifiers modifiers) {
         return new AssemblyState(x, y, z, rotation, velocity, bounds, sleeping, bodies, joints, animation, wheels,
-                vehicle, variables, modifiers, links, nodes, sensors);
+                vehicle, variables, modifiers, links, nodes, sensors, carried);
     }
 
     /**

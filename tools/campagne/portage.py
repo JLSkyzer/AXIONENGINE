@@ -78,7 +78,7 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
             (dossier / fichier).unlink(missing_ok=True)
     shutil.rmtree(RACINE / ".runs/server/essai-porteur", ignore_errors=True)
     if film:
-        shutil.rmtree(ESSAI / "axion-film", ignore_errors=True)
+        shutil.rmtree((OBSERVATEUR if observateur else ESSAI) / "axion-film", ignore_errors=True)
     environnement = dict(os.environ, AXION_ESSAI_PORTEUR="1")
     environnement.pop("AXION_ESSAI_PREDICTION", None)
     environnement.pop("AXION_ESSAI_PORTEUR_DEUX", None)
@@ -98,12 +98,13 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
             time.sleep(1)
         if observateur:
             sortie_regard = open(SORTIES / f"observateur-{latence}.log", "w", encoding="utf-8")
-            regard = subprocess.Popen([str(GRADLE), ":axion-mod:runEssaiClientObservateur"], cwd=RACINE,
-                                      stdout=sortie_regard, stderr=subprocess.STDOUT)
+            commande = [str(GRADLE), ":axion-mod:runEssaiClientObservateur"] + (["-PessaiFilm"] if film else [])
+            regard = subprocess.Popen(commande, cwd=RACINE, stdout=sortie_regard, stderr=subprocess.STDOUT)
         journal_client = SORTIES / f"client-{latence}.log"
         with open(journal_client, "w", encoding="utf-8") as sortie:
             commande = [str(GRADLE), ":axion-mod:runEssaiClientPorteur", f"-PessaiLatence={latence}"]
-            commande += ["-PessaiFilm"] if film else []
+            # Avec un observateur, c'est lui qu'on filme : deux clients qui encodent à la fois se ralentiraient.
+            commande += ["-PessaiFilm"] if film and not observateur else []
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
         if client.returncode != 0 and not assis:
@@ -160,7 +161,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--latence", type=int, default=100, metavar="MS", help="délai d'un sens du relais")
     parser.add_argument("--film", action="store_true",
-                        help="filmer l'essai : le client tourne, tools/film/encoder.py fait le MP4")
+                        help="filmer l'essai : le client (avec --observateur, l'observateur) tourne dans"
+                             " .runs/essai-*/axion-film, tools/film/encoder.py fait le MP4")
     parser.add_argument("--observateur", action="store_true", help="un second client juge ce qu'il voit du porté")
     parser.add_argument("--siege", metavar="VEHICULE",
                         help="asseoir le porté dans ce véhicule d'essai : seul le verdict de l'observateur compte")
