@@ -25,6 +25,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.slf4j.Logger;
@@ -65,6 +66,14 @@ public final class MesureClient {
         private static int palier = -1;
         private static long debut;
         private static final List<Double> IMAGES = new ArrayList<>();
+        private static final List<Double> TICKS = new ArrayList<>();
+        /** Au-delà, une image est dite lente ; on compte combien d'entre elles ont porté un tick. */
+        private static final double LENTE_MS = 15.0;
+        private static long tickCommence;
+        private static boolean tickDansLImage;
+        private static int lentes;
+        private static int lentesAvecTick;
+        private static int imagesAvecTick;
 
         private Client() {}
 
@@ -95,6 +104,23 @@ public final class MesureClient {
             minecraft.options.hideGui = true;
         }
 
+        /** @param event le début d'un tick du client, avant tout autre abonné */
+        @SubscribeEvent(priority = EventPriority.HIGHEST)
+        public static void ouvrirLeTick(TickEvent.ClientTickEvent event) {
+            if (ACTIF && event.phase == TickEvent.Phase.START) {
+                tickCommence = System.nanoTime();
+                tickDansLImage = true;
+            }
+        }
+
+        /** @param event la fin d'un tick du client, après tout autre abonné */
+        @SubscribeEvent(priority = EventPriority.LOWEST)
+        public static void fermerLeTick(TickEvent.ClientTickEvent event) {
+            if (ACTIF && palier >= 0 && event.phase == TickEvent.Phase.END && tickCommence != 0) {
+                TICKS.add((System.nanoTime() - tickCommence) / 1e6);
+            }
+        }
+
         /** @param event une image rendue */
         @SubscribeEvent
         public static void releverUneImage(TickEvent.RenderTickEvent event) {
@@ -103,9 +129,16 @@ public final class MesureClient {
             }
             long maintenant = System.nanoTime();
             if (palier >= 0 && derniereImage != 0) {
-                IMAGES.add((maintenant - derniereImage) / 1e6);
+                double duree = (maintenant - derniereImage) / 1e6;
+                IMAGES.add(duree);
+                imagesAvecTick += tickDansLImage ? 1 : 0;
+                if (duree > LENTE_MS) {
+                    lentes++;
+                    lentesAvecTick += tickDansLImage ? 1 : 0;
+                }
             }
             derniereImage = maintenant;
+            tickDansLImage = false;
         }
 
         /** @param event un message du serveur */
@@ -124,6 +157,10 @@ public final class MesureClient {
                 case "debut" -> {
                     palier = Integer.parseInt(marque.group(2));
                     IMAGES.clear();
+                    TICKS.clear();
+                    lentes = 0;
+                    lentesAvecTick = 0;
+                    imagesAvecTick = 0;
                     debut = System.nanoTime();
                     derniereImage = 0;
                 }
@@ -160,11 +197,15 @@ public final class MesureClient {
                     "{\"vehicules\": %d, \"connues\": %d, \"images\": %d, \"secondes\": %.2f, \"image_ms_moyenne\": %.3f,"
                             + " \"image_ms_p50\": %.3f, \"image_ms_p95\": %.3f, \"image_ms_p99\": %.3f,"
                             + " \"image_ms_max\": %.3f, \"tas_mo\": %d, \"largeur\": %d, \"hauteur\": %d,"
+                            + " \"ticks\": %d, \"tick_ms_moyen\": %.3f, \"tick_ms_p95\": %.3f, \"lentes\": %d,"
+                            + " \"lentes_avec_tick\": %d, \"images_avec_tick\": %d,"
                             + " \"carte\": \"%s\"}%n",
                     palier, connues, tries.size(), secondes, moyenne, centile(tries, 0.50), centile(tries, 0.95),
                     centile(tries, 0.99), tries.get(tries.size() - 1),
                     (memoire.totalMemory() - memoire.freeMemory()) >> 20, minecraft.getWindow().getWidth(),
-                    minecraft.getWindow().getHeight(), GlUtil.getRenderer().replace('"', '\''));
+                    minecraft.getWindow().getHeight(), TICKS.size(),
+                    TICKS.stream().mapToDouble(Double::doubleValue).average().orElse(0), centileDe(TICKS, 0.95), lentes,
+                    lentesAvecTick, imagesAvecTick, GlUtil.getRenderer().replace('"', '\''));
             LOGGER.info("[mesure-client] releve {}", ligne.trim());
             try {
                 Files.writeString(rapport(minecraft), ligne, StandardCharsets.UTF_8, StandardOpenOption.CREATE,
@@ -180,6 +221,15 @@ public final class MesureClient {
 
         private static Path rapport(Minecraft minecraft) {
             return minecraft.gameDirectory.toPath().resolve("mesure-client.jsonl");
+        }
+
+        private static double centileDe(List<Double> valeurs, double part) {
+            if (valeurs.isEmpty()) {
+                return 0;
+            }
+            List<Double> tries = new ArrayList<>(valeurs);
+            Collections.sort(tries);
+            return centile(tries, part);
         }
 
         private static double centile(List<Double> tries, double part) {

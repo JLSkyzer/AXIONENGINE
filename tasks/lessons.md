@@ -2792,3 +2792,17 @@ d'écrire le banc, et rien ne le vérifiait.
 
 **Règle.** Une règle qu'un test peut dire devient un test, pas seulement une leçon. Un client d'essai qui ne fait rien :
 lire d'abord la sortie console (le `latest.log` d'un client tué perd ses dernières lignes).
+
+---
+
+**[2026-11-26] | Une mesure en une passe publiée trois fois trop lente | Un chiffre de performance se rejoue au moins
+une fois avant d'être écrit.**
+
+**Ce qui a mal tourné.** La première campagne client donnait 124 images/s et un pas serveur doublé à 128 véhicules ;
+j'ai écrit une explication (le client dispute le processeur) avant de rejouer. Deux passes suivantes : 391 et 397
+images/s.
+
+**Cause.** Une seule passe sur une machine partagée avec autre chose ; une cause plausible prise pour établie.
+
+**Règle.** Deux passes au moins avant de publier un chiffre ; s'ils divergent, une troisième, et l'écart se dit sans
+l'expliquer.

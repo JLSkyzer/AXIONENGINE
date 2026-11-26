@@ -126,7 +126,7 @@ def rendre_serveur(avant: str | None) -> None:
         PROPRIETES.write_text(avant, encoding="utf-8")
 
 
-def campagne(paliers: str, avec_client: bool = False) -> list[dict]:
+def campagne(paliers: str, avec_client: bool = False, profil: bool = False) -> list[dict]:
     SORTIES.mkdir(parents=True, exist_ok=True)
     for fichier in (JOURNAL_SERVEUR, RELEVE_SERVEUR, RELEVE_CLIENT):
         fichier.unlink(missing_ok=True)
@@ -168,7 +168,8 @@ def campagne(paliers: str, avec_client: bool = False) -> list[dict]:
                     print(f"palier {palier} : fenêtre relevée", flush=True)
             if avec_client and client is None and "Done (" in texte:
                 sortie_client = open(SORTIES / "client.log", "w", encoding="utf-8")
-                client = subprocess.Popen([str(GRADLE), ":axion-mod:runEssaiClientMesure"], cwd=RACINE,
+                commande = [str(GRADLE), ":axion-mod:runEssaiClientMesure"] + (["-PmesureProfil"] if profil else [])
+                client = subprocess.Popen(commande, cwd=RACINE,
                                           stdout=sortie_client, stderr=subprocess.STDOUT)
             if client is not None and client.poll() is not None and "[mesure] terminee" not in texte:
                 raise RuntimeError(f"client sorti avant la fin (voir {SORTIES / 'client.log'})")
@@ -243,11 +244,15 @@ def rapport(releves: list[dict], materiel: str, avant: int) -> str:
                    f"Un client de développement, spectateur en retrait de la grille, fenêtre de {c0['largeur']}×"
                    f"{c0['hauteur']}, synchronisation verticale coupée, fréquence illimitée, distance de rendu de 20"
                    f" chunks, interface cachée, sur la même machine que le serveur. Carte : {c0['carte']}.", "",
-                   "| véhicules | connus du client | images/s | image moyenne (ms) | p50 | p95 | p99 | max | tas (Mo) |",
-                   "|---|---|---|---|---|---|---|---|---|"]
+                   "| véhicules | connus du client | images/s | image moyenne (ms) | p50 | p95 | p99 | max | tas (Mo) |"
+                   " tick moyen / p95 (ms) | images > 15 ms (dont avec un tick) | images avec un tick |",
+                   "|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for c in clients:
             lignes.append("| {v} | {k} | {fps:.0f} | {m:.2f} | {p50:.2f} | {p95:.2f} | {p99:.2f} | {mx:.1f} |"
-                          " {tas} |".format(v=c["vehicules"], k=c["connues"], fps=c["images"] / c["secondes"],
+                          " {tas} | {tm:.2f} / {tp:.2f} | {l} ({lt}) | {at} |".format(
+                                            tm=c["tick_ms_moyen"], tp=c["tick_ms_p95"], l=c["lentes"],
+                                            lt=c["lentes_avec_tick"], at=c["images_avec_tick"],
+                                            v=c["vehicules"], k=c["connues"], fps=c["images"] / c["secondes"],
                                             m=c["image_ms_moyenne"], p50=c["image_ms_p50"], p95=c["image_ms_p95"],
                                             p99=c["image_ms_p99"], mx=c["image_ms_max"], tas=c["tas_mo"]))
     return "\n".join(lignes) + "\n"
@@ -257,11 +262,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--paliers", default="0,1,8,32,64,128", help="nombres de véhicules, séparés par des virgules")
     parser.add_argument("--client", action="store_true", help="un vrai client relève la durée de ses images")
+    parser.add_argument("--profil", action="store_true",
+                        help="enregistrer un profil JFR du client (.runs/essai-mesure/profil.jfr)")
     arguments = parser.parse_args()
     materiel = machine()
     avant = autres_java()
     try:
-        releves = campagne(arguments.paliers, arguments.client)
+        releves = campagne(arguments.paliers, arguments.client, arguments.profil)
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
         print(f"ÉCHEC : {faute}")
         return 1

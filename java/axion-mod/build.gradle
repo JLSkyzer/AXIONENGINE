@@ -147,6 +147,10 @@ minecraft {
             property 'axion.mesure.client', 'true'
             property 'axion.souris.libre', 'true'
             args '--width', '1920', '--height', '1080'
+            // -PmesureProfil (mesure.py --profil) : un enregistrement JFR du client, pour dire où passe son temps.
+            if (project.hasProperty('mesureProfil')) {
+                jvmArg "-XX:StartFlightRecording=settings=profile,filename=${rootProject.file('.runs/essai-mesure/profil.jfr')},dumponexit=true"
+            }
         }
 
         essaiClientObservateur {
