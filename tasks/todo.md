@@ -3951,8 +3951,10 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            qui le lit.
      - [ ] CAP-53, mesure et parallélisme. Serveur mesuré le 2026-11-25 (`tools/campagne/mesure.py`,
            `docs/mesures/CAP-53-serveur-2026-11-25.md`) : 20 TPS jusqu'à 128 véhicules ; budget de 3 ms dépassé à 128
-           (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Restent : la mesure du
-           client, les fréquences de sous-pas, une passe répétée avec joueurs, et l'ADR de l'extension du parallélisme
+           (gouverneur au palier 3) ; tout le pas sur le thread du serveur, pool `axion-job` à zéro. Client mesuré le
+           2026-11-26 (`--client`, `docs/mesures/CAP-53-client-2026-11-26.md`) : 124 images/s à 128 véhicules à l'écran,
+           p95 de 23 ms (non expliqué) ; serveur seul sans régression nette. Restent : les fréquences de sous-pas, une
+           passe répétée avec joueurs, l'écart médiane / p95 du client, et l'ADR de l'extension du parallélisme
            (déterminisme C-16) avant tout code.
      - [x] CAP-42 (2026-11-18) : `ContentCheck` dit non vérifiés, sans les refuser, les contrôleurs, widgets et
            paramètres d'addon dont le code ne se charge pas hors jeu (`VehicleExtensions.withoutCode()`).

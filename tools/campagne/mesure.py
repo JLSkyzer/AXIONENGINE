@@ -13,7 +13,11 @@ Les threads se relèvent du dehors, une à trois secondes après chaque marque :
 Les chiffres ne valent que pour la machine et la date du rapport, et seulement si rien d'autre ne tourne : prendre le
 verrou des lancements de Minecraft avant, là où il y en a un.
 
-Usage : python tools/campagne/mesure.py [--paliers 0,1,8,32,64,128]   (JAVA_HOME doit désigner un JDK 17)
+Avec --client, un vrai client (`runEssaiClientMesure`, `MesureClient`) se connecte, se tient en spectateur devant la
+grille et relève la durée de chaque image sur les mêmes fenêtres ; le serveur lui envoie des véhicules jusqu'à 288 blocs
+(portée de diffusion des entités à 300 %, distance de vue de 20 chunks), réglés le temps de la campagne.
+
+Usage : python tools/campagne/mesure.py [--paliers 0,1,8,32,64,128] [--client]   (JAVA_HOME : un JDK 17)
 Rapport : .runs/campagne/mesure/rapport.md et rapport.json
 """
 
@@ -32,6 +36,10 @@ import time
 from prediction import GRADLE, JOURNAL_SERVEUR, RACINE, SERVEUR_PRET_S, arreter
 
 SORTIES = RACINE / ".runs/campagne/mesure"
+CLIENT = RACINE / ".runs/essai-mesure"
+RELEVE_CLIENT = CLIENT / "mesure-client.jsonl"
+PROPRIETES = RACINE / ".runs/server/server.properties"
+REGLAGES_CLIENT = {"entity-broadcast-range-percentage": "300", "view-distance": "20"}
 RELEVE_SERVEUR = RACINE / ".runs/server/mesure/rapport.jsonl"
 DUREE_MAX_S = 1800
 
@@ -101,9 +109,26 @@ def autres_java() -> int:
     return sum(1 for ligne in sortie.splitlines() if ligne.lower().startswith("java.exe"))
 
 
-def campagne(paliers: str) -> list[dict]:
+def regler_serveur(valeurs: dict[str, str]) -> str | None:
+    """Pose des réglages dans server.properties ; rend le contenu d'avant, None s'il n'existait pas."""
+    avant = PROPRIETES.read_text("utf-8") if PROPRIETES.exists() else None
+    lignes = [l for l in (avant or "").splitlines() if l.split("=", 1)[0] not in valeurs]
+    lignes += [f"{cle}={valeur}" for cle, valeur in valeurs.items()]
+    PROPRIETES.parent.mkdir(parents=True, exist_ok=True)
+    PROPRIETES.write_text("\n".join(lignes) + "\n", encoding="utf-8")
+    return avant
+
+
+def rendre_serveur(avant: str | None) -> None:
+    if avant is None:
+        PROPRIETES.unlink(missing_ok=True)
+    else:
+        PROPRIETES.write_text(avant, encoding="utf-8")
+
+
+def campagne(paliers: str, avec_client: bool = False) -> list[dict]:
     SORTIES.mkdir(parents=True, exist_ok=True)
-    for fichier in (JOURNAL_SERVEUR, RELEVE_SERVEUR):
+    for fichier in (JOURNAL_SERVEUR, RELEVE_SERVEUR, RELEVE_CLIENT):
         fichier.unlink(missing_ok=True)
     for fichier in ("axion-common.toml", "axion-client.toml", "axion-server.toml"):
         (RACINE / ".runs/server/config" / fichier).unlink(missing_ok=True)
@@ -112,6 +137,14 @@ def campagne(paliers: str) -> list[dict]:
     for autre in ("AXION_ESSAI_PREDICTION", "AXION_ESSAI_PORTEUR"):
         environnement.pop(autre, None)
     journal = SORTIES / "serveur.log"
+    environnement.pop("AXION_MESURE_CLIENT", None)
+    proprietes_avant = None
+    client = None
+    sortie_client = None
+    if avec_client:
+        environnement["AXION_MESURE_CLIENT"] = "1"
+        proprietes_avant = regler_serveur(REGLAGES_CLIENT)
+        (CLIENT / "config").mkdir(parents=True, exist_ok=True)
     familles: dict[int, dict[str, float]] = {}
     with open(journal, "w", encoding="utf-8") as sortie:
         serveur = subprocess.Popen([str(GRADLE), ":axion-mod:runServer"], cwd=RACINE, env=environnement,
@@ -133,6 +166,12 @@ def campagne(paliers: str) -> list[dict]:
                 elif palier in debuts:
                     familles[palier] = groupes(debuts[palier], threads(pids[palier]))
                     print(f"palier {palier} : fenêtre relevée", flush=True)
+            if avec_client and client is None and "Done (" in texte:
+                sortie_client = open(SORTIES / "client.log", "w", encoding="utf-8")
+                client = subprocess.Popen([str(GRADLE), ":axion-mod:runEssaiClientMesure"], cwd=RACINE,
+                                          stdout=sortie_client, stderr=subprocess.STDOUT)
+            if client is not None and client.poll() is not None and "[mesure] terminee" not in texte:
+                raise RuntimeError(f"client sorti avant la fin (voir {SORTIES / 'client.log'})")
             if "[mesure] terminee" in texte or serveur.poll() is not None:
                 break
             if "Done (" not in texte and time.monotonic() - depart > SERVEUR_PRET_S:
@@ -141,23 +180,43 @@ def campagne(paliers: str) -> list[dict]:
                 raise RuntimeError("mesure trop longue")
             time.sleep(0.5)
         try:
+            if client is not None:
+                client.wait(timeout=180)
             serveur.wait(timeout=120)
         except subprocess.TimeoutExpired:
             pass
     finally:
+        if client is not None:
+            arreter(client)
+        if sortie_client is not None:
+            sortie_client.close()
         arreter(serveur)
+        if avec_client:
+            rendre_serveur(proprietes_avant)
     if not RELEVE_SERVEUR.exists():
         raise RuntimeError(f"aucun relevé du serveur (voir {journal})")
     releves = [json.loads(ligne) for ligne in RELEVE_SERVEUR.read_text("utf-8").splitlines() if ligne.strip()]
+    images = {}
+    if avec_client:
+        if not RELEVE_CLIENT.exists():
+            raise RuntimeError(f"aucun relevé du client (voir {SORTIES / 'client.log'})")
+        for ligne in RELEVE_CLIENT.read_text("utf-8").splitlines():
+            if ligne.strip():
+                releve = json.loads(ligne)
+                images[releve["vehicules"]] = releve
     for releve in releves:
         releve["threads_cpu_s"] = familles.get(releve["vehicules"], {})
+        if avec_client:
+            releve["client"] = images.get(releve["vehicules"])
     return releves
 
 
 def rapport(releves: list[dict], materiel: str, avant: int) -> str:
     lignes = [f"# Mesure du serveur (CAP-53), {datetime.datetime.now():%Y-%m-%d %H:%M}", "",
               f"Machine : {materiel}. Processus `java.exe` présents avant le lancement : {avant}.",
-              "Serveur dédié de développement, sans joueur, véhicules d'essai conduits en cercle ; fenêtre de 600 ticks"
+              "Serveur dédié de développement"
+              + (", un client spectateur connecté" if any(r.get("client") for r in releves) else ", sans joueur")
+              + ", véhicules d'essai conduits en cercle ; fenêtre de 600 ticks"
               " après 600 d'établissement (le temps que la compilation Java à la volée se calme). Valeurs de cette machine seulement.", "",
               "| véhicules | TPS | CPU thread serveur (ms/tick) | pas natif moyen / p95 (ms) | contacts (ms) |"
               " intégration (ms) | cœurs utilisés (processus) | part du thread serveur | gouverneur | vitesse (m/s) |",
@@ -177,17 +236,32 @@ def rapport(releves: list[dict], materiel: str, avant: int) -> str:
         axion = sum(v for k, v in r["threads_cpu_s"].items() if k.startswith("axion"))
         lignes.append(f"- **{r['vehicules']} véhicules** (fenêtre de {r['murale_s']:.1f} s) : "
                       + " ; ".join(f"`{k}` {v:.2f}" for k, v in fortes) + f" ; pool natif d'AXION {axion:.3f}")
+    clients = [r["client"] for r in releves if r.get("client")]
+    if clients:
+        c0 = clients[0]
+        lignes += ["", "## Le client", "",
+                   f"Un client de développement, spectateur en retrait de la grille, fenêtre de {c0['largeur']}×"
+                   f"{c0['hauteur']}, synchronisation verticale coupée, fréquence illimitée, distance de rendu de 20"
+                   f" chunks, interface cachée, sur la même machine que le serveur. Carte : {c0['carte']}.", "",
+                   "| véhicules | connus du client | images/s | image moyenne (ms) | p50 | p95 | p99 | max | tas (Mo) |",
+                   "|---|---|---|---|---|---|---|---|---|"]
+        for c in clients:
+            lignes.append("| {v} | {k} | {fps:.0f} | {m:.2f} | {p50:.2f} | {p95:.2f} | {p99:.2f} | {mx:.1f} |"
+                          " {tas} |".format(v=c["vehicules"], k=c["connues"], fps=c["images"] / c["secondes"],
+                                            m=c["image_ms_moyenne"], p50=c["image_ms_p50"], p95=c["image_ms_p95"],
+                                            p99=c["image_ms_p99"], mx=c["image_ms_max"], tas=c["tas_mo"]))
     return "\n".join(lignes) + "\n"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--paliers", default="0,1,8,32,64,128", help="nombres de véhicules, séparés par des virgules")
+    parser.add_argument("--client", action="store_true", help="un vrai client relève la durée de ses images")
     arguments = parser.parse_args()
     materiel = machine()
     avant = autres_java()
     try:
-        releves = campagne(arguments.paliers)
+        releves = campagne(arguments.paliers, arguments.client)
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
         print(f"ÉCHEC : {faute}")
         return 1

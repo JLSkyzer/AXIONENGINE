@@ -16,8 +16,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -32,6 +35,10 @@ import org.slf4j.LoggerFactory;
  * variable d'environnement {@code AXION_MESURE} (les paliers, séparés par des virgules) ; contenu de développement, jamais
  * livré. {@code tools/campagne/mesure.py} la lance, relève les threads du processus entre les deux marques du journal, et
  * écrit le rapport.
+ *
+ * <p>Sous {@code AXION_MESURE_CLIENT=1} ({@code mesure.py --client}), le serveur attend un joueur, le pose en spectateur
+ * devant la grille, ouvre la première fenêtre après {@value #CHARGEMENT} ticks, et lui dit chaque marque : son client la
+ * relève ({@link MesureClient}).
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class MesurePerformance {
@@ -40,6 +47,13 @@ public final class MesurePerformance {
 
     private static final String PALIERS = System.getenv("AXION_MESURE");
     private static final String VEHICULE = "axion:test/vehicule";
+    private static final boolean CLIENT = "1".equals(System.getenv("AXION_MESURE_CLIENT"));
+    /** Les ticks laissés au client posé à son point de vue pour charger le monde. */
+    private static final int CHARGEMENT = 400;
+    /** Au plus tant de ticks pour qu'il parte après la dernière fenêtre ; le serveur s'arrête ensuite. */
+    private static final int DEPART = 600;
+    private static int attente;
+    private static int depart = -1;
     /** Le sol du monde plat : la première couche d'air. */
     private static final int SOL = -60;
     /** Les ticks d'établissement, puis ceux de la fenêtre relevée. */
@@ -80,6 +94,16 @@ public final class MesurePerformance {
         }
         MinecraftServer serveur = event.getServer();
         ServerLevel monde = serveur.overworld();
+        if (depart >= 0) {
+            if (serveur.getPlayerList().getPlayers().isEmpty() || ++depart > DEPART) {
+                serveur.halt(false);
+                depart = -1;
+            }
+            return;
+        }
+        if (CLIENT && attente <= CHARGEMENT && !spectateurPret(serveur, monde)) {
+            return;
+        }
         if (paliers == null) {
             paliers = Arrays.stream(PALIERS.split(",")).map(String::trim).mapToInt(Integer::parseInt).toArray();
             preparer(monde);
@@ -99,10 +123,12 @@ public final class MesurePerformance {
         if (tick == ETABLIR) {
             commencer();
             LOGGER.info("[mesure] debut {} pid {}", paliers[palier], ProcessHandle.current().pid());
+            dire(serveur, "debut " + paliers[palier]);
         } else if (tick > ETABLIR && tick <= ETABLIR + RELEVER) {
             relever(serveur, tick - ETABLIR);
             if (tick == ETABLIR + RELEVER) {
                 LOGGER.info("[mesure] fin {}", paliers[palier]);
+                dire(serveur, "fin " + paliers[palier]);
                 ecrire(serveur);
             }
         } else if (tick == ETABLIR + RELEVER + MARGE) {
@@ -110,10 +136,40 @@ public final class MesurePerformance {
             tick = -1;
             if (palier == paliers.length) {
                 LOGGER.info("[mesure] terminee");
-                serveur.halt(false);
+                if (CLIENT) {
+                    dire(serveur, "terminee");
+                    depart = 0;
+                } else {
+                    serveur.halt(false);
+                }
                 paliers = new int[0];
                 tick = Integer.MIN_VALUE / 2;
             }
+        }
+    }
+
+    /**
+     * Attend le joueur de la mesure, le pose en spectateur au-dessus et en retrait de la grille, regardant vers elle,
+     * puis compte son temps de chargement.
+     */
+    private static boolean spectateurPret(MinecraftServer serveur, ServerLevel monde) {
+        List<ServerPlayer> joueurs = serveur.getPlayerList().getPlayers();
+        if (joueurs.isEmpty()) {
+            attente = 0;
+            return false;
+        }
+        if (attente == 0) {
+            ServerPlayer joueur = joueurs.get(0);
+            serveur.getPlayerList().setViewDistance(20);
+            joueur.setGameMode(GameType.SPECTATOR);
+            joueur.teleportTo(monde, 0.5, SOL + 45.0, -150.0, 0f, 20f);
+        }
+        return ++attente > CHARGEMENT;
+    }
+
+    private static void dire(MinecraftServer serveur, String marque) {
+        if (CLIENT) {
+            serveur.getPlayerList().broadcastSystemMessage(Component.literal("[mesure-client] " + marque), false);
         }
     }
 

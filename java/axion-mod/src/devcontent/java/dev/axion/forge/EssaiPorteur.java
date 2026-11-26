@@ -293,7 +293,7 @@ public final class EssaiPorteur {
 
         /** @param event la fin d'une image */
         @SubscribeEvent
-        public static void filmer(TickEvent.RenderTickEvent event) {
+        public static void filmerLePortage(TickEvent.RenderTickEvent event) {
             if (!FILM || tournage == null || fini || event.phase != TickEvent.Phase.END || !tournage.imageAttendue()) {
                 return;
             }
@@ -308,7 +308,7 @@ public final class EssaiPorteur {
 
         /** @param event l'écran qui s'ouvre : une déconnexion fait échouer l'essai, sauf l'expiration de la connexion */
         @SubscribeEvent
-        public static void deconnexion(ScreenEvent.Opening event) {
+        public static void deconnexionDuPortage(ScreenEvent.Opening event) {
             if (DELAI_MS < 0 || fini || !(event.getNewScreen() instanceof DisconnectedScreen ecran)) {
                 return;
             }

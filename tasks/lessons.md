@@ -2777,3 +2777,18 @@ assembly endormie ; l'énergie, le mouillé et l'usure passaient par le rapport.
 l'ajouter au rafraîchissement des assemblies endormies ; tester avec une assembly endormie, et une grandeur qui ne la
 réveille pas.
 
+---
+
+**[2026-11-26] | Le banc de la mesure client ne recevait aucun tick, et l'essai de prédiction ne filmait ni ne voyait sa
+déconnexion | Deux abonnés Forge `Client` du même paquet avec la même méthode et le même événement partagent un relais :
+`EventSubscriberNamesTest` le refuse désormais.**
+
+**Ce qui a mal tourné.** `MesureClient.Client.tick` n'a jamais été appelé (30 minutes de campagne perdues, quatre
+lancements de diagnostic). La même collision cassait depuis le 2026-11-25 `EssaiPrediction.Client.filmer` et
+`deconnexion`, pris par ceux de `EssaiPorteur`.
+
+**Cause.** Le piège était consigné ici le 2026-11-13 et dans la base de connaissances ; je ne l'ai pas relu avant
+d'écrire le banc, et rien ne le vérifiait.
+
+**Règle.** Une règle qu'un test peut dire devient un test, pas seulement une leçon. Un client d'essai qui ne fait rien :
+lire d'abord la sortie console (le `latest.log` d'un client tué perd ses dernières lignes).

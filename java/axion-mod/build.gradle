@@ -138,6 +138,17 @@ minecraft {
             property 'axion.content.dev_reload', 'true'
         }
 
+        essaiClientMesure {
+            // CAP-53, mesure du client (MesureClient, contenu de développement) : ce client se connecte au serveur de
+            // runServer, lancé sous AXION_MESURE et AXION_MESURE_CLIENT=1 (tools/campagne/mesure.py --client), relève la
+            // durée de chaque image par palier, puis s'arrête.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/essai-mesure')
+            property 'axion.mesure.client', 'true'
+            property 'axion.souris.libre', 'true'
+            args '--width', '1920', '--height', '1080'
+        }
+
         essaiClientPorteur {
             // ADR-178, essai à deux processus du portage (EssaiPorteur, contenu de développement) : ce client se connecte au
             // serveur de runServer, lancé sous AXION_ESSAI_PORTEUR=1, par un relais qui retarde chaque sens de
@@ -662,6 +673,14 @@ tasks.matching { it.name == 'runEssaiClientPrediction' }.configureEach {
     }
 }
 
+// CAP-53 : le client de la mesure, muet ; son serveur est runServer, sous AXION_MESURE et AXION_MESURE_CLIENT=1.
+tasks.matching { it.name == 'runEssaiClientMesure' }.configureEach {
+    standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/essai-mesure'))
+    }
+}
+
 // ADR-178 : le client de l'essai du portage, muet ; son serveur est runServer, sous AXION_ESSAI_PORTEUR=1.
 tasks.matching { it.name == 'runEssaiClientPorteur' }.configureEach {
     standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
@@ -893,6 +912,10 @@ tasks.named('test', Test).configure {
     systemProperty 'axion.tools.dir', rootProject.file('tools').absolutePath
     // T-019 (INV-12) lit le bytecode du moteur : aucun appel GL hors du render thread.
     systemProperty 'axion.classes.dir', sourceSets.main.java.classesDirectory.get().asFile.absolutePath
+    // Les relais d'evenements de Forge se verifient aussi sur le contenu de developpement (EventSubscriberNamesTest).
+    inputs.files(tasks.named('compileDevcontentJava')).withPropertyName('devcontentClasses')
+    systemProperty 'axion.devcontent.classes.dir',
+            sourceSets.devcontent.java.classesDirectory.get().asFile.absolutePath
     // R-1751 : la version que porte l'artefact axion-api, confrontee a ApiVersion.CURRENT.
     // Lue au lancement de la JVM de test : a la configuration d'axion-mod, celle d'axion-api
     // n'a peut-etre pas encore fixe sa version.
