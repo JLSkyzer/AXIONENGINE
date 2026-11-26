@@ -3912,7 +3912,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              le 2026-11-26, 14a2 (schéma 8, types, plein typé et débit, API, commande, action, sauvegarde par nom,
              sources, guides ; R-1093) FAIT le 2026-11-26 → 14b moteurs électriques (ABI 39, AXION-18 ; consommation à
              la puissance, récupération, couplage boîte ou roues, sources, guides ; R-1094) FAIT le 2026-11-26 → 14c
-             hybride (`motor.<nom>.torque`, prolongateur) → 14d exemples, guides, preuves, clôture D7. Reste signalé : une citerne sans roue (objet rigide) est refusée à la compilation.
+             hybride (`motor.<nom>.torque`, prolongateur ; ABI 40, AXION-19 ; R-1095) FAIT le 2026-11-26 → 14d
+             exemples, essai de prédiction, film, coût, clôture D7. Reste signalé : une citerne sans roue (objet rigide) est refusée à la compilation.
            - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`) ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,

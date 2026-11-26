@@ -185,3 +185,32 @@ moteur à combustion.
   pas. Les roues motrices (`drive_wheels`) ne sont exigées que pour un moteur couplé à la boîte.
 - **Sources** : `motor.<nom>.rpm` (tr/min, positif dans le sens engagé) et `motor.<nom>.power` (kW, négatif en
   récupération) pour un compteur ou une animation ; `energy.<réserve>.ratio` pour la jauge de batterie.
+
+## L'hybride (schéma 8)
+
+Avec `engine` **et** `electric_motors`, le véhicule est hybride ([ADR-182](../../decisions/ADR-182.md) D4).
+
+**En parallèle**, les couples s'additionnent et la même pédale commande les deux. Le moteur à combustion arrêté reste
+débrayé : avec un contact coupé, le véhicule roule à l'électricité seule. La stratégie est la tienne : chaque moteur
+électrique a le paramètre `motor.<nom>.torque` ([Régler](regler.md)) — le pic de sa courbe, en N·m — qu'une variable, un
+modificateur ou le contrôleur de ton mod baisse, coupe ou renforce. À 0, le moteur ne donne plus rien ; sa récupération,
+elle, reste.
+
+**En prolongateur d'autonomie**, le moteur à combustion n'entraîne **jamais** les roues : il charge une réserve.
+
+```json
+"engine": {
+  "torque_curve": [[0, 0], [1500, 45], [3500, 60], [6500, 45]], "max_rpm": 6500,
+  "fuel": { "store": "essence", "consumption": [[0.0, 0.4], [1.0, 9.0]] },
+  "generator": { "store": "traction", "power_kw": 20.0, "efficiency": 0.9, "start_below": 0.2, "stop_above": 0.8 }
+}
+```
+
+- Il **démarre** quand `traction` passe sous `start_below` (0,2 sans le déclarer) et **s'arrête** à `stop_above` (0,8).
+- Il tourne à son régime de plus grande puissance, charge `power_kw` au plus — jamais plus que le moteur ne donne,
+  rendement compris (`efficiency`, 0,9) — et brûle son carburant selon sa courbe.
+- Avec un démarreur (`starter`), il ne démarre que contact mis ; sans, dès que la réserve le demande.
+- Il tient le véhicule éveillé tant qu'il charge ; un véhicule déjà endormi ne démarre qu'à son réveil (un conducteur, un
+  contact).
+- Les roues motrices ne sont exigées que pour un moteur électrique couplé à la boîte.
+- `engine.running`, `engine.rpm` et `engine.load` le suivent.

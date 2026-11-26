@@ -281,6 +281,39 @@ class VehicleSpecTest {
     }
 
     @Test
+    @DisplayName("ADR-182 D4 : un prolongateur dans la section, ses défauts et ses refus ; le couple de chaque moteur se règle")
+    void prolongateurEtParametres() throws DefinitionException {
+        String base = electrique(ARRIERE, "\"engine\": {\"torque_curve\": [[0, 0], [3000, 180]],"
+                + " \"fuel\": {\"store\": \"gazole\", \"consumption\": [[0, 1]]},"
+                + " \"generator\": {\"store\": \"traction\", \"power_kw\": 30}}, ")
+                .replace("[{\"name\": \"traction\", \"capacity\": 40}]",
+                        "[{\"name\": \"traction\", \"capacity\": 40}, {\"name\": \"gazole\", \"capacity\": 30}]")
+                .replace(", \"powered\": true", "");
+        ByteBuffer in = section(base, TireProfiles.empty());
+        assertEquals(0, in.get(152), "il charge la réserve de rang 0");
+        assertEquals(30f, in.getFloat(156), "puissance");
+        assertEquals(VehicleSpec.GENERATOR_EFFICIENCY, in.getFloat(160));
+        assertEquals(VehicleSpec.GENERATOR_START, in.getFloat(164));
+        assertEquals(VehicleSpec.GENERATOR_STOP, in.getFloat(168));
+        assertEquals((byte) 255, section(electrique(ARRIERE, ""), TireProfiles.empty()).get(152), "aucun");
+
+        assertEquals("$.powertrain.engine.generator.store",
+                refus(base.replace("\"store\": \"traction\", \"power_kw\"", "\"store\": \"gazole\", \"power_kw\"")));
+        assertEquals("$.powertrain.engine.generator.stop_above",
+                refus(base.replace("\"power_kw\": 30", "\"power_kw\": 30, \"start_below\": 0.9")));
+        assertEquals("$.powertrain.engine.generator.efficiency",
+                refus(base.replace("\"power_kw\": 30", "\"power_kw\": 30, \"efficiency\": 0")));
+        assertEquals("$.powertrain.electric_motors[0].torque_curve",
+                refus(electrique(ARRIERE.replace("[[0, 150], [9000, 60]]", "[[0, 0], [9000, 0]]"), "")));
+
+        Tuning tuning = Tuning.of("mymod:pickup", lire(base).root());
+        int moteur = tuning.indexOf("motor.arriere.torque");
+        assertTrue(moteur >= 0, tuning.names().toString());
+        assertEquals(150.0, tuning.get(moteur).base(), "le pic de sa courbe");
+        assertEquals(dev.axion.api.assembly.Parameters.motorTorque("arriere"), tuning.get(moteur).name());
+    }
+
+    @Test
     @DisplayName("R-1090, ADR-159 tranche 3 : antipatinage et stabilité, désactivés par défaut, actifs par leur drapeau")
     void correcteurs() throws DefinitionException {
         ByteBuffer in = section(vehicule(MOTRICE + ", \"powertrain\": {" + MOTEUR

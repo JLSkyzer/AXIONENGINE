@@ -476,6 +476,14 @@ final class SchemaOne {
                     .req("store", refers(NameCategory.STORE))
                     .req("consumption", curve())
                     .build());
+            // ADR-182 D4 : le prolongateur d'autonomie.
+            engine.opt("generator", obj()
+                    .req("store", refers(NameCategory.STORE))
+                    .req("power_kw", positive())
+                    .opt("efficiency", number())
+                    .opt("start_below", number())
+                    .opt("stop_above", number())
+                    .build());
         }
         ObjBuilder powertrain = obj();
         if (version >= 8) {

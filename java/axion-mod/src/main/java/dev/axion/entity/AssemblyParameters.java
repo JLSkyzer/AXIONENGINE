@@ -326,10 +326,31 @@ public final class AssemblyParameters {
     public float[] fields(List<String> names) {
         float[] fields = new float[names.size()];
         for (int i = 0; i < fields.length; i++) {
-            int index = tuning.indexOf(names.get(i));
+            String name = names.get(i);
+            int index = name.startsWith(MOTOR_SLOT)
+                    ? motorTorque(Integer.parseInt(name.substring(MOTOR_SLOT.length())))
+                    : tuning.indexOf(name);
             fields[i] = index < 0 ? Float.NaN : (float) values[index];
         }
         return fields;
+    }
+
+    /**
+     * Le préfixe d'un champ qui désigne un moteur électrique par son rang (ADR-182 D4) : {@code motor#0} est le couple du
+     * premier moteur, quel que soit son nom.
+     */
+    public static final String MOTOR_SLOT = "motor#";
+
+    /** {@return le rang, dans la table, du couple du moteur électrique de rang {@code motor} ; -1 sans} */
+    private int motorTorque(int motor) {
+        int seen = 0;
+        for (int i = 0; i < tuning.size(); i++) {
+            String name = tuning.get(i).name();
+            if (name.startsWith("motor.") && name.endsWith(".torque") && name.indexOf(':') < 0 && seen++ == motor) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**

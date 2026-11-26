@@ -436,7 +436,7 @@ fn apply_set_parameters(driver: &mut SimDriver, payload: &[u8]) -> Result<(), Co
     if payload.len() < SetParameters::BYTES {
         return Err(CommandError::BadPayloadLength);
     }
-    let gears = usize::from(read_u16(payload, 68));
+    let gears = usize::from(read_u16(payload, 84));
     expect_len(payload, SetParameters::BYTES + gears * 4)?;
     let value = |rank: usize| read_f32(payload, 8 + 4 * rank);
     let tuning = Tuning {
@@ -454,6 +454,7 @@ fn apply_set_parameters(driver: &mut SimDriver, payload: &[u8]) -> Result<(), Co
         drag: value(12),
         downforce_front: value(13),
         downforce_rear: value(14),
+        motors: std::array::from_fn(|rank| value(15 + rank)),
         gears: (0..gears)
             .map(|rank| read_f32(payload, SetParameters::BYTES + 4 * rank))
             .collect(),
@@ -1787,13 +1788,13 @@ mod tests {
 
     #[test]
     fn adr167_set_parameters_se_lit_avec_ses_rapports_et_refuse_une_table_tronquee() {
-        // ADR-167 D6 : le handle, quinze f32, le nombre de rapports, puis les rapports ; l'assembly inconnue ne
+        // ADR-167 D6 : le handle, dix-neuf f32, le nombre de rapports, puis les rapports ; l'assembly inconnue ne
         // change rien, une table plus courte que son nombre refuse le flux.
         let mut driver = SimDriver::new();
         let mut payload = Vec::new();
         payload.extend_from_slice(&7u32.to_le_bytes());
         payload.extend_from_slice(&1u32.to_le_bytes());
-        for _ in 0..15 {
+        for _ in 0..19 {
             payload.extend_from_slice(&f32::NAN.to_le_bytes());
         }
         payload.extend_from_slice(&2u16.to_le_bytes());

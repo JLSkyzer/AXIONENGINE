@@ -4878,6 +4878,72 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code powertrain.engine.generator}. */
+    @Experimental
+    public static final class PowertrainEngineGenerator {
+
+        private final Map<String, Object> values;
+
+        private PowertrainEngineGenerator(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code powertrain.engine.generator.efficiency}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineGenerator efficiency(double value) {
+            values.put("efficiency", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.generator.power_kw} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineGenerator powerKw(double value) {
+            values.put("power_kw", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.generator.start_below}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineGenerator startBelow(double value) {
+            values.put("start_below", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.generator.stop_above}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineGenerator stopAbove(double value) {
+            values.put("stop_above", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.generator.store} : nom (store) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineGenerator store(String value) {
+            values.put("store", Objects.requireNonNull(value, "store"));
+            return this;
+        }
+    }
+
     /** {@code powertrain.engine.starter}. */
     @Experimental
     public static final class PowertrainEngineStarter {
@@ -4974,6 +5040,18 @@ public final class DefinitionBuilder {
         public PowertrainEngine fuel(Consumer<PowertrainEngineFuel> config) {
             Map<String, Object> nested = object(values, "fuel");
             Objects.requireNonNull(config, "config").accept(new PowertrainEngineFuel(nested));
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.generator}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngine generator(Consumer<PowertrainEngineGenerator> config) {
+            Map<String, Object> nested = object(values, "generator");
+            Objects.requireNonNull(config, "config").accept(new PowertrainEngineGenerator(nested));
             return this;
         }
 

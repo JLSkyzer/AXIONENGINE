@@ -6,8 +6,9 @@ use ax_model::dm::scene::NONE_U16;
 use ax_model::dm::vehicle::{
     differential_kind, motor_coupling, native_input_flags, transmission_kind, vehicle_flags,
     vehicle_report_flags, wheel_flags, wheel_report_flags, AeroDesc, AssistDesc, BrakesDesc,
-    DifferentialDesc, EnergyDesc, EngineDesc, MotorDesc, SteeringDesc, SuspensionDesc, TireCurve,
-    TransmissionDesc, VehicleDesc, VehicleInput, VehicleReport, WheelDesc,
+    DifferentialDesc, EnergyDesc, EngineDesc, GeneratorDesc, MotorDesc, SteeringDesc,
+    SuspensionDesc, TireCurve, TransmissionDesc, VehicleDesc, VehicleInput, VehicleReport,
+    WheelDesc,
 };
 use ax_physics::{
     BodyCollider, BodyId, BodyKind, CellMaterials, CollisionGroups, CombineRule, ContactMaterial,
@@ -111,6 +112,7 @@ fn description(roues: usize) -> VehicleDesc {
         flags: 0,
         energy: EnergyDesc::NONE,
         motors: Vec::new(),
+        generator: None,
         engine: EngineDesc {
             idle_rpm: 800.0,
             max_rpm: 7000.0,
@@ -2851,4 +2853,171 @@ fn adr182_d3_un_moteur_sur_la_boite_avance_et_recule_avec_le_rapport_engage() {
         vers_l_avant(&world, v)
     );
     assert_eq!(rapport(&world).gear, -1);
+}
+
+// --- ADR-182 D4 : l'hybride, paramètre et prolongateur d'autonomie. ---
+
+/// Une berline électrique à prolongateur : le moteur à combustion de la berline brûle la réserve de rang 1 et charge
+/// la batterie de rang 0 (petite, pour la voir se remplir en quelques secondes) entre 30 % et 60 %.
+fn a_prolongateur() -> VehicleDesc {
+    let mut d = electrique_pure(0.05);
+    let thermique = berline();
+    d.flags = vehicle_flags::POWERTRAIN;
+    d.engine = thermique.engine;
+    d.torque_curve = thermique.torque_curve;
+    d.energy = EnergyDesc {
+        capacities: [0.05, 40.0, 0.0, 0.0],
+        fuel_store: 1,
+        consumption: vec![[0.0, 2.0], [1.0, 20.0]],
+        ..EnergyDesc::NONE
+    };
+    d.generator = Some(GeneratorDesc {
+        store: 0,
+        power_kw: 30.0,
+        efficiency: 0.9,
+        start_below: 0.3,
+        stop_above: 0.6,
+    });
+    d
+}
+
+/// Le moteur à combustion tourne, d'après le rapport ; un véhicule endormi n'en rapporte pas.
+fn tourne(world: &PhysicsWorld) -> bool {
+    world
+        .vehicle_reports()
+        .first()
+        .is_some_and(|r| r.flags & vehicle_report_flags::RUNNING != 0)
+}
+
+fn contenus(world: &PhysicsWorld) -> [f64; 4] {
+    world
+        .vehicle_snapshot(ASSEMBLY)
+        .expect("véhicule")
+        .energy
+        .stores
+}
+
+#[test]
+fn adr182_d4_le_prolongateur_charge_entre_ses_seuils_sans_entrainer_les_roues() {
+    let (mut world, v) = sur_le_plat(a_prolongateur(), [400.0, 400.0], 1.0);
+    assert!(world.set_vehicle_energy(ASSEMBLY, [0.01, f32::NAN, f32::NAN, f32::NAN]));
+    // Un coup de frein réveille le véhicule ; ensuite aucune pédale : seul le prolongateur travaille, et il le tient
+    // éveillé jusqu'à son seuil haut.
+    conduire(&mut world, moteur_autorise(entree(0.0, 1.0, 0.0)));
+    world.advance(TICK);
+    assert_ne!(
+        rapport(&world).flags & vehicle_report_flags::RUNNING,
+        0,
+        "sous 30 % : il démarre"
+    );
+    conduire(&mut world, moteur_autorise(VehicleInput::NONE));
+    for _ in 0..30 {
+        world.advance(TICK);
+    }
+    let r = rapport(&world);
+    assert!(
+        r.rpm > 1000.0,
+        "il tourne à son régime de puissance : {}",
+        r.rpm
+    );
+    assert!(
+        r.load > 0.0 && r.load <= 1.0,
+        "sa charge est sa puissance : {}",
+        r.load
+    );
+    let mut arrete_a = None;
+    for _ in 0..600 {
+        world.advance(TICK);
+        // Arrêté, il laisse le véhicule s'endormir : il n'y a alors plus de rapport.
+        if !tourne(&world) {
+            arrete_a = Some(contenus(&world)[0] / 0.05);
+            break;
+        }
+    }
+    let seuil = arrete_a.expect("il s'arrête au seuil haut");
+    assert!(
+        (0.6..0.66).contains(&seuil),
+        "arrêt au-dessus de 60 % : {seuil}"
+    );
+    let apres = contenus(&world);
+    assert!(apres[1] < 40.0, "il a brûlé du carburant");
+    assert!(
+        vers_l_avant(&world, v).abs() < 0.05,
+        "les roues ne sont pas entraînées : {}",
+        vers_l_avant(&world, v)
+    );
+    // Entre les deux seuils, réveillé, il reste arrêté.
+    assert!(world.set_vehicle_energy(ASSEMBLY, [0.022, f32::NAN, f32::NAN, f32::NAN]));
+    conduire(&mut world, moteur_autorise(entree(0.0, 1.0, 0.0)));
+    world.advance(TICK);
+    assert!(!tourne(&world), "44 % : pas encore");
+    // Carburant vide : sous le seuil, il ne charge pas.
+    assert!(world.set_vehicle_energy(ASSEMBLY, [0.01, 0.0, f32::NAN, f32::NAN]));
+    conduire(&mut world, moteur_autorise(VehicleInput::NONE));
+    conduire(&mut world, moteur_autorise(entree(0.0, 1.0, 0.0)));
+    avancer(&mut world, TICK);
+    assert!(!tourne(&world), "sans carburant");
+    assert_eq!(contenus(&world)[0], f64::from(0.01_f32));
+}
+
+#[test]
+fn adr182_d4_l_etat_du_prolongateur_se_sauve_et_se_rejoue() {
+    let (mut world, _) = sur_le_plat(a_prolongateur(), [400.0, 400.0], 1.0);
+    assert!(world.set_vehicle_energy(ASSEMBLY, [0.01, f32::NAN, f32::NAN, f32::NAN]));
+    conduire(&mut world, moteur_autorise(entree(0.0, 1.0, 0.0)));
+    world.advance(TICK);
+    conduire(&mut world, moteur_autorise(VehicleInput::NONE));
+    avancer(&mut world, 0.5);
+    // Au-dessus du seuil bas, sous le seuil haut : il charge parce qu'il avait commencé.
+    assert!(world.set_vehicle_energy(ASSEMBLY, [0.02, f32::NAN, f32::NAN, f32::NAN]));
+    avancer(&mut world, TICK);
+    let etat = world.vehicle_snapshot(ASSEMBLY).expect("véhicule");
+    assert!(etat.generating, "40 % : il continue");
+    avancer(&mut world, 0.3);
+    let reference = contenus(&world);
+    assert!(world.restore_vehicle(ASSEMBLY, &etat));
+    avancer(&mut world, 0.3);
+    assert_eq!(contenus(&world), reference, "rejoué à l'identique");
+}
+
+#[test]
+fn adr182_d4_le_couple_d_un_moteur_se_regle_et_se_coupe() {
+    let rouler = |couple: f32| {
+        let (mut world, v) = sur_le_plat(electrique_pure(50.0), [400.0, 400.0], 1.0);
+        let mut reglage = ax_vehicle::tuning::Tuning::base();
+        reglage.motors[0] = couple;
+        assert_eq!(world.set_vehicle_tuning(ASSEMBLY, &reglage), Some(()));
+        conduire(&mut world, moteur_autorise(entree(1.0, 0.0, 0.0)));
+        avancer(&mut world, 3.0);
+        vers_l_avant(&world, v)
+    };
+    let base = rouler(f32::NAN);
+    assert!(rouler(0.0).abs() < 0.05, "coupé");
+    assert!(rouler(300.0) > base * 1.4, "doublé");
+    assert!(
+        (rouler(150.0) - base).abs() < 1e-4,
+        "le pic de la courbe est la base"
+    );
+}
+
+#[test]
+fn adr182_d4_en_parallele_les_couples_s_additionnent() {
+    let rouler = |autorise: bool| {
+        let mut d = berline();
+        d.energy = EnergyDesc {
+            capacities: [10.0, 0.0, 0.0, 0.0],
+            ..EnergyDesc::NONE
+        };
+        d.motors = electrique_pure(10.0).motors;
+        let (mut world, v) = sur_le_plat(d, [400.0, 400.0], 1.0);
+        let e = entree(0.5, 0.0, 0.0);
+        conduire(&mut world, if autorise { moteur_autorise(e) } else { e });
+        avancer(&mut world, 3.0);
+        (vers_l_avant(&world, v), contenus(&world)[0])
+    };
+    let (thermique, pleine) = rouler(false);
+    let (hybride, entamee) = rouler(true);
+    assert!(hybride > thermique + 1.0, "{hybride} contre {thermique}");
+    assert_eq!(pleine, 10.0, "sans autorisation, rien ne sort");
+    assert!(entamee < 10.0);
 }

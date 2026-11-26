@@ -1,6 +1,7 @@
 package dev.axion.physics;
 
 import dev.axion.api.assembly.Parameters;
+import dev.axion.entity.AssemblyParameters;
 import dev.axion.seat.VehicleInput;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -321,7 +322,7 @@ public final class SimCommandStream {
     public static final int OP_SET_PARAMETERS = 18;
 
     /** Taille de l'en-tête {@code SetParameters}, en octets : le handle, quinze valeurs, le nombre de rapports. */
-    public static final int SET_PARAMETERS_BYTES = 72;
+    public static final int SET_PARAMETERS_BYTES = 88;
 
     /**
      * Les paramètres que porte l'en-tête de {@code SET_PARAMETERS}, dans son ordre (ADR-167 D6) ; les rapports
@@ -331,7 +332,10 @@ public final class SimCommandStream {
             Parameters.ENGINE_MAX_RPM, Parameters.FINAL_DRIVE, Parameters.SHIFT_TIME, Parameters.BRAKES_FRONT,
             Parameters.BRAKES_REAR, Parameters.BRAKES_HANDBRAKE, Parameters.TIRES_GRIP, Parameters.SUSPENSION_STIFFNESS,
             Parameters.SUSPENSION_DAMPING, Parameters.STEERING_MAX_ANGLE, Parameters.AERO_DRAG,
-            Parameters.AERO_DOWNFORCE_FRONT, Parameters.AERO_DOWNFORCE_REAR);
+            Parameters.AERO_DOWNFORCE_FRONT, Parameters.AERO_DOWNFORCE_REAR,
+            // ADR-182 D4 : le couple de chaque moteur électrique, à son rang (AssemblyParameters.fields).
+            AssemblyParameters.MOTOR_SLOT + 0, AssemblyParameters.MOTOR_SLOT + 1, AssemblyParameters.MOTOR_SLOT + 2,
+            AssemblyParameters.MOTOR_SLOT + 3);
 
     /** Opcode {@code SET_WHEEL_TORQUES} : le couple posé sur chaque roue d'un véhicule (R-1082, ADR-167 D9). */
     public static final int OP_SET_WHEEL_TORQUES = 19;
@@ -367,7 +371,7 @@ public final class SimCommandStream {
      * Le plus grand bloc d'état, en octets (miroir de {@code world::state::MAX_STATE_BYTES}) : 64 corps, 128 joints,
      * un véhicule de 32 roues.
      */
-    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 96 + 32 * 40;
+    public static final int MAX_ASSEMBLY_STATE_BYTES = 16 + 64 * 64 + 128 * 8 + 104 + 32 * 40;
 
     /** Taille du payload {@code SetVehicleInput}, en octets : le handle, l'entrée de 12.8, les drapeaux. */
     public static final int SET_VEHICLE_INPUT_BYTES = 36;

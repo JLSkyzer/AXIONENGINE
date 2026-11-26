@@ -21,6 +21,7 @@
   "axion.parameter.transmission.final_drive": "Rapport de pont",
   "axion.parameter.transmission.shift_time": "Durée d'un passage de rapport",
   "axion.parameter.transmission.gear": "Rapport %s",
+  "axion.parameter.motor.torque": "Couple du moteur électrique %s",
   "axion.parameter.brakes.front": "Freins avant",
   "axion.parameter.brakes.rear": "Freins arrière",
   "axion.parameter.brakes.handbrake": "Frein à main",

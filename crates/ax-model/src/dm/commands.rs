@@ -306,7 +306,7 @@ impl SetVehicleInput {
     pub const BYTES: usize = 36;
 }
 
-/// En-tête de `SET_PARAMETERS` (ADR-167 D6) : 72 octets, puis `gear_count` rapports en `f32`.
+/// En-tête de `SET_PARAMETERS` (ADR-167 D6) : 88 octets, puis `gear_count` rapports en `f32`.
 ///
 /// Chaque champ porte la **valeur effective** d'un paramètre, dans l'unité de la definition, ou **NaN** pour garder
 /// la base : une assembly sans masse déclarée, un véhicule sans moteur, une assembly qui n'est pas un véhicule. Les
@@ -348,6 +348,8 @@ pub struct SetParameters {
     pub downforce_front: f32,
     /// `aero.downforce_rear`.
     pub downforce_rear: f32,
+    /// `motor.<nom>.torque` de chaque moteur électrique, à son rang : le pic de sa courbe en N·m (ADR-182 D4).
+    pub motor_torque: [f32; 4],
     /// Nombre de rapports qui suivent : celui de la table de la definition, ou 0.
     pub gear_count: u16,
     /// Réservé, à zéro.
@@ -356,7 +358,7 @@ pub struct SetParameters {
 
 impl SetParameters {
     /// Taille de l'en-tête sur la frontière, en octets.
-    pub const BYTES: usize = 72;
+    pub const BYTES: usize = 88;
 }
 
 /// En-tête de `SET_WHEEL_TORQUES` (R-1082, ADR-167 D9) : 12 octets, puis `count` couples en `f32`.
@@ -1240,7 +1242,7 @@ mod tests {
 
     #[test]
     fn dm_parametres_d_instance_disposition_figee() {
-        // ADR-167 D6 : opcode 18, le handle, quinze f32, le nombre de rapports ; les rapports suivent.
+        // ADR-167 D6, ADR-182 D4 : opcode 18, le handle, dix-neuf f32, le nombre de rapports ; les rapports suivent.
         assert_eq!(opcode::SET_PARAMETERS, 18);
         assert_eq!(opcode::SET_WHEEL_TORQUES, 19);
         assert_eq!(size_of::<SetWheelTorques>(), SetWheelTorques::BYTES);
@@ -1264,7 +1266,8 @@ mod tests {
         assert_eq!(offset_of!(SetParameters, drag), 56);
         assert_eq!(offset_of!(SetParameters, downforce_front), 60);
         assert_eq!(offset_of!(SetParameters, downforce_rear), 64);
-        assert_eq!(offset_of!(SetParameters, gear_count), 68);
+        assert_eq!(offset_of!(SetParameters, motor_torque), 68);
+        assert_eq!(offset_of!(SetParameters, gear_count), 84);
     }
 
     #[test]

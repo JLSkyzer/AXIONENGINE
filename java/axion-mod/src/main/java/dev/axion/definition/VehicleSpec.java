@@ -25,7 +25,7 @@ import java.util.function.BiConsumer;
 final class VehicleSpec {
 
     /** Taille de l'en-tête de la section, en octets. */
-    static final int HEADER_BYTES = 152;
+    static final int HEADER_BYTES = 172;
 
     /** Capacité maximale d'un réservoir, en litres (ADR-176 D3). */
     static final float MAX_FUEL_CAPACITY = 100_000f;
@@ -56,6 +56,15 @@ final class VehicleSpec {
 
     /** Rendement de la récupération d'un moteur qui déclare {@code regen} sans {@code efficiency}. */
     static final float REGEN_EFFICIENCY = 0.7f;
+
+    /** Rendement d'un prolongateur sans {@code efficiency}. */
+    static final float GENERATOR_EFFICIENCY = 0.9f;
+
+    /** La part de la réserve sous laquelle un prolongateur démarre, sans {@code start_below}. */
+    static final float GENERATOR_START = 0.2f;
+
+    /** La part à laquelle il s'arrête, sans {@code stop_above}. */
+    static final float GENERATOR_STOP = 0.8f;
 
     /** Durée minimale du démarreur, en secondes (ADR-176 D1). */
     static final float MIN_STARTER_TIME = 0.05f;
@@ -160,6 +169,7 @@ final class VehicleSpec {
         }
         checkEnergy(root, fault);
         checkMotors(root, fault);
+        checkGenerator(root, fault);
         checkSteering(object(root, "steering"), fault);
         checkBrakes(object(root, "brakes"), fault);
         checkAero(object(root, "aero"), fault);
@@ -400,10 +410,34 @@ final class VehicleSpec {
         }
         // Des moteurs électriques couplés à leurs roues les entraînent eux-mêmes (ADR-182 D3) ; le moteur à combustion et
         // un moteur couplé à la boîte passent par les roues motrices.
-        boolean throughGearbox = engine != null || !electric
+        boolean throughGearbox = engine != null && object(engine, "generator") == null || !electric
                 || motors(powertrain).stream().anyMatch(motor -> motor.get("coupling") == null);
         if (!driven && throughGearbox) {
             fault.accept("$.powertrain", "un groupe motopropulseur entraîne au moins une roue");
+        }
+    }
+
+    /**
+     * ADR-182 D4 : un prolongateur charge une réserve qui n'est pas le carburant, avec un moteur à combustion qui donne de
+     * la puissance, entre deux seuils croissants.
+     */
+    private static void checkGenerator(JsonObject root, BiConsumer<String, String> fault) {
+        JsonObject engine = object(object(root, "powertrain"), "engine");
+        JsonObject generator = object(engine, "generator");
+        if (generator == null) {
+            return;
+        }
+        String at = "$.powertrain.engine.generator";
+        EnergySpec energy = EnergySpec.of(root);
+        int store = energy.indexOf(string(generator, "store"));
+        if (store >= 0 && store == energy.fuelStore()) {
+            fault.accept(at + ".store", "un prolongateur charge une autre réserve que le carburant qu'il brûle");
+        }
+        fraction(generator, "efficiency", at, false, fault);
+        fraction(generator, "start_below", at, true, fault);
+        fraction(generator, "stop_above", at, true, fault);
+        if (!(number(generator, "start_below", GENERATOR_START) < number(generator, "stop_above", GENERATOR_STOP))) {
+            fault.accept(at + ".stop_above", "doit dépasser start_below");
         }
     }
 
@@ -419,6 +453,15 @@ final class VehicleSpec {
             }
             previous = point.get(0).getAsDouble();
         }
+    }
+
+    /** {@return le couple le plus haut d'une courbe, en N·m} */
+    private static float peak(JsonArray curve) {
+        float peak = 0f;
+        for (JsonElement point : curve) {
+            peak = Math.max(peak, point.getAsJsonArray().get(1).getAsFloat());
+        }
+        return peak;
     }
 
     /** {@return les moteurs électriques d'un groupe motopropulseur, dans leur ordre ; vide sans} */
@@ -458,6 +501,9 @@ final class VehicleSpec {
                     fault.accept(at + ".torque_curve", "au plus " + MAX_MOTOR_POINTS + " points");
                 }
                 checkTorqueCurve(curve, at + ".torque_curve", fault);
+                if (peak(curve) <= 0f) {
+                    fault.accept(at + ".torque_curve", "un moteur donne un couple à un régime au moins");
+                }
             }
             fraction(motor, "efficiency", at, false, fault);
             JsonObject regen = object(motor, "regen");
@@ -641,6 +687,13 @@ final class VehicleSpec {
         List<JsonObject> motors = motors(powertrain);
         out.putShort((short) motors.size());
         out.putShort((short) 0);
+        JsonObject generator = object(engine, "generator");
+        out.put((byte) (generator == null ? 255 : reserves.indexOf(string(generator, "store"))));
+        out.put((byte) 0).put((byte) 0).put((byte) 0);
+        put(out, number(generator, "power_kw", 0f),
+                generator == null ? 0f : number(generator, "efficiency", GENERATOR_EFFICIENCY),
+                generator == null ? 0f : number(generator, "start_below", GENERATOR_START),
+                generator == null ? 0f : number(generator, "stop_above", GENERATOR_STOP));
 
         Set<String> steered = listOr(steering, "steered_wheels");
         Set<String> driven = listOr(powertrain, "drive_wheels");
@@ -752,6 +805,11 @@ final class VehicleSpec {
             // Un moteur sans couple n'a pas de courbe à mettre à l'échelle.
             if (peak > 0f) {
                 out.add(Tuning.above(Parameters.ENGINE_TORQUE, "N·m", peak, 0, true));
+            }
+            // ADR-182 D4 : le couple de chaque moteur électrique, dans l'ordre de leurs rangs.
+            for (JsonObject motor : motors(powertrain)) {
+                out.add(Tuning.above(Parameters.motorTorque(string(motor, "name")), "N·m",
+                        peak(motor.getAsJsonArray("torque_curve")), 0, true));
             }
             // Un véhicule à moteurs électriques seuls n'a pas de régime maximal à régler.
             if (engine != null) {

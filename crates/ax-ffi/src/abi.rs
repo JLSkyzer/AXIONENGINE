@@ -57,7 +57,9 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 39 depuis les moteurs électriques (ADR-182 D3) : les
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 40 depuis l'hybride (ADR-182 D4) : le prolongateur
+/// dans la section du véhicule de `DEFN` (en-tête de 172 octets, `DEFN` version 6), le couple de chaque moteur dans
+/// `SET_PARAMETERS` (88 octets) et le bloc d'état en version 6 (104 octets de véhicule). 39 depuis les moteurs électriques (ADR-182 D3) : les
 /// moteurs dans la section du véhicule de `DEFN` (en-tête de 152 octets, `DEFN` version 5), les bits des moteurs dans
 /// `VehicleInput::native_flags`, `VehicleReport` de 72 octets (régime et puissance de chaque moteur), `SIM_OUT` au schéma
 /// 10. 38 depuis les réserves d'énergie (ADR-182 D1) :
@@ -92,7 +94,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 39;
+pub const AXION_ABI_VERSION: u32 = 40;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

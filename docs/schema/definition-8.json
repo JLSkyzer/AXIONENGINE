@@ -555,6 +555,34 @@
                 "consumption"
               ],
               "additionalProperties": false
+            },
+            "generator": {
+              "type": "object",
+              "properties": {
+                "store": {
+                  "type": "string",
+                  "pattern": "^[ -~]{1,64}$",
+                  "x-axion-refers": "store"
+                },
+                "power_kw": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "efficiency": {
+                  "type": "number"
+                },
+                "start_below": {
+                  "type": "number"
+                },
+                "stop_above": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "store",
+                "power_kw"
+              ],
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

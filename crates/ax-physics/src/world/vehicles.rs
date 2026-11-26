@@ -173,6 +173,15 @@ pub(super) struct Vehicle {
     /// Le régime et la puissance de chaque moteur électrique au dernier sous-pas (ADR-182 D5).
     motor_rpm: [f32; MAX_MOTORS],
     motor_power: [f32; MAX_MOTORS],
+    /// Le prolongateur d'autonomie charge (ADR-182 D4) : l'état de son hystérésis, dans le bloc d'état.
+    generating: bool,
+}
+
+/// Le moteur à combustion tourne : il existe, il a pris, et, prolongateur, sa réserve le demande (ADR-182 D3, D4).
+fn combustion(desc: &VehicleDesc, engine: &EngineState, generating: bool) -> bool {
+    desc.flags & vehicle_flags::NO_ENGINE == 0
+        && engine.running()
+        && (desc.generator.is_none() || generating)
 }
 
 /// La traînée d'un véhicule sur son corps racine (12.7) : la sienne, plus celle de chaque surface portante.
@@ -337,6 +346,7 @@ impl PhysicsWorld {
             load: 0.0,
             motor_rpm: [0.0; MAX_MOTORS],
             motor_power: [0.0; MAX_MOTORS],
+            generating: false,
             base: desc.clone(),
             desc,
         });
@@ -573,6 +583,7 @@ impl PhysicsWorld {
             engine: vehicle.engine,
             energy: vehicle.energy,
             wet: vehicle.wet,
+            generating: vehicle.generating,
             gearbox: vehicle.gearbox.parts(),
             steering: vehicle.steering.position(),
             traction_slip: vehicle.traction_slip,
@@ -620,6 +631,7 @@ impl PhysicsWorld {
         vehicle.energy = snapshot.energy;
         vehicle.energy.clamp(&vehicle.desc.energy);
         vehicle.wet = snapshot.wet.clamp(0.0, 1.0);
+        vehicle.generating = snapshot.generating && vehicle.desc.generator.is_some();
         let (gear, target, shift_left, hold) = snapshot.gearbox;
         vehicle.gearbox = Gearbox::from_parts(&vehicle.desc, gear, target, shift_left, hold);
         vehicle.steering = Steering::at(snapshot.steering);
@@ -664,9 +676,8 @@ impl PhysicsWorld {
                 if vehicle.gearbox.shifting() {
                     flags |= vehicle_report_flags::SHIFTING;
                 }
-                if vehicle.desc.flags & (vehicle_flags::POWERTRAIN | vehicle_flags::NO_ENGINE)
-                    == vehicle_flags::POWERTRAIN
-                    && vehicle.engine.running()
+                if vehicle.desc.flags & vehicle_flags::POWERTRAIN != 0
+                    && combustion(&vehicle.desc, &vehicle.engine, vehicle.generating)
                 {
                     flags |= vehicle_report_flags::RUNNING;
                 }
@@ -741,8 +752,14 @@ impl PhysicsWorld {
         for vehicle in &mut vehicles {
             // Un couple posé sur une roue fait avancer le véhicule comme un conducteur qui accélère (R-1082).
             let driven = vehicle.drives.iter().any(|drive| drive.torque != 0.0);
-            // Le démarreur tourne : le véhicule reste éveillé jusqu'à ce que son moteur ait pris (ADR-176 D1).
-            if (vehicle.driver && vehicle.input.moves()) || driven || vehicle.engine.cranking() {
+            // Le démarreur tourne : le véhicule reste éveillé jusqu'à ce que son moteur ait pris (ADR-176 D1) ; un
+            // prolongateur qui charge le tient éveillé jusqu'à son seuil haut (ADR-182 D4).
+            let charging = vehicle.generating && vehicle.engine.running();
+            if (vehicle.driver && vehicle.input.moves())
+                || driven
+                || charging
+                || vehicle.engine.cranking()
+            {
                 for handle in &vehicle.bodies {
                     if let Some(body) = self.inner.bodies.get_mut(*handle) {
                         body.wake_up(true);
@@ -861,9 +878,23 @@ impl PhysicsWorld {
         // le conducteur qui descend ne coupe pas le moteur.
         let ignition = vehicle.input.native_flags & native_input_flags::IGNITION != 0;
         let supply = vehicle.energy.supply(&vehicle.desc.energy);
-        vehicle
-            .engine
-            .step(vehicle.desc.engine.starter_time, ignition, supply, dt);
+        // ADR-182 D4 : un prolongateur ne met le contact au moteur que quand sa réserve le demande.
+        let generator = vehicle.desc.generator;
+        if let Some(g) = &generator {
+            vehicle.generating = ax_vehicle::generator::wants(
+                g,
+                vehicle.energy.stores[usize::from(g.store)],
+                vehicle.desc.energy.capacity(g.store),
+                vehicle.generating,
+            );
+        }
+        let wanted = generator.is_none() || vehicle.generating;
+        vehicle.engine.step(
+            vehicle.desc.engine.starter_time,
+            ignition && wanted,
+            supply,
+            dt,
+        );
 
         // D8, Q3 : sans conducteur, le frein de stationnement est serré.
         let input = if vehicle.driver {
@@ -930,11 +961,13 @@ impl PhysicsWorld {
                 }
             }
         }
-        let running = vehicle.engine.running() && desc.flags & vehicle_flags::NO_ENGINE == 0;
-        vehicle.load = if desc.flags & vehicle_flags::POWERTRAIN != 0 && running {
-            throttle.clamp(0.0, 1.0)
-        } else {
-            0.0
+        let running = combustion(desc, &vehicle.engine, vehicle.generating);
+        // Un prolongateur n'entraîne rien : sa charge est celle de sa génération, non la pédale.
+        let plan = generator.map(|g| ax_vehicle::generator::plan(desc, &g));
+        vehicle.load = match &plan {
+            _ if desc.flags & vehicle_flags::POWERTRAIN == 0 || !running => 0.0,
+            Some(plan) => plan.load,
+            None => throttle.clamp(0.0, 1.0),
         };
         // Un moteur arrêté ne tient aucun rapport en automatique : la boîte passe au point mort (ADR-176 D1). En
         // manuelle, le rapport engagé reste, et les roues entraînent le moteur par l'embrayage.
@@ -944,7 +977,7 @@ impl PhysicsWorld {
             && desc.transmission.kind == transmission_kind::AUTOMATIC
             && desc.motors.is_empty();
         let command = DriveCommand {
-            running,
+            running: running && generator.is_none(),
             ratio: if desc.flags & vehicle_flags::POWERTRAIN != 0 && !neutral {
                 vehicle.gearbox.ratio(desc)
             } else {
@@ -970,6 +1003,14 @@ impl PhysicsWorld {
         vehicle.energy.stores = motors.stores;
         vehicle.motor_rpm = motors.rpm;
         vehicle.motor_power = motors.power;
+        if let Some(plan) = plan {
+            // Il monte à son régime par son propre couple, et retombe de même.
+            let target = if running { plan.speed } else { 0.0 };
+            let step = engine::peak_torque(&desc.torque_curve)
+                / desc.engine.inertia.max(f32::EPSILON)
+                * dt;
+            vehicle.engine_speed += (target - vehicle.engine_speed).clamp(-step, step);
+        }
         // ADR-176 D3 : le moteur qui tourne brûle, le démarreur qui tourne décharge la batterie.
         vehicle.energy.step(
             &desc.energy,
@@ -982,6 +1023,14 @@ impl PhysicsWorld {
             },
             dt,
         );
+        if let (Some(plan), Some(g)) = (plan, generator) {
+            if running && plan.speed > 0.0 {
+                let share = (vehicle.engine_speed / plan.speed).clamp(0.0, 1.0);
+                let kwh = f64::from(plan.electric_kw * share) * f64::from(dt) / 3600.0;
+                vehicle.energy.stores[usize::from(g.store)] += kwh;
+                vehicle.energy.clamp(&desc.energy);
+            }
+        }
 
         // Les impulsions, et le patinage que l'antipatinage lira au sous-pas suivant.
         vehicle.traction_slip = 0.0;

@@ -177,3 +177,30 @@ engine.
   exist. Driven wheels (`drive_wheels`) are required only for a motor coupled to the gearbox.
 - **Sources**: `motor.<name>.rpm` (rpm, positive in the engaged direction) and `motor.<name>.power` (kW, negative while
   regenerating) for a gauge or an animation; `energy.<store>.ratio` for the battery gauge.
+
+## The hybrid (schema 8)
+
+With `engine` **and** `electric_motors`, the vehicle is a hybrid ([ADR-182](../../decisions/ADR-182.md) D4).
+
+**In parallel**, the torques add up and the same pedal drives both. A stopped combustion engine stays declutched: with the
+ignition off, the vehicle drives on electricity alone. The strategy is yours: each electric motor has the
+`motor.<name>.torque` parameter ([Tuning](regler.md)) — its curve's peak, in N·m — which a variable, a modifier or your
+mod's controller lowers, cuts or boosts. At 0 the motor gives nothing; its regeneration remains.
+
+**As a range extender**, the combustion engine **never** drives the wheels: it charges a store.
+
+```json
+"engine": {
+  "torque_curve": [[0, 0], [1500, 45], [3500, 60], [6500, 45]], "max_rpm": 6500,
+  "fuel": { "store": "petrol", "consumption": [[0.0, 0.4], [1.0, 9.0]] },
+  "generator": { "store": "traction", "power_kw": 20.0, "efficiency": 0.9, "start_below": 0.2, "stop_above": 0.8 }
+}
+```
+
+- It **starts** when `traction` drops below `start_below` (0.2 when undeclared) and **stops** at `stop_above` (0.8).
+- It runs at its most powerful speed, charges at most `power_kw` — never more than the engine gives, efficiency included
+  (`efficiency`, 0.9) — and burns its fuel along its curve.
+- With a `starter`, it only starts with the ignition on; without one, whenever the store asks for it.
+- It keeps the vehicle awake while charging; a vehicle already asleep only starts once woken (a driver, the ignition).
+- Driven wheels are only required for an electric motor coupled to the gearbox.
+- `engine.running`, `engine.rpm` and `engine.load` follow it.

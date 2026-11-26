@@ -9,14 +9,16 @@
 //! Little-endian, sans remplissage, à la suite des parts quand le drapeau `VEHICLE` est posé :
 //!
 //! ```text
-//! en-tête                 152 o : roues, points de couple, rapports, surfaces en u16 ;
+//! en-tête                 172 o : roues, points de couple, rapports, surfaces en u16 ;
 //!                                 drapeaux u16 ; transmission u8 ; différentiel u8 ;
 //!                                 puis 28 f32 : moteur (5), transmission (5), différentiel (2),
 //!                                 direction (5), freins (4), aéro (4), correcteurs (2) ;
 //!                                 enfin l'énergie (ADR-176 D3, ADR-182) : points de consommation u16, réserve
 //!                                 du moteur u8, réserve du démarreur u8 (255 : aucune), puis 6 f32 : la capacité
 //!                                 de chacune des 4 réserves, tirage du démarreur, charge ; puis les moteurs
-//!                                 électriques (ADR-182 D3) : leur nombre u16, 2 octets à zéro
+//!                                 électriques (ADR-182 D3) : leur nombre u16, 2 octets à zéro ; enfin le
+//!                                 prolongateur d'autonomie (D4) : réserve u8 (255 : aucun), 3 octets à zéro, 4 f32 :
+//!                                 puissance en kW, rendement, seuils de démarrage et d'arrêt
 //! WheelDesc[roues]        100 o
 //! [f32; 2][points]          8 o : régime, couple
 //! f32[rapports]             4 o
@@ -734,6 +736,22 @@ impl AeroSurfaceDesc {
     pub const BYTES: usize = 16;
 }
 
+/// Le prolongateur d'autonomie (ADR-182 D4) : le moteur à combustion, découplé des roues, charge une réserve entre deux
+/// seuils.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GeneratorDesc {
+    /// La réserve qu'il charge, en kWh.
+    pub store: u8,
+    /// Sa puissance électrique, en kW, au plus ce que le moteur donne.
+    pub power_kw: f32,
+    /// Part de la puissance mécanique rendue en électricité, dans ]0, 1].
+    pub efficiency: f32,
+    /// Il démarre quand la réserve passe sous cette part de sa capacité…
+    pub start_below: f32,
+    /// … et s'arrête quand elle atteint celle-ci.
+    pub stop_above: f32,
+}
+
 /// La section véhicule d'un `DEFN`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct VehicleDesc {
@@ -765,6 +783,8 @@ pub struct VehicleDesc {
     pub energy: EnergyDesc,
     /// Les moteurs électriques, au plus [`MAX_MOTORS`] (ADR-182 D3).
     pub motors: Vec<MotorDesc>,
+    /// Le prolongateur d'autonomie, s'il y en a un (ADR-182 D4).
+    pub generator: Option<GeneratorDesc>,
 }
 
 /// Lecteur séquentiel, little-endian.
@@ -971,7 +991,7 @@ fn put_curve(out: &mut Vec<u8>, curve: &TireCurve) {
 
 impl VehicleDesc {
     /// Taille de l'en-tête de la section, en octets.
-    pub const HEADER_BYTES: usize = 152;
+    pub const HEADER_BYTES: usize = 172;
 
     /// Écrit la section en little-endian à la fin de `out`.
     ///
@@ -1039,6 +1059,19 @@ impl VehicleDesc {
         put(out, &[en.starter_draw, en.charge_rate]);
         out.extend_from_slice(&count(self.motors.len()).to_le_bytes());
         out.extend_from_slice(&[0u8; 2]);
+        let g = self.generator.unwrap_or(GeneratorDesc {
+            store: NO_STORE,
+            power_kw: 0.0,
+            efficiency: 0.0,
+            start_below: 0.0,
+            stop_above: 0.0,
+        });
+        out.push(g.store);
+        out.extend_from_slice(&[0u8; 3]);
+        put(
+            out,
+            &[g.power_kw, g.efficiency, g.start_below, g.stop_above],
+        );
         for wheel in &self.wheels {
             out.extend_from_slice(&wheel.node.to_le_bytes());
             out.extend_from_slice(&wheel.flags.to_le_bytes());
@@ -1218,6 +1251,35 @@ impl VehicleDesc {
         {
             return Err(DefnError::Field("vehicle.flags"));
         }
+        let [store, pad0, pad1, pad2] = c.take::<4>()?;
+        let generator = GeneratorDesc {
+            store,
+            power_kw: c.f32("generator")?,
+            efficiency: c.f32("generator")?,
+            start_below: c.f32("generator")?,
+            stop_above: c.f32("generator")?,
+        };
+        let generator = if store == NO_STORE {
+            None
+        } else {
+            let sound = energy.capacity(store) > 0.0
+                && store != energy.fuel_store
+                && generator.power_kw > 0.0
+                && generator.efficiency > 0.0
+                && generator.efficiency <= 1.0
+                && generator.start_below >= 0.0
+                && generator.start_below < generator.stop_above
+                && generator.stop_above <= 1.0
+                && flags & vehicle_flags::POWERTRAIN != 0
+                && !no_engine;
+            if !sound {
+                return Err(DefnError::Field("generator"));
+            }
+            Some(generator)
+        };
+        if [pad0, pad1, pad2] != [0; 3] {
+            return Err(DefnError::Field("generator"));
+        }
 
         let mut wheel_table = Vec::with_capacity(wheels);
         for _ in 0..wheels {
@@ -1290,6 +1352,7 @@ impl VehicleDesc {
                 surfaces: surface_table,
                 energy,
                 motors,
+                generator,
             },
             at,
         ))
@@ -1442,6 +1505,7 @@ mod tests {
             flags: vehicle_flags::POWERTRAIN,
             energy: EnergyDesc::NONE,
             motors: Vec::new(),
+            generator: None,
             engine: EngineDesc {
                 idle_rpm: 800.0,
                 max_rpm: 7000.0,
@@ -1785,6 +1849,47 @@ mod tests {
         assert_eq!(
             lire(&octets(&electrique)).err(),
             Some(DefnError::Field("vehicle.flags"))
+        );
+    }
+
+    #[test]
+    fn adr182_d4_le_prolongateur_se_relit_et_ses_refus_sont_nommes() {
+        let mut avec = vehicule();
+        avec.energy = EnergyDesc {
+            capacities: [40.0, 0.0, 12.0, 0.0],
+            fuel_store: 0,
+            consumption: vec![[0.0, 1.0]],
+            ..EnergyDesc::NONE
+        };
+        avec.motors = vec![moteur_arriere()];
+        avec.generator = Some(GeneratorDesc {
+            store: 2,
+            power_kw: 30.0,
+            efficiency: 0.9,
+            start_below: 0.2,
+            stop_above: 0.8,
+        });
+        let ecrits = octets(&avec);
+        assert_eq!(lire(&ecrits), Ok((avec.clone(), ecrits.len())));
+        let refus = |mutation: &dyn Fn(&mut VehicleDesc)| {
+            let mut d = avec.clone();
+            mutation(&mut d);
+            lire(&octets(&d)).err()
+        };
+        let refuse = Some(DefnError::Field("generator"));
+        let g = |f: fn(&mut GeneratorDesc)| {
+            move |d: &mut VehicleDesc| f(d.generator.as_mut().expect("prolongateur"))
+        };
+        assert_eq!(refus(&g(|g| g.store = 1)), refuse, "réserve vide");
+        assert_eq!(refus(&g(|g| g.store = 0)), refuse, "le carburant");
+        assert_eq!(refus(&g(|g| g.power_kw = 0.0)), refuse);
+        assert_eq!(refus(&g(|g| g.efficiency = 1.5)), refuse);
+        assert_eq!(refus(&g(|g| g.start_below = 0.8)), refuse, "seuils croisés");
+        assert_eq!(refus(&g(|g| g.stop_above = 1.5)), refuse);
+        assert_eq!(
+            refus(&|d| d.flags |= vehicle_flags::NO_ENGINE),
+            refuse,
+            "sans moteur à combustion, rien à brûler"
         );
     }
 

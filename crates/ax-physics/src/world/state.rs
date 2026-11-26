@@ -33,7 +33,7 @@ use crate::body::BodyId;
 use ax_model::dm::handle::Handle;
 
 /// Version du format.
-pub const STATE_VERSION: u16 = 5;
+pub const STATE_VERSION: u16 = 6;
 /// Octets de l'en-tête.
 pub const HEADER_BYTES: usize = 16;
 /// Octets d'un corps.
@@ -41,7 +41,7 @@ pub const BODY_BYTES: usize = 64;
 /// Octets d'un joint.
 pub const JOINT_BYTES: usize = 8;
 /// Octets de l'état du véhicule, roues à part.
-pub const VEHICLE_BYTES: usize = 96;
+pub const VEHICLE_BYTES: usize = 104;
 /// Octets d'une roue.
 pub const WHEEL_BYTES: usize = 40;
 /// Drapeau d'en-tête : l'assembly est un véhicule.
@@ -140,6 +140,9 @@ pub struct VehicleSnapshot {
     pub energy: EnergyState,
     /// Le mouillé de la route sous le véhicule, dans [0, 1] (ADR-176 D5).
     pub wet: f64,
+    /// Le prolongateur d'autonomie charge : sa réserve est passée sous son seuil bas et n'a pas encore atteint le haut
+    /// (ADR-182 D4).
+    pub generating: bool,
     /// Chaque roue, dans l'ordre de la definition.
     pub wheels: Vec<WheelSnapshot>,
 }
@@ -247,6 +250,9 @@ impl AssemblyState {
                 out.extend_from_slice(&store.to_le_bytes());
             }
             out.extend_from_slice(&vehicle.wet.to_le_bytes());
+            // ADR-182 D4 : le prolongateur, sur huit octets pour garder les roues alignées.
+            out.push(u8::from(vehicle.generating));
+            out.extend_from_slice(&[0; 7]);
             for wheel in &vehicle.wheels {
                 for value in [
                     wheel.spin_speed,
@@ -373,6 +379,8 @@ impl AssemblyState {
             if !(wet.is_finite() && (0.0..=1.0).contains(&wet)) {
                 return Err(StateError::NotFinite);
             }
+            let generating = reader.u8()? != 0;
+            reader.skip(7)?;
             let scalars = [
                 remaining,
                 input.throttle,
@@ -405,6 +413,7 @@ impl AssemblyState {
                 },
                 energy: EnergyState { stores },
                 wet,
+                generating,
                 wheels: Vec::with_capacity(wheels),
             };
             for _ in 0..wheels {

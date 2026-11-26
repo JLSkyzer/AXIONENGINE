@@ -8,6 +8,7 @@ pub mod brakes;
 pub mod differential;
 pub mod energy;
 pub mod engine;
+pub mod generator;
 pub mod motor;
 pub mod powertrain;
 pub mod steering;
@@ -77,6 +78,7 @@ mod tests_support {
             flags: vehicle_flags::POWERTRAIN,
             energy: EnergyDesc::NONE,
             motors: Vec::new(),
+            generator: None,
             engine: EngineDesc {
                 idle_rpm: 800.0,
                 max_rpm: 7000.0,

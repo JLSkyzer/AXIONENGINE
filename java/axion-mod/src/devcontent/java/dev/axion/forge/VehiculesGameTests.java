@@ -587,6 +587,65 @@ public final class VehiculesGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-182 D4 : sous son seuil, le prolongateur démarre et charge la batterie en brûlant son carburant, sans entraîner
+     * les roues, puis s'arrête au seuil haut ; le paramètre {@code motor.<nom>.torque} à zéro coupe le moteur électrique,
+     * et sa cause retirée le rend.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 600)
+    public static void adr182_LeProlongateurChargeLaBatterieEtUnParametreCoupeLeMoteur(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 9.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_hybride",
+                new Vec3(8.0, DESSUS_DALLE + 0.6, 13.0), IDENTITE);
+        Vec3[] depart = {null};
+        double[] carburant = {0.0};
+        String couple = dev.axion.api.assembly.Parameters.motorTorque("arriere");
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.parameters() != null
+                        && vehicule.variables() != null && vehicule.motorVariables().size() == 1,
+                        "le véhicule est simulé"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    vehicule.setStore(0, 0.005);
+                    carburant[0] = vehicule.storeAmount(1);
+                    depart[0] = vehicule.position();
+                    // Un coup de frein le réveille ; le prolongateur le tient éveillé tant qu'il charge.
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0, 1.0, 0, 0, 0, 1));
+                })
+                .thenIdle(2)
+                .thenExecute(() -> vehicule.drive(dev.axion.api.vehicle.DriverInput.NONE))
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.vehicleReport() != null
+                        && (vehicule.vehicleReport().flags() & dev.axion.physics.VehicleReport.RUNNING) != 0
+                        && vehicule.storeAmount(0) > 0.008 && vehicule.storeAmount(1) < carburant[0],
+                        "le prolongateur charge : " + vehicule.storeAmount(0) + " kWh, " + vehicule.vehicleReport()))
+                .thenWaitUntil(() -> helper.assertTrue(
+                        (vehicule.vehicleReport().flags() & dev.axion.physics.VehicleReport.RUNNING) == 0
+                                && vehicule.storeAmount(0) >= 0.025,
+                        "il s'arrête au seuil haut : " + vehicule.storeAmount(0) + " kWh, " + vehicule.vehicleReport()))
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.storeAmount(0) < 0.03, "pas bien au-delà : " + vehicule.storeAmount(0));
+                    helper.assertTrue(vehicule.position().distanceTo(depart[0]) < 0.3,
+                            "les roues ne sont pas entraînées : " + vehicule.position().distanceTo(depart[0]));
+                    ForgeAxionApi.view(vehicule).parameters().modify(new dev.axion.api.assembly.Modifier("essai:coupe",
+                            couple, dev.axion.api.assembly.Modifier.Operation.MULTIPLY_TOTAL, -1.0));
+                    vehicule.variables().set(vehicule.motorVariables().get(0), 1.0, "test");
+                    depart[0] = vehicule.position();
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.8, 0, 0, 0, 0, 1));
+                })
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    helper.assertTrue(vehicule.position().distanceTo(depart[0]) < 0.3
+                            && vehicule.vehicleReport().motors().power(0) == 0f,
+                            "coupé par son paramètre : " + vehicule.position().distanceTo(depart[0]) + " bloc(s), "
+                                    + vehicule.vehicleReport());
+                    ForgeAxionApi.view(vehicule).parameters().remove("essai:coupe");
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.position().distanceTo(depart[0]) > 1.0,
+                        "rendu, il avance : " + vehicule.position().distanceTo(depart[0])))
+                .thenExecute(vehicule::discard)
+                .thenSucceed();
+    }
+
     private static double masse(AxionEntity vehicule) {
         dev.axion.entity.AssemblyParameters table = vehicule.parameters();
         return table.value(table.tuning().indexOf(dev.axion.api.assembly.Parameters.MASS));

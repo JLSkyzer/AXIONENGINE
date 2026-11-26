@@ -21,6 +21,7 @@
   "axion.parameter.transmission.final_drive": "Final drive",
   "axion.parameter.transmission.shift_time": "Shift time",
   "axion.parameter.transmission.gear": "Gear %s",
+  "axion.parameter.motor.torque": "Electric motor %s torque",
   "axion.parameter.brakes.front": "Front brakes",
   "axion.parameter.brakes.rear": "Rear brakes",
   "axion.parameter.brakes.handbrake": "Handbrake",

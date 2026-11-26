@@ -26,7 +26,7 @@ public final class AssemblyStateView {
     private static final int HEADER_BYTES = 16;
     private static final int BODY_BYTES = 64;
     private static final int JOINT_BYTES = 8;
-    private static final int VEHICLE_BYTES = 96;
+    private static final int VEHICLE_BYTES = 104;
     private static final int WHEEL_BYTES = 40;
     private static final int FLAGS_OFFSET = 2;
     private static final int BODIES_OFFSET = 4;

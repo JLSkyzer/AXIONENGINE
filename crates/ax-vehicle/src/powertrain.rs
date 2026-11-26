@@ -139,9 +139,11 @@ pub fn step(
     };
     let band = (LAUNCH_BAND * (max - idle)).max(f32::EPSILON);
     // Sans moteur à combustion, rien ne tourne ; un moteur arrêté d'un hybride ne se laisse pas entraîner, pour que
-    // le véhicule roule à l'électricité seule (ADR-182 D3). Un véhicule sans moteur électrique simule comme avant.
+    // le véhicule roule à l'électricité seule (ADR-182 D3) ; celui d'un prolongateur n'entraîne jamais les roues, et son
+    // régime appartient au prolongateur (D4). Un véhicule sans moteur électrique simule comme avant.
     let no_engine = desc.flags & vehicle_flags::NO_ENGINE != 0;
-    let connected = !no_engine && (command.running || desc.motors.is_empty());
+    let generating = desc.generator.is_some();
+    let connected = !no_engine && !generating && (command.running || desc.motors.is_empty());
     let electric = !desc.motors.is_empty();
     let capacity = CLUTCH_CAPACITY * engine::peak_torque(&desc.torque_curve).max(e.braking_torque);
     let ratio = command.ratio;
@@ -194,7 +196,7 @@ pub fn step(
         };
         if no_engine {
             *engine_speed = 0.0;
-        } else {
+        } else if !generating {
             let torque = engine::torque(e, &desc.torque_curve, *engine_speed, throttle);
             *engine_speed =
                 (*engine_speed + (torque - clutch_torque) * h / engine_inertia).clamp(floor, max);

@@ -74,10 +74,10 @@ class AssemblyStateViewTest {
         assertEquals(0.0, AssemblyStateView.errors(deux, deux.clone()).position());
     }
 
-    /** Un bloc d'un corps et d'un véhicule sans roue, au format v5 d'{@code world::state} : réserves, mouillé. */
+    /** Un bloc d'un corps et d'un véhicule sans roue, au format v6 d'{@code world::state} : réserves, mouillé. */
     private static byte[] blocDeVehicule(double fuel, double battery) {
-        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 96).order(ByteOrder.LITTLE_ENDIAN);
-        b.putShort((short) 5).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 0);
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 104).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 6).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 0);
         b.position(16 + 64 + 56);
         b.putDouble(fuel).putDouble(battery);
         return b.array();
@@ -130,11 +130,11 @@ class AssemblyStateViewTest {
                 "sous le plancher, le bruit ne compte pas");
     }
 
-    /** Un bloc d'un corps et d'un véhicule à une roue, au format v3 d'{@code world::state} : l'usure de la roue. */
+    /** Un bloc d'un corps et d'un véhicule à une roue, au format v6 d'{@code world::state} : l'usure de la roue. */
     private static byte[] blocAUneRoue(double usure) {
-        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 96 + 40).order(ByteOrder.LITTLE_ENDIAN);
-        b.putShort((short) 5).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 1);
-        b.position(16 + 64 + 96 + 32);
+        ByteBuffer b = ByteBuffer.allocate(16 + 64 + 104 + 40).order(ByteOrder.LITTLE_ENDIAN);
+        b.putShort((short) 6).putShort((short) 1).putShort((short) 1).putShort((short) 0).putShort((short) 1);
+        b.position(16 + 64 + 104 + 32);
         b.putDouble(usure);
         return b.array();
     }

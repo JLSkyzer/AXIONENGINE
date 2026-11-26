@@ -89,12 +89,24 @@ public interface Parameters {
     }
 
     /**
+     * {@return le nom du paramètre du couple d'un moteur électrique (ADR-182 D4) : le pic de sa courbe, en N·m ; à 0, il
+     * ne donne plus rien, sa récupération reste}
+     *
+     * @param motor son nom dans {@code powertrain.electric_motors}
+     */
+    static String motorTorque(String motor) {
+        return "motor." + motor + ".torque";
+    }
+
+    /**
      * {@return la clé de traduction du nom d'un paramètre (ADR-167 D10)}, pour l'écran d'un mod d'améliorations :
      * <ul>
      *   <li>{@code axion.parameter.<nom>} pour un paramètre d'AXION, traduit par AXION en français et en anglais
      *       ({@code axion.parameter.engine.torque}) ;</li>
      *   <li>{@code axion.parameter.transmission.gear} pour un rapport : son rang se passe en argument
      *       ({@code Component.translatable(clé, rang)}) ;</li>
+     *   <li>{@code axion.parameter.motor.torque} pour le couple d'un moteur électrique : son nom se passe en
+     *       argument ;</li>
      *   <li>{@code <espace de noms>.parameter.<chemin>} pour le paramètre d'un addon, que son mod traduit
      *       ({@code turbo:boost_max} → {@code turbo.parameter.boost_max}).</li>
      * </ul>
@@ -105,6 +117,9 @@ public interface Parameters {
         int colon = name.indexOf(':');
         if (colon >= 0) {
             return name.substring(0, colon) + ".parameter." + name.substring(colon + 1);
+        }
+        if (name.startsWith("motor.") && name.endsWith(".torque")) {
+            return "axion.parameter.motor.torque";
         }
         return "axion.parameter." + (name.startsWith("transmission.gear.") ? "transmission.gear" : name);
     }

@@ -54,6 +54,7 @@ class ParameterTranslationsTest {
     void formeDesCles() {
         assertEquals("axion.parameter.engine.torque", Parameters.translationKey(Parameters.ENGINE_TORQUE));
         assertEquals("axion.parameter.transmission.gear", Parameters.translationKey(Parameters.gear(-1)));
+        assertEquals("axion.parameter.motor.torque", Parameters.translationKey(Parameters.motorTorque("arriere")));
         assertEquals("turbo.parameter.boost_max", Parameters.translationKey("turbo:boost_max"));
     }
 }

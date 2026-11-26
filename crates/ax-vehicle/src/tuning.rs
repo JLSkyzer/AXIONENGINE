@@ -4,7 +4,7 @@
 //! que le pas lit, depuis la description de **base** de la definition, sans jamais la toucher. NaN garde la base :
 //! c'est ainsi que se dit un paramètre que l'instance n'a pas, ou qu'elle ne règle pas.
 
-use ax_model::dm::vehicle::VehicleDesc;
+use ax_model::dm::vehicle::{VehicleDesc, MAX_MOTORS};
 
 use crate::engine;
 
@@ -40,6 +40,8 @@ pub struct Tuning {
     pub downforce_front: f32,
     /// L'appui arrière.
     pub downforce_rear: f32,
+    /// Le pic de la courbe de chaque moteur électrique, à son rang, en N·m (ADR-182 D4).
+    pub motors: [f32; MAX_MOTORS],
     /// La table des rapports, vide pour garder celle de la base.
     pub gears: Vec<f32>,
 }
@@ -63,6 +65,7 @@ impl Tuning {
             drag: f32::NAN,
             downforce_front: f32::NAN,
             downforce_rear: f32::NAN,
+            motors: [f32::NAN; MAX_MOTORS],
             gears: Vec::new(),
         }
     }
@@ -102,6 +105,19 @@ impl Tuning {
         set(&mut desc.aero.drag_coefficient, self.drag);
         set(&mut desc.aero.downforce_front, self.downforce_front);
         set(&mut desc.aero.downforce_rear, self.downforce_rear);
+        // Le couple d'un moteur électrique met sa courbe à l'échelle de son pic, comme celui du moteur à combustion.
+        for (rank, (motor, of)) in desc.motors.iter_mut().zip(&base.motors).enumerate() {
+            let Some(torque) = self.motors.get(rank).copied().and_then(finite) else {
+                continue;
+            };
+            let peak = engine::peak_torque(&of.torque_curve);
+            if peak > 0.0 {
+                let scale = torque / peak;
+                for (point, from) in motor.torque_curve.iter_mut().zip(&of.torque_curve) {
+                    point[1] = from[1] * scale;
+                }
+            }
+        }
         for (wheel, of) in desc.wheels.iter_mut().zip(&base.wheels) {
             if let Some(grip) = finite(self.grip) {
                 wheel.mu_long = of.mu_long * grip;
