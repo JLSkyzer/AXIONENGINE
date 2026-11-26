@@ -144,6 +144,19 @@ public final class WireReader {
     }
 
     /**
+     * @return un entier signé sur 32 bits, écrit par {@link WireWriter#varInt}
+     * @throws MalformedPacketException si le message est épuisé, si le codage n'est pas minimal, ou si la valeur
+     *     dépasse 32 bits
+     */
+    public int varInt() throws MalformedPacketException {
+        long coded = varint(5);
+        if (coded >>> 32 != 0) {
+            throw new MalformedPacketException("varint hors des 32 bits : " + coded);
+        }
+        return (int) (coded >>> 1) ^ -(int) (coded & 1);
+    }
+
+    /**
      * @return un varint non signé, de 0 à {@link Long#MAX_VALUE}
      * @throws MalformedPacketException si le message est épuisé, si le codage n'est pas minimal, ou
      *     si la valeur dépasse 63 bits

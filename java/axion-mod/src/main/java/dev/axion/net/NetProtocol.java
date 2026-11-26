@@ -29,12 +29,13 @@ public final class NetProtocol {
      * batterie du véhicule (ADR-176 D3), 15 avec le descripteur d'états 14, l'usure du pneu de chaque roue (ADR-176 D4), 16 avec le descripteur d'états 15, le mouillé du véhicule (ADR-176 D5), 17 avec le descripteur
      * d'états 16, les 4 réserves d'énergie du véhicule (ADR-182), 18 avec le descripteur d'états 17, le régime et la
      * puissance des moteurs électriques (ADR-182 D5), 19 avec le bloc d'état 6, le prolongateur d'autonomie (D4), 20 avec le
-     * descripteur d'états 18, les entités qu'une assembly porte (ADR-184 D1).
+     * descripteur d'états 18, les entités qu'une assembly porte (ADR-184 D1), 21 avec {@code C2S_Carried}, la place que le
+     * joueur porté se connaît (ADR-185 D1).
      */
-    public static final String VERSION = "AXION-20";
+    public static final String VERSION = "AXION-21";
 
     /** {@code protocol_version} du handshake (21.3) : le numéro de {@link #VERSION}. */
-    public static final int PROTOCOL_VERSION = 20;
+    public static final int PROTOCOL_VERSION = 21;
 
     /**
      * Taille maximale d'une trame AXION, en-tête de fragment compris, dans les deux sens.

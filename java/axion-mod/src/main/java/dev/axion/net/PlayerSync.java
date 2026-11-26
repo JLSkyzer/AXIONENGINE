@@ -18,6 +18,8 @@ import java.util.Set;
  * ignoré se dit au journal en une ligne. Après {@link #ABUSE_SECONDS} secondes de suite, le client est
  * abusif : son serveur le déconnecte. Un client honnête n'envoie qu'un acquittement par snapshot, vingt par
  * seconde au plus ; une seconde isolée au-delà — un client qui rattrape son retard d'un coup — ne coupe rien.
+ * Les places qu'un joueur porté envoie à chaque tick (ADR-185) se comptent à part, sous le même plafond : ajoutées
+ * aux acquittements, elles mèneraient un client honnête au plafond, et une gigue l'y ferait passer.
  */
 public final class PlayerSync {
 
@@ -42,6 +44,10 @@ public final class PlayerSync {
     private final SnapshotSender sender;
     private final int maxPacketsPerSecond;
     private int packetsThisSecond;
+    private int carriedThisSecond;
+    /** La dernière place portée reçue (ADR-185 D2), et son âge en ticks. */
+    private AssemblyState.CarriedEntity carried;
+    private int carriedAge;
     private int limitedThisSecond;
     private int ticksThisSecond;
     private int abusiveSeconds;
@@ -232,6 +238,9 @@ public final class PlayerSync {
     public List<byte[]> tick(long serverTick, Source source, int sequence) {
         lastTickLimited = limitedSinceTick;
         limitedSinceTick = 0;
+        if (carried != null) {
+            carriedAge++;
+        }
         if (++ticksThisSecond >= SnapshotSender.TICKS_PER_SECOND) {
             closeSecond();
         }
@@ -263,6 +272,7 @@ public final class PlayerSync {
             abusiveSeconds = 0;
         }
         packetsThisSecond = 0;
+        carriedThisSecond = 0;
         limitedThisSecond = 0;
         ticksThisSecond = 0;
     }
@@ -296,13 +306,14 @@ public final class PlayerSync {
     }
 
     /**
-     * Lit une trame du client : un acquittement, ou des entrées. Ne lève jamais (R-1650) : une trame fautive est ignorée et
-     * journalisée.
+     * Lit une trame du client : un acquittement, des entrées, ou la place d'un joueur porté. Ne lève jamais (R-1650) : une
+     * trame fautive est ignorée et journalisée.
      *
      * @param frame trame reçue, ou {@code null} si le canal l'a écartée pour sa taille
      */
     public void onClientFrame(byte[] frame) {
-        if (++packetsThisSecond > maxPacketsPerSecond) {
+        boolean place = frame != null && frame.length > 1 && frame[0] == 0 && frame[1] == MessageKinds.CARRIED;
+        if ((place ? ++carriedThisSecond : ++packetsThisSecond) > maxPacketsPerSecond) {
             limitedThisSecond++;
             limitedSinceTick++;
             return;
@@ -317,6 +328,9 @@ public final class PlayerSync {
             }
             if (message.length > 0 && (message[0] & 0xFF) == MessageKinds.INPUT) {
                 onInput(message);
+            } else if (message.length > 0 && (message[0] & 0xFF) == MessageKinds.CARRIED) {
+                carried = CarriedMessage.decode(message).place();
+                carriedAge = 0;
             } else {
                 sender.onAck(AckMessage.decode(message));
             }
@@ -341,6 +355,16 @@ public final class PlayerSync {
         }
         lastInputSequence = sequence;
         inputs.add(input);
+    }
+
+    /**
+     * {@return la dernière place que le joueur porté a envoyée, reçue il y a moins de {@code ticks} ticks du serveur, ou
+     * {@code null}} (ADR-185 D2)
+     *
+     * @param ticks son âge au plus
+     */
+    public AssemblyState.CarriedEntity carried(int ticks) {
+        return carried != null && carriedAge < ticks ? carried : null;
     }
 
     /** {@return les entrées reçues depuis l'appel précédent, à appliquer dans cet ordre, puis les oublie} */

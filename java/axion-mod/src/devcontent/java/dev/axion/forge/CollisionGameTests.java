@@ -432,6 +432,75 @@ public final class CollisionGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-185 D2 : les snapshots disent un joueur porté à la place qu'il envoie, quand sa position la confirme ; une place
+     * qu'elle ne confirme pas est refusée, comptée, et celle du serveur reste.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void laPlaceEnvoyeeParLePorteEstVerifiee(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity assembly = AssembliesDeTest.poser(
+                helper, "axion:test/siege", new Vec3(8.5, DESSUS_DALLE, 8.5), IDENTITE);
+        dev.axion.forge.net.JoueurSimule[] joueur = new dev.axion.forge.net.JoueurSimule[1];
+        // L'écart, le long de x, de la place envoyée à celle que le serveur calcule ; NaN : rien n'est envoyé.
+        double[] ecart = {Double.NaN};
+        long[] refus = new long[1];
+        helper.onEachTick(() -> {
+            if (joueur[0] == null || !joueur[0].connecte()) {
+                return;
+            }
+            joueur[0].tick();
+            CarrySupports.Support support = CarrySupports.of(joueur[0].joueur());
+            if (!Double.isNaN(ecart[0]) && support != null && support.local() != null) {
+                double[] place = support.local();
+                place[0] += ecart[0];
+                joueur[0].envoyer(dev.axion.net.Fragments.split(dev.axion.net.CarriedMessage
+                        .of(assembly.getId(), support.body(), place).encode(), 0).get(0));
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "l'assembly est simulée"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    joueur[0] = dev.axion.forge.net.JoueurSimule.rejoindre(helper.getLevel(), "dit",
+                            new Vec3(assembly.getX(), assembly.getY() + 1.001, assembly.getZ()));
+                    joueur[0].joueur().setGameMode(net.minecraft.world.level.GameType.SURVIVAL);
+                })
+                .thenIdle(5)
+                .thenExecute(() -> ecart[0] = 0.125)
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    double dit = ecartDiffuse(helper, assembly, joueur[0]);
+                    helper.assertTrue(Math.abs(dit - 0.125) <= 0.01, "la place envoyée est diffusée : écart " + dit);
+                    refus[0] = ServerCarry.refusedPlaces();
+                    ecart[0] = 3.0;
+                })
+                .thenIdle(3)
+                .thenExecute(() -> {
+                    double dit = ecartDiffuse(helper, assembly, joueur[0]);
+                    long comptes = ServerCarry.refusedPlaces() - refus[0];
+                    ecart[0] = Double.NaN;
+                    joueur[0].quitter();
+                    helper.assertTrue(Math.abs(dit) <= 0.01, "une place à 3 blocs de sa position est refusée : écart " + dit);
+                    helper.assertTrue(comptes >= 1, "et comptée : " + comptes);
+                })
+                .thenSucceed();
+    }
+
+    /** {@return l'écart, le long de x, de la place diffusée d'un joueur porté à celle que le serveur calcule} */
+    private static double ecartDiffuse(GameTestHelper helper, AxionEntity assembly,
+            dev.axion.forge.net.JoueurSimule joueur) {
+        CarrySupports.Support support = CarrySupports.of(joueur.joueur());
+        helper.assertTrue(support != null && support.local() != null, "le joueur est porté");
+        for (var portee : assembly.netState().carried().entities()) {
+            if (portee.entity() == joueur.joueur().getId()) {
+                return portee.local()[0] - support.local()[0];
+            }
+        }
+        helper.fail("les snapshots ne listent pas le joueur porté");
+        return Double.NaN;
+    }
+
     /** Un cochon, comme un joueur : toute entité est arrêtée, et un mur arrête la marche. */
     @GameTest(template = "test/plancher", timeoutTicks = 200)
     public static void uneEntiteEstArreteeParLesCollidersDUneAssembly(GameTestHelper helper) {

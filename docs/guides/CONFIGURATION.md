@@ -192,7 +192,7 @@ alors ignorée (R-1830).
 | `prediction_tolerance_energy` | flottant | `0.01` | `0.0..` | non | non | Écart de carburant ou de batterie, en fraction de la plus grande des deux valeurs, en deçà duquel l'état prédit vaut celui du serveur. |
 | `prediction_proxy_radius` | flottant | `32.0` | `0.0..` | non | non | Distance, en blocs, autour du véhicule prédit, jusqu'à laquelle les autres assemblies et les entités sont posées en proxies dans le monde prédit. |
 | `max_bytes_per_second_per_player` | entier | `32768` | `0..` | non | non | Plafond de bande passante AXION par joueur, en octets par seconde. |
-| `max_packets_per_second` | entier | `40` | `0..` | non | non | Plafond de paquets AXION par seconde et par joueur. |
+| `max_packets_per_second` | entier | `40` | `0..` | non | non | Plafond de paquets AXION par seconde et par joueur ; les places des joueurs portés se comptent à part, sous le même plafond. |
 | `carry_tolerance` | flottant | `0.25` | `0.05..1.0` | non | oui | Écart, en blocs, jusqu'auquel un joueur porté par une assembly est reconnu sur elle par le serveur. |
 | `max_impacts_per_packet` | entier | `64` | `0..` | non | non | Nombre maximal d'impacts groupés dans un paquet. |
 | `digest_interval_ticks` | entier | `40` | `0..` | non | non | Intervalle, en ticks, entre deux empreintes de vérification d'état. |

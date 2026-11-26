@@ -770,8 +770,10 @@ final class AxionCommands {
             lines.add(entry.getKey().getName().getString() + " : sur l'assembly " + support.assembly().getUUID()
                     + ", corps " + support.body() + (support.lag() >= 0 ? ", retard " + support.lag() + " tick(s)" : ""));
         }
-        String report = lines.isEmpty() ? "AXION : aucune entité portée" : "AXION : " + lines.size()
-                + " entité(s) portée(s)\n" + String.join("\n", lines);
+        String report = (lines.isEmpty() ? "AXION : aucune entité portée" : "AXION : " + lines.size()
+                + " entité(s) portée(s)\n" + String.join("\n", lines))
+                + "\nplaces envoyées par des joueurs et non confirmées, depuis le lancement : "
+                + ServerCarry.refusedPlaces();
         source.sendSuccess(() -> Component.literal(report), false);
         return lines.size();
     }

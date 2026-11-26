@@ -5,6 +5,8 @@ import dev.axion.forge.AssemblyCollision;
 import dev.axion.forge.AuthoritativeThread;
 import dev.axion.forge.AxionEntity;
 import dev.axion.forge.CarrySupports;
+import dev.axion.forge.net.AxionNetwork;
+import dev.axion.net.CarriedMessage;
 import dev.axion.physics.BodyFrame;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -23,8 +25,9 @@ import net.minecraftforge.fml.common.Mod;
  * <ul>
  *   <li><b>au début de son tick</b>, il est reposé à sa place <b>dans le corps à la pose du tick</b> — celle que la collision
  *       balaie —, si bien que son mouvement part du plateau qui a bougé ;</li>
- *   <li><b>à la fin du tick</b>, sa place dans le corps se recalcule de là où son mouvement l'a mené ; un joueur qui quitte le
- *       support en l'air garde la vitesse horizontale que le plateau lui donnait ;</li>
+ *   <li><b>à la fin du tick</b>, sa place dans le corps se recalcule de là où son mouvement l'a mené, et part au serveur, qui
+ *       la montre aux autres joueurs (ADR-185 D1) ; un joueur qui quitte le support en l'air garde la vitesse horizontale
+ *       que le plateau lui donnait ;</li>
  *   <li><b>au début de chaque image</b>, il est posé à la pose <b>dessinée</b> à cette image, entre ses deux dernières places,
  *       et tourne avec elle — comme un passager assis (ADR-158 D3) : sans cela, il tremblerait d'un tick de retard sur le
  *       plateau.</li>
@@ -98,6 +101,9 @@ public final class CarriedPlayer {
         double[] poses = now.assembly().collisionPoses();
         if (poses != null) {
             now.place(BodyFrame.toLocal(poses, now.body(), player.getX(), player.getY(), player.getZ()));
+            // Les autres le dessinent là où il se voit : lui seul connaît le véhicule qu'il a dessiné (ADR-185).
+            AxionNetwork.sendCarried(player.connection.getConnection(),
+                    CarriedMessage.of(now.assembly().getId(), now.body(), now.local()));
         }
         carried = now;
     }

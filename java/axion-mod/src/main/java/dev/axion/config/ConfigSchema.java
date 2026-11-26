@@ -1016,7 +1016,7 @@ public final class ConfigSchema {
                     new Domain(DomainKind.INT_RANGE, 0.0, Double.MAX_VALUE, List.of()),
                     false,
                     false,
-                    "Plafond de paquets AXION par seconde et par joueur."),
+                    "Plafond de paquets AXION par seconde et par joueur ; les places des joueurs portés se comptent à part, sous le même plafond."),
             new Option(
                     "net.carry_tolerance",
                     Kind.FLOAT,

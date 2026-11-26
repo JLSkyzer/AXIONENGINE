@@ -30,7 +30,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
-| [ADR-185](ADR-185.md) | Le joueur porté dit lui-même sa place sur l'assembly (CAP-14) | 2026-11-26 | proposé |
+| [ADR-185](ADR-185.md) | Le joueur porté dit lui-même sa place sur l'assembly (CAP-14) | 2026-11-26 | accepté |
 | [ADR-184](ADR-184.md) | Ce que les autres joueurs voient d'une entité portée (CAP-14) | 2026-11-26 | accepté |
 | [ADR-183](ADR-183.md) | Déplacer, figer et pousser une assembly (CAP-34, CAP-11) | 2026-11-26 | accepté |
 | [ADR-182](ADR-182.md) | Les énergies : réserves typées, moteur électrique, hybride (CAP-12, nouvelle CAP-76) | 2026-11-26 | accepté |

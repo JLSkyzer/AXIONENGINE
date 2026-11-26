@@ -421,8 +421,8 @@ pub const COMMON: &[ConfigOption] = &[
         .en("Distance, in blocks, around the predicted vehicle, up to which other assemblies and entities are placed as proxies in the predicted world."),
     ip("net.max_bytes_per_second_per_player", 32768, "Plafond de bande passante AXION par joueur, en octets par seconde.")
         .en("Cap on AXION bandwidth per player, in bytes per second."),
-    ip("net.max_packets_per_second", 40, "Plafond de paquets AXION par seconde et par joueur.")
-        .en("Cap on AXION packets per second per player."),
+    ip("net.max_packets_per_second", 40, "Plafond de paquets AXION par seconde et par joueur ; les places des joueurs portés se comptent à part, sous le même plafond.")
+        .en("Cap on AXION packets per second per player; carried players' places are counted separately, under the same cap."),
     // ADR-178 D4 : la sonde du serveur sous les pieds d'un joueur porté, à la pose que son client dessine.
     srv(f("net.carry_tolerance", 0.25, 0.05, 1.0, "Écart, en blocs, jusqu'auquel un joueur porté par une assembly est reconnu sur elle par le serveur."))
         .en("Gap, in blocks, up to which the server recognises a player carried by an assembly as standing on it."),

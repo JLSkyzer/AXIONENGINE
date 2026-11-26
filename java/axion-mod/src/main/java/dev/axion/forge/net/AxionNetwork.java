@@ -346,6 +346,32 @@ public final class AxionNetwork {
     }
 
     /**
+     * Chez le client : envoie la place que le joueur porté se connaît (ADR-185 D1) ; rien sans session AXION.
+     *
+     * @param connection connexion du client
+     * @param message sa place sur l'assembly
+     */
+    public static void sendCarried(Connection connection, dev.axion.net.CarriedMessage message) {
+        ClientSession session = connection.channel().attr(CLIENT_SESSION).get();
+        if (session != null) {
+            AxionChannel.CHANNEL.sendTo(new ChannelFrames.PlayToServer(session.carriedFrame(message)), connection,
+                    NetworkDirection.PLAY_TO_SERVER);
+        }
+    }
+
+    /**
+     * {@return la place que ce joueur a envoyée, reçue il y a moins de {@code ticks} ticks, ou {@code null}} (ADR-185 D2)
+     * Sur le thread du serveur.
+     *
+     * @param player identifiant du joueur
+     * @param ticks son âge au plus
+     */
+    public static dev.axion.net.AssemblyState.CarriedEntity reportedPlace(UUID player, int ticks) {
+        PlayerSync sync = SYNCS.get(player);
+        return sync == null ? null : sync.carried(ticks);
+    }
+
+    /**
      * Pose ce que le client fait des corrections reçues (ADR-168 D4). Appelé par le code du client, à son démarrage.
      *
      * @param sink appelé sur le thread de Netty, avec la connexion et la correction

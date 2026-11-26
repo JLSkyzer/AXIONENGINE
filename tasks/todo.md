@@ -3974,8 +3974,11 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            le retard estimé par le serveur varie (7 à 10 ticks relevés) et la place répliquée glisse jusqu'à 1,05 bloc
            (ADR-184, « Précision — les essais »). Choix de Killian (2026-11-26) : lisser le retard côté serveur, après
            relevé. Relevé FAIT le 2026-11-26 (`portage.py --retard [--gigue MS]`, `tools/campagne/retard.py`) : le
-           retard réel bouge avec la gigue, le lissage ne le suit pas — [ADR-185](../docs/decisions/ADR-185.md)
-           **proposé** (le porté envoie sa place), attend Killian.
+           retard réel bouge avec la gigue, le lissage ne le suit pas.
+     - [ ] ADR-185 (CAP-14, A36) — **accepté** le 2026-11-26 (le porté envoie sa place), **codé** le même jour
+           (`C2S_Carried`, `AXION-21`, R-1666) : tests unitaires et 167 GameTests verts. **Reste les essais à deux
+           joueurs** (gigue 100 et 40 ms, sans film, filmé : dérive dessinée au plus 0,35, jambes au plus 0,1), arrêtés
+           le 2026-11-27 : Killian jouait, aucun client sans son accord.
      - [ ] ADR-183 (CAP-34, CAP-11) — **accepté** le 2026-11-26 (A34) : forces et couples, téléporter, figer,
            renommer ; tranches de l'ADR.
      - [ ] `motor.<nom>.regen` (ADR-182, question F, acceptée le 2026-11-26).

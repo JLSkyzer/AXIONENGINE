@@ -241,6 +241,15 @@ public final class ClientSession {
         return reply(new InputMessage(nextInputSequence++, entity, seat, input, paced).encode());
     }
 
+    /**
+     * {@return la trame de la place du joueur porté (ADR-185 D1)}
+     *
+     * @param message sa place sur l'assembly
+     */
+    public synchronized byte[] carriedFrame(CarriedMessage message) {
+        return reply(message.encode());
+    }
+
     /** {@return la séquence des dernières entrées envoyées, non signée ; -1 avant les premières} */
     public synchronized long lastInputSequence() {
         return nextInputSequence == 0 ? -1 : Integer.toUnsignedLong(nextInputSequence - 1);

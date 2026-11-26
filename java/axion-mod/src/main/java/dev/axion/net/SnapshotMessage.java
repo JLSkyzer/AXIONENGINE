@@ -658,8 +658,8 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     private static int carriedSize(AssemblyState.Carried carried) {
         int size = varintSize(carried.entities().size());
         for (AssemblyState.CarriedEntity one : carried.entities()) {
-            size += varintSize(one.entity()) + 1 + varintSize(zigzag(one.x())) + varintSize(zigzag(one.y()))
-                    + varintSize(zigzag(one.z()));
+            size += varintSize(one.entity()) + 1 + varintSize(WireWriter.zigzag(one.x()))
+                    + varintSize(WireWriter.zigzag(one.y())) + varintSize(WireWriter.zigzag(one.z()));
         }
         return size;
     }
@@ -667,8 +667,7 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
     private static void writeCarried(WireWriter writer, AssemblyState.Carried carried) {
         writer.varUInt(carried.entities().size());
         for (AssemblyState.CarriedEntity one : carried.entities()) {
-            writer.varUInt(one.entity()).u8(one.body()).varULong(zigzag(one.x())).varULong(zigzag(one.y()))
-                    .varULong(zigzag(one.z()));
+            writer.varUInt(one.entity()).u8(one.body()).varInt(one.x()).varInt(one.y()).varInt(one.z());
         }
     }
 
@@ -682,26 +681,13 @@ public record SnapshotMessage(int sequence, long serverTick, int descriptor, Lis
         List<AssemblyState.CarriedEntity> entities = new ArrayList<>(Math.min(count, reader.remaining()));
         try {
             for (int index = 0; index < count; index++) {
-                entities.add(new AssemblyState.CarriedEntity(reader.varUInt(), reader.u8(), signed(reader, handle),
-                        signed(reader, handle), signed(reader, handle)));
+                entities.add(new AssemblyState.CarriedEntity(reader.varUInt(), reader.u8(), reader.varInt(),
+                        reader.varInt(), reader.varInt()));
             }
             return AssemblyState.Carried.of(entities);
         } catch (IllegalArgumentException refused) {
             throw new MalformedPacketException("entité " + handle + " : " + refused.getMessage());
         }
-    }
-
-    /** Un entier signé en zigzag : les petites valeurs des deux signes tiennent sur peu d'octets. */
-    private static long zigzag(int value) {
-        return ((long) value << 1 ^ value >> 31) & 0xFFFFFFFFL;
-    }
-
-    private static int signed(WireReader reader, int handle) throws MalformedPacketException {
-        long coded = reader.varULong();
-        if (coded < 0 || coded >>> 32 != 0) {
-            throw new MalformedPacketException("entité " + handle + " : place portée hors de 32 bits");
-        }
-        return (int) (coded >>> 1) ^ -(int) (coded & 1);
     }
 
     private static void writeVariables(WireWriter writer, AssemblyState.VariableValues variables) {

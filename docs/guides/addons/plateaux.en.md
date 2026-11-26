@@ -21,8 +21,9 @@ the collision reads its colliders.
   (`physics.player_proxy_mass`): a loaded vehicle accelerates a little slower, without being stopped.
 - **Seen by others**: the server tells every client whom an assembly carries, and where on it. Another player sees a standing
   passenger, a mob or an item at that place on the vehicle **as they see it**, with still legs if it does not move; once off, a
-  player or a mob reaches its position within a fifth of a second. **Known limit**: on an overloaded server or computer, that place
-  can still slide along the vehicle (up to one block measured in testing).
+  player or a mob reaches its position within a fifth of a second. A player's place is the one their own game sends, checked by
+  the server against their position; if it is not confirmed, the server's replaces it and may slide along the vehicle
+  (`/axion carry` counts those). A mob's or an item's comes from the server.
 
 ## An assembly that carries nothing
 

@@ -121,6 +121,21 @@ public final class WireWriter {
     }
 
     /**
+     * Entier signé sur 32 bits en varint zigzag : les petites valeurs des deux signes tiennent sur peu d'octets.
+     *
+     * @param value entier
+     * @return cet écrivain
+     */
+    public WireWriter varInt(int value) {
+        return varULong(zigzag(value));
+    }
+
+    /** {@return la valeur sans signe qu'un entier signé prend sur le fil, en zigzag} */
+    static long zigzag(int value) {
+        return ((long) value << 1 ^ value >> 31) & 0xFFFFFFFFL;
+    }
+
+    /**
      * Varint non signé : sept bits par octet, poids faibles d'abord, bit de poids fort pour « la
      * suite ». Codage minimal : aucun octet de poids fort nul en tête.
      *

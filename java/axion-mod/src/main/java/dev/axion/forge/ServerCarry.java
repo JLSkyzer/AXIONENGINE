@@ -4,10 +4,12 @@ import dev.axion.AxionMod;
 import dev.axion.bridge.NativeBridge;
 import dev.axion.net.AssemblyState;
 import dev.axion.physics.BodyFrame;
+import dev.axion.physics.CarriedPlace;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -39,7 +41,8 @@ import net.minecraftforge.fml.common.Mod;
  *
  * <p>Chaque assembly apprend enfin qui elle a porté ce tick, et où (ADR-184 D1), au plus
  * {@code physics.carry_max_entities} entités, les joueurs d'abord : ses snapshots le disent aux clients, qui les dessinent
- * sur le corps qu'ils dessinent.
+ * sur le corps qu'ils dessinent. Pour un joueur, c'est la place qu'il a envoyée (ADR-185 D1), quand la position jugée la
+ * confirme ({@link CarriedPlace}) ; sinon, celle que le serveur calcule, et le refus se compte.
  */
 @Mod.EventBusSubscriber(modid = AxionMod.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class ServerCarry {
@@ -52,6 +55,11 @@ public final class ServerCarry {
 
     /** Millisecondes d'un tick. */
     private static final double TICK_MILLIS = 50.0;
+
+    /** Une place envoyée sert moins de tant de ticks après sa réception (ADR-185 D2). */
+    private static final int PLACE_FRESH_TICKS = 5;
+
+    private static final AtomicLong REFUSED_PLACES = new AtomicLong();
 
     private ServerCarry() {}
 
@@ -98,8 +106,34 @@ public final class ServerCarry {
         List<AssemblyState.CarriedEntity> carried = riders.computeIfAbsent(support.assembly(), a -> new ArrayList<>());
         long cap = Math.min(AxionEntities.carryMaxEntities(), AssemblyState.Carried.MAX);
         if (carried.size() < cap) {
-            carried.add(AssemblyState.CarriedEntity.of(entity.getId(), support.body(), local));
+            double[] said = entity instanceof ServerPlayer player ? said(player, support) : null;
+            carried.add(AssemblyState.CarriedEntity.of(entity.getId(), support.body(), said == null ? local : said));
         }
+    }
+
+    /**
+     * {@return la place que ce joueur a envoyée sur ce support, que sa position confirme, ou {@code null}} (ADR-185 D2) Une
+     * place envoyée pour ce support que la position ne confirme à aucun retard se compte ; l'absence de place, ou une place
+     * d'un autre support — le temps d'un changement —, non.
+     */
+    private static double[] said(ServerPlayer player, CarrySupports.Support support) {
+        AssemblyState.CarriedEntity place =
+                dev.axion.forge.net.AxionNetwork.reportedPlace(player.getUUID(), PLACE_FRESH_TICKS);
+        if (place == null || place.entity() != support.assembly().getId() || place.body() != support.body()) {
+            return null;
+        }
+        double[] local = place.local();
+        if (CarriedPlace.agrees(support.assembly()::carryPoses, support.body(), local,
+                new double[] {player.getX(), player.getY(), player.getZ()}, AxionEntities.carryTolerance())) {
+            return local;
+        }
+        REFUSED_PLACES.incrementAndGet();
+        return null;
+    }
+
+    /** {@return les places envoyées par des joueurs que leur position n'a pas confirmées, depuis le lancement} */
+    static long refusedPlaces() {
+        return REFUSED_PLACES.get();
     }
 
     /** Un joueur : son support se cherche dans les poses gardées, puis il est porté et ses références suivent. */

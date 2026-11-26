@@ -41,6 +41,9 @@ public final class MessageKinds {
      */
     public static final int EVENT = 9;
 
+    /** {@code C2S_Carried} (ADR-185 D1) : la place que le joueur porté se connaît. Ajouté par le protocole 21. */
+    public static final int CARRIED = 10;
+
     private MessageKinds() {
         throw new AssertionError("classe de constantes, non instanciable");
     }
