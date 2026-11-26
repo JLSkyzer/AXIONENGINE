@@ -87,3 +87,63 @@ Une definition au schéma 7 peut déclarer son énergie ([ADR-176](../../decisio
 
 Le buggy d'exemple a un démarreur (variable `contact`, commande 3), un réservoir de 20 litres et une batterie : son exemple est le
 modèle de tout ce qui précède.
+
+## Plusieurs réserves, typées (schéma 8)
+
+Au schéma 8, tu nommes tes réserves et ce qu'elles contiennent ([ADR-182](../../decisions/ADR-182.md)) : un diesel
+n'accepte que du gazole, une remorque citerne porte de l'eau, une batterie se recharge lentement.
+
+```json
+"schema": 8,
+"energy": {
+  "stores": [
+    { "name": "gazole", "carrier": "axion:diesel", "capacity": 60.0, "unit_mass": 0.84 },
+    { "name": "citerne", "carrier": "mymod:eau", "capacity": 800.0, "unit_mass": 1.0, "max_fill_rate": 5.0 }
+  ],
+  "battery": { "capacity": 1.0, "starter_draw": 0.02, "charge_rate": 0.002 }
+},
+"powertrain": {
+  "engine": { "torque_curve": [[0, 0], [1500, 260], [3500, 240]], "idle_rpm": 800, "max_rpm": 4500,
+              "inertia": 0.3, "braking_torque": 40.0,
+              "starter": { "time": 1.0, "variable": "contact" },
+              "fuel": { "store": "gazole", "consumption": [[0.0, 0.8], [1.0, 16.0]] } }
+}
+```
+
+(Le reste de `powertrain` — boîte, roues motrices — est celui d'un véhicule ordinaire.)
+
+- **Jusqu'à 4 réserves**, la batterie `energy.battery` comprise.
+- **`carrier`** : ce qu'elle contient, un identifiant que tu choisis librement (`axion:diesel`, `axion:petrol`,
+  `mymod:hydrogene`…). Le moteur n'en traite aucun à part. Sans `carrier`, la réserve accepte tout.
+- **L'unité est celle de ton contenu** : des litres, des kilogrammes… La capacité, la consommation, `unit_mass` et les
+  versements s'expriment dans la même.
+- **`unit_mass`** : la masse d'une unité, ajoutée à `physics.mass` (la masse à sec). Le véhicule pèse la somme de ses
+  réserves.
+- **`max_fill_rate`** : les unités qu'on peut y verser par seconde, au plus. Absent : pas de limite.
+- **`engine.fuel`** : la réserve que le moteur brûle, et sa consommation en unités par heure (mêmes règles qu'au schéma 7).
+  `energy.fuel` n'existe pas à côté de `stores`.
+- **Le démarreur** tire la batterie `energy.battery`, ou une réserve : `"starter": { "time": 1.0, "variable": "contact",
+  "store": "auxiliaire", "draw": 0.02, "charge_rate": 0.002 }`. Pas les deux, et pas la réserve que le moteur brûle.
+- **Sans moteur** : une definition peut déclarer des réserves sans `powertrain` — une remorque citerne pèse ce qu'elle
+  porte. Elle doit avoir des roues (`wheels`).
+- Au schéma 7, le réservoir et la batterie se lisent comme les réserves `fuel` et `battery` : rien à changer.
+
+### Remplir une réserve typée
+
+Un versement d'un autre type n'entre pas. Ta pompe ou ta borne appelle l'API à chaque tick ; `max_fill_rate` borne ce
+qui entre, quoi qu'elle demande.
+
+- **API** : `assembly.energy().store("citerne")` donne `carrier()`, `capacity()`, `amount()`, `ratio()` ;
+  `fill(type, quantité)` rend ce qui est entré ; `set(quantité)` pose le contenu. `stores()` les donne toutes.
+  `refuel(litres)` ne verse que dans un réservoir moteur sans type.
+- **Interaction** : `refuel { "carrier": "axion:diesel", "amount": 5 }` verse dans la première réserve qui l'accepte et où
+  il reste de la place ; ajoute `"store": "gazole"` pour viser une réserve. La forme `{ "litres": 5 }` reste réservée au
+  réservoir sans type.
+- **Commande** : `/axion energy <cible>` liste les réserves ; `/axion energy <cible> refuel <quantité> <type>` verse
+  (opérateurs, journalisée).
+- **Sources** : `energy.<réserve>.amount` (dans son unité) et `energy.<réserve>.ratio` (de 0 à 1), pour une piste ou une
+  jauge. `energy.fuel`, `energy.fuel_ratio` et `energy.battery` continuent de désigner la réserve du moteur et celle du
+  démarreur.
+- **Sauvegarde** : chaque contenu se garde sous le nom de sa réserve. Renomme une réserve avec une migration
+  `rename.stores` ([ADR-175](../../decisions/ADR-175.md)) ; une réserve retirée reste dans la sauvegarde et le journal la
+  signale (`E-7012`) ; une réserve nouvelle naît pleine.

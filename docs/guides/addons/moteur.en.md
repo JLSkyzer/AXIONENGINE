@@ -83,3 +83,59 @@ A schema 7 definition can declare its energy ([ADR-176](../../decisions/ADR-176.
 - **Sources**: `energy.fuel` (litres), `energy.fuel_ratio` and `energy.battery` (0 to 1) for a procedural track or a gauge.
 
 The example buggy has a starter (`contact` variable, command 3), a 20-litre tank and a battery: it is the model for all of the above.
+
+## Several typed stores (schema 8)
+
+At schema 8 you name your stores and what they hold ([ADR-182](../../decisions/ADR-182.md)): a diesel engine only takes
+diesel, a tank trailer carries water, a battery charges slowly.
+
+```json
+"schema": 8,
+"energy": {
+  "stores": [
+    { "name": "diesel", "carrier": "axion:diesel", "capacity": 60.0, "unit_mass": 0.84 },
+    { "name": "tank", "carrier": "mymod:water", "capacity": 800.0, "unit_mass": 1.0, "max_fill_rate": 5.0 }
+  ],
+  "battery": { "capacity": 1.0, "starter_draw": 0.02, "charge_rate": 0.002 }
+},
+"powertrain": {
+  "engine": { "torque_curve": [[0, 0], [1500, 260], [3500, 240]], "idle_rpm": 800, "max_rpm": 4500,
+              "inertia": 0.3, "braking_torque": 40.0,
+              "starter": { "time": 1.0, "variable": "contact" },
+              "fuel": { "store": "diesel", "consumption": [[0.0, 0.8], [1.0, 16.0]] } }
+}
+```
+
+(The rest of `powertrain` — gearbox, driven wheels — is that of an ordinary vehicle.)
+
+- **Up to 4 stores**, the `energy.battery` battery included.
+- **`carrier`**: what it holds, an identifier you choose freely (`axion:diesel`, `axion:petrol`, `mymod:hydrogen`…). The
+  engine treats none of them specially. Without a `carrier`, the store takes anything.
+- **The unit is your content's**: litres, kilograms… Capacity, consumption, `unit_mass` and fills all use the same one.
+- **`unit_mass`**: the mass of one unit, added to `physics.mass` (the dry mass). The vehicle weighs the sum of its stores.
+- **`max_fill_rate`**: the units that can be poured in per second, at most. Absent: no limit.
+- **`engine.fuel`**: the store the engine burns, and its consumption in units per hour (same rules as schema 7).
+  `energy.fuel` does not exist next to `stores`.
+- **The starter** draws the `energy.battery` battery, or a store: `"starter": { "time": 1.0, "variable": "contact",
+  "store": "auxiliary", "draw": 0.02, "charge_rate": 0.002 }`. Not both, and not the store the engine burns.
+- **Without an engine**: a definition may declare stores without a `powertrain` — a tank trailer weighs what it carries. It
+  must have wheels (`wheels`).
+- At schema 7, the tank and the battery read as the `fuel` and `battery` stores: nothing to change.
+
+### Filling a typed store
+
+A fill of another kind does not go in. Your pump or charger calls the API every tick; `max_fill_rate` bounds what goes in,
+whatever it asks for.
+
+- **API**: `assembly.energy().store("tank")` gives `carrier()`, `capacity()`, `amount()`, `ratio()`;
+  `fill(carrier, amount)` returns what went in; `set(amount)` sets the content. `stores()` gives them all. `refuel(litres)`
+  only pours into an untyped engine tank.
+- **Interaction**: `refuel { "carrier": "axion:diesel", "amount": 5 }` pours into the first store that takes it and has
+  room; add `"store": "diesel"` to aim at one. The `{ "litres": 5 }` form stays reserved for the untyped tank.
+- **Command**: `/axion energy <target>` lists the stores; `/axion energy <target> refuel <amount> <carrier>` pours
+  (operators, logged).
+- **Sources**: `energy.<store>.amount` (in its unit) and `energy.<store>.ratio` (0 to 1), for a track or a gauge.
+  `energy.fuel`, `energy.fuel_ratio` and `energy.battery` still mean the engine's store and the starter's.
+- **Saving**: each content is kept under its store's name. Rename a store with a `rename.stores` migration
+  ([ADR-175](../../decisions/ADR-175.md)); a removed store stays in the save and the log says so (`E-7012`); a new store
+  starts full.

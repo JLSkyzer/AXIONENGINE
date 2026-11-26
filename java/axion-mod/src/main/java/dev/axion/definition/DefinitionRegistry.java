@@ -72,6 +72,9 @@ public final class DefinitionRegistry {
     /** Schéma de definition 7 (ADR-174) : la liste ordonnée des actions d'une interaction, sur l'état des nodes. */
     public static final int SCHEMA_SEVEN = 7;
 
+    /** Schéma 8 (ADR-182) : les réserves d'énergie nommées et typées. */
+    public static final int SCHEMA_EIGHT = 8;
+
     /** Espace de noms d'une {@code ResourceLocation}. */
     static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
 
@@ -496,11 +499,12 @@ public final class DefinitionRegistry {
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_FOUR)) != 0
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_FIVE)) != 0
                 && number.compareTo(BigDecimal.valueOf(SCHEMA_SIX)) != 0
-                && number.compareTo(BigDecimal.valueOf(SCHEMA_SEVEN)) != 0) {
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_SEVEN)) != 0
+                && number.compareTo(BigDecimal.valueOf(SCHEMA_EIGHT)) != 0) {
             throw DefinitionException.unknownSchema(
                     "$.schema", "version " + number.toPlainString() + " inconnue, seules "
                             + SCHEMA + ", " + SCHEMA_TWO + ", " + SCHEMA_THREE + ", " + SCHEMA_FOUR + ", " + SCHEMA_FIVE
-                            + ", " + SCHEMA_SIX + " et " + SCHEMA_SEVEN + " sont lues");
+                            + ", " + SCHEMA_SIX + ", " + SCHEMA_SEVEN + " et " + SCHEMA_EIGHT + " sont lues");
         }
         return number.intValueExact();
     }

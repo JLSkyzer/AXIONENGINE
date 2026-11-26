@@ -435,6 +435,98 @@ public final class VehiculesGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * ADR-182 D1, D2 : une réserve typée refuse un autre type, comme un versement sans type et {@code refuel(litres)} ; son
+     * débit borne ce qui entre sur un tick, quel que soit le nombre de versements et leur origine ; le véhicule pèse la
+     * somme de ses réserves, et le natif brûle la réserve que le moteur nomme.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void adr182_UnPleinDUnAutreTypeEstRefuseEtLeDebitEstBorne(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_energies",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), IDENTITE);
+        net.minecraft.resources.ResourceLocation gazole = new net.minecraft.resources.ResourceLocation("axion", "diesel");
+        net.minecraft.resources.ResourceLocation eau = new net.minecraft.resources.ResourceLocation("axion", "water");
+        java.util.List<dev.axion.definition.Seating.NodeAction> action =
+                java.util.List.of(dev.axion.definition.Seating.NodeAction.fill(null, "axion:water", 5.0));
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.ignitionVariable() >= 0
+                        && vehicule.parameters() != null, "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    dev.axion.api.assembly.Energy energie = ForgeAxionApi.view(vehicule).energy();
+                    helper.assertTrue(energie.stores().stream().map(dev.axion.api.assembly.EnergyStore::name).toList()
+                            .equals(java.util.List.of("gazole", "eau", "battery")), "les réserves de la definition");
+                    dev.axion.api.assembly.EnergyStore reservoir = energie.store("gazole").orElseThrow();
+                    dev.axion.api.assembly.EnergyStore citerne = energie.store("eau").orElseThrow();
+                    helper.assertTrue(reservoir.carrier().orElseThrow().equals(gazole) && reservoir.amount() == 40.0
+                            && citerne.amount() == 100.0, "pleines à la création");
+                    reservoir.set(10.0);
+                    citerne.set(0.0);
+                    helper.assertTrue(reservoir.fill(new net.minecraft.resources.ResourceLocation("axion", "petrol"), 5.0)
+                            == 0.0, "un autre type n'entre pas");
+                    helper.assertTrue(reservoir.fill(null, 5.0) == 0.0 && vehicule.refuel(5.0) == 0.0,
+                            "ni sans type, ni par refuel(litres)");
+                    helper.assertTrue(reservoir.fill(gazole, 5.0) == 5.0 && energie.fuel() == 15.0,
+                            "le bon type entre : " + reservoir.amount());
+                    helper.assertTrue(citerne.fill(eau, 50.0) == 1.0, "20 par seconde : 1 sur un tick");
+                    helper.assertTrue(citerne.fill(eau, 50.0) == 0.0, "le débit du tick est pris");
+                    vehicule.runActions(action, "test");
+                    helper.assertTrue(citerne.amount() == 1.0, "l'action de contenu aussi : " + citerne.amount());
+                })
+                .thenIdle(1)
+                .thenExecute(() -> {
+                    vehicule.runActions(action, "test");
+                    helper.assertTrue(vehicule.storeAmount(1) == 2.0,
+                            "au tick suivant, l'action verse un tick de débit : " + vehicule.storeAmount(1));
+                    // 340 kg à sec, 15 l de gazole à 0,75 et 2 d'eau à 1 kg, chacun au cran de 1/255 de sa capacité.
+                    helper.assertTrue(Math.abs(masse(vehicule) - (340.0 + 11.25 + 2.0)) < 0.25,
+                            "la masse suit les réserves : " + masse(vehicule));
+                    vehicule.variables().set(vehicule.ignitionVariable(), 1.0, "test");
+                    vehicule.drive(new dev.axion.api.vehicle.DriverInput(0.5, 0, 0, 0, 0, 1));
+                })
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.fuel() < 14.9995 && vehicule.fuel() > 14.9
+                        && vehicule.storeAmount(1) == 2.0,
+                        "le natif brûle le gazole reçu, pas l'eau : " + vehicule.fuel() + " ; " + vehicule.storeAmount(1)))
+                .thenSucceed();
+    }
+
+    /**
+     * ADR-182 D1, D2, Q5 : une remorque citerne, sans moteur, pèse ce qu'elle porte ; {@code /axion energy} la liste, verse
+     * un type qu'elle accepte, au débit déclaré, et refuse le reste.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 200)
+    public static void adr182_UneRemorqueCiterneSansMoteurPeseSonContenu(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity remorque = AssembliesDeTest.poser(helper, "axion:test/remorque_citerne",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), IDENTITE);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(remorque.hasPhysicalBounds() && remorque.parameters() != null,
+                        "la remorque est simulée"))
+                .thenExecute(() -> {
+                    helper.assertTrue(Math.abs(masse(remorque) - 300.0) < 1e-6,
+                            "100 kg à vide et 200 d'eau : " + masse(remorque));
+                    ForgeAxionApi.view(remorque).energy().store("citerne").orElseThrow().set(0.0);
+                    helper.assertTrue(Math.abs(masse(remorque) - 100.0) < 1e-6, "vide : " + masse(remorque));
+                    net.minecraft.server.MinecraftServer serveur = helper.getLevel().getServer();
+                    String cible = "axion energy " + remorque.getUUID();
+                    String vu = String.join(" | ", ParametresGameTests.commande(serveur, cible));
+                    helper.assertTrue(vu.contains("citerne (axion:water, 5.0000 par seconde au plus) : 0.000 / 200.000"),
+                            "ce que la commande voit : " + vu);
+                    String sansType = String.join(" | ", ParametresGameTests.commande(serveur, cible + " refuel 3"));
+                    helper.assertTrue(sansType.contains("indiquer le type"), "sans type : " + sansType);
+                    String autre = String.join(" | ",
+                            ParametresGameTests.commande(serveur, cible + " refuel 3 axion:diesel"));
+                    helper.assertTrue(autre.contains("aucune réserve"), "un autre type : " + autre);
+                    helper.assertTrue(remorque.storeAmount(0) == 0.0, "rien n'est entré : " + remorque.storeAmount(0));
+                    String eau = String.join(" | ",
+                            ParametresGameTests.commande(serveur, cible + " refuel 3 axion:water"));
+                    helper.assertTrue(remorque.storeAmount(0) == 0.25 && eau.contains("0.250 / 200.000"),
+                            "au débit du tick : " + remorque.storeAmount(0) + " ; " + eau);
+                    remorque.discard();
+                })
+                .thenSucceed();
+    }
+
     private static double masse(AxionEntity vehicule) {
         dev.axion.entity.AssemblyParameters table = vehicule.parameters();
         return table.value(table.tuning().indexOf(dev.axion.api.assembly.Parameters.MASS));

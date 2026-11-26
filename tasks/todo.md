@@ -3902,15 +3902,16 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
              dans ADR-176, `energy.fuel` testé, GameTest de `/axion energy` (celui d'`Assembly.energy()` existait). Restent :
              essai à deux processus du contact, de la masse et du mouillé prédits (corrigé : la prédiction pesait sans le
              carburant et se dessinait sèche), GameTest des réservoirs attelés et film du plein (`runFilmPlein`) FAITS le
-             2026-11-26. Ouverts : essai à deux clients ou report ; une remorque sans moteur n'a pas de réservoir
-             (question) ; le mouillé sans vue d'API propre (la source `vehicle.wet` le donne) ; grille D7 d'ADR-176 à
+             2026-11-26. Ouverts : essai à deux clients ou report ; une remorque sans moteur porte des réserves
+             depuis ADR-182 14a2 (R-1093) ; le mouillé sans vue d'API propre (la source `vehicle.wet` le donne) ; grille D7 d'ADR-176 à
              prononcer. Faits : annexe A.7 et A27 à jour, la neige (ADR-180 14c), le mouillé lu par `/axion wear`
              (ADR-181, 2026-11-26).
            - [ ] [ADR-182](../docs/decisions/ADR-182.md) — les types d'énergie (essence, diesel, électrique, hybride ;
              CAP-76, M5, demandé par Killian le 2026-11-26) : **accepté** le 2026-11-26 (Q1 à Q6 comme recommandé),
              A33. Tranches : 14a réserves typées — 14a1 (4 réserves au natif et au réseau, ABI 38, AXION-17) FAIT
-             le 2026-11-26, 14a2 (schéma 8, types, plein typé, API, commande, sauvegarde par nom, guides) en cours → 14b
-             moteur électrique → 14c hybride → 14d exemples, guides, preuves, clôture D7.
+             le 2026-11-26, 14a2 (schéma 8, types, plein typé et débit, API, commande, action, sauvegarde par nom,
+             sources, guides ; R-1093) FAIT le 2026-11-26 → 14b moteur électrique → 14c hybride → 14d exemples, guides,
+             preuves, clôture D7. Reste signalé : une citerne sans roue (objet rigide) est refusée à la compilation.
            - CAP-11 et CAP-34 non livrées (faits : isolement d'`AttachmentListener` le 2026-11-25, `Assembly.seats()`) ; test natif de la
              masse par `SET_PARAMETERS` ; `/axion rename`, `tp`, `freeze` ; écouteurs de création, retrait, contact,
              entrées ; vitesses, forces, sockets, état des nodes et sièges sur `Assembly` ; registres (commandes de siège,

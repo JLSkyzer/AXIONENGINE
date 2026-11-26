@@ -265,10 +265,22 @@ final class AxionCommands {
                                         .executes(context -> energy(context.getSource(),
                                                 EntityArgument.getEntity(context, "cible")))
                                         .then(Commands.literal("refuel")
-                                                .then(Commands.argument("litres", DoubleArgumentType.doubleArg(0.0))
+                                                .then(Commands.argument("quantite", DoubleArgumentType.doubleArg(0.0))
                                                         .executes(context -> energyRefuel(context.getSource(),
                                                                 EntityArgument.getEntity(context, "cible"),
-                                                                DoubleArgumentType.getDouble(context, "litres")))))
+                                                                DoubleArgumentType.getDouble(context, "quantite"), null))
+                                                        // ADR-182 D2 : une quantité d'un type, dans la première réserve
+                                                        // qui l'accepte.
+                                                        .then(Commands.argument("type", ResourceLocationArgument.id())
+                                                                .suggests((context, builder) ->
+                                                                        SharedSuggestionProvider.suggest(
+                                                                                carriers(context), builder))
+                                                                .executes(context -> energyRefuel(context.getSource(),
+                                                                        EntityArgument.getEntity(context, "cible"),
+                                                                        DoubleArgumentType.getDouble(context,
+                                                                                "quantite"),
+                                                                        ResourceLocationArgument.getId(context, "type")
+                                                                                .toString())))))
                                         .then(Commands.literal("battery")
                                                 .then(Commands.argument("charge", DoubleArgumentType.doubleArg(0.0))
                                                         .executes(context -> energyBattery(context.getSource(),
@@ -572,13 +584,33 @@ final class AxionCommands {
         return last.size();
     }
 
-    /** L'énergie d'une assembly, en lignes lisibles (ADR-176 D3). */
+    /** L'énergie d'une assembly, en lignes lisibles (ADR-176 D3, ADR-182 D2). */
     private static List<String> energyLines(AxionEntity assembly) {
         dev.axion.definition.EnergySpec spec = assembly.energySpec();
         List<String> lines = new java.util.ArrayList<>();
         lines.add("AXION : énergie de " + assembly.definitionId());
         if (!spec.declared()) {
             lines.add("  aucune : la definition ne déclare ni réservoir ni batterie");
+            return lines;
+        }
+        // Un réservoir sans type et une batterie, ceux du schéma 7 : les lignes d'avant.
+        boolean plain = spec.stores().stream().allMatch(store -> store.carrier() == null && store.maxFillRate() == 0f
+                && (store.name().equals("fuel") || store.name().equals(dev.axion.definition.EnergySpec.BATTERY)));
+        if (!plain) {
+            for (int slot = 0; slot < spec.stores().size(); slot++) {
+                dev.axion.definition.EnergySpec.Store store = spec.stores().get(slot);
+                String role = slot == spec.fuelStore() ? ", brûlée par le moteur"
+                        : slot == spec.batteryStore() ? ", celle du démarreur" : "";
+                String rate = store.maxFillRate() > 0f ? String.format(java.util.Locale.ROOT, ", %.4f par seconde au plus",
+                        store.maxFillRate()) : "";
+                lines.add(String.format(java.util.Locale.ROOT, "  %s (%s%s%s) : %.3f / %.3f (%.1f %%)", store.name(),
+                        store.carrier() == null ? "tout" : store.carrier(), role, rate, assembly.storeAmount(slot),
+                        store.capacity(), 100.0 * assembly.storeAmount(slot) / store.capacity()));
+            }
+            if (spec.massDeclared()) {
+                lines.add(String.format(java.util.Locale.ROOT, "  masse des réserves : %.2f kg",
+                        spec.mass(storeAmounts(assembly, spec))));
+            }
             return lines;
         }
         if (spec.fuelCapacity() > 0f) {
@@ -592,6 +624,26 @@ final class AxionCommands {
                     spec.batteryCapacity()));
         }
         return lines;
+    }
+
+    private static double[] storeAmounts(AxionEntity assembly, dev.axion.definition.EnergySpec spec) {
+        double[] amounts = new double[spec.stores().size()];
+        for (int slot = 0; slot < amounts.length; slot++) {
+            amounts[slot] = assembly.storeAmount(slot);
+        }
+        return amounts;
+    }
+
+    /** {@return les types des réserves de la cible, pour la complétion} */
+    private static List<String> carriers(com.mojang.brigadier.context.CommandContext<CommandSourceStack> context) {
+        try {
+            return EntityArgument.getEntity(context, "cible") instanceof AxionEntity assembly
+                    ? assembly.energySpec().stores().stream().map(dev.axion.definition.EnergySpec.Store::carrier)
+                            .filter(java.util.Objects::nonNull).distinct().toList()
+                    : List.of();
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException unresolved) {
+            return List.of();
+        }
     }
 
     private static AxionEntity energyTarget(CommandSourceStack source, Entity target) {
@@ -617,19 +669,31 @@ final class AxionCommands {
         return 1;
     }
 
-    /** Remplit le réservoir : commande d'administration, mutante, journalisée avec son auteur (R-810). */
-    private static int energyRefuel(CommandSourceStack source, Entity target, double litres) {
+    /** Remplit une réserve : commande d'administration, mutante, journalisée avec son auteur (R-810). */
+    private static int energyRefuel(CommandSourceStack source, Entity target, double amount, String carrier) {
         AxionEntity assembly = energyTarget(source, target);
         if (assembly == null) {
             return 0;
         }
-        if (!(assembly.energySpec().fuelCapacity() > 0f)) {
-            source.sendFailure(Component.literal("AXION : " + assembly.definitionId() + " n'a pas de réservoir"));
+        dev.axion.definition.EnergySpec spec = assembly.energySpec();
+        if (carrier == null && !(spec.fuelCapacity() > 0f)) {
+            source.sendFailure(Component.literal("AXION : " + assembly.definitionId() + " n'a pas de réservoir"
+                    + (spec.declared() ? " brûlé par un moteur : indiquer le type" : "")));
             return 0;
         }
-        double entered = assembly.refuel(litres);
-        LOGGER.info("AXION : /axion energy refuel {} sur {} ({}) demandé par {} : {} l entrés", litres,
-                target.getUUID(), assembly.definitionId(), source.getTextName(), entered);
+        if (carrier == null && spec.stores().get(spec.fuelStore()).carrier() != null) {
+            source.sendFailure(Component.literal("AXION : le réservoir de " + assembly.definitionId() + " n'accepte que "
+                    + spec.stores().get(spec.fuelStore()).carrier() + " : indiquer le type"));
+            return 0;
+        }
+        if (carrier != null && spec.stores().stream().noneMatch(store -> store.accepts(carrier))) {
+            source.sendFailure(Component.literal("AXION : aucune réserve de " + assembly.definitionId() + " n'accepte "
+                    + carrier));
+            return 0;
+        }
+        double entered = carrier == null ? assembly.refuel(amount) : assembly.fillAny(null, carrier, amount);
+        LOGGER.info("AXION : /axion energy refuel {} {} sur {} ({}) demandé par {} : {} entrés", amount,
+                carrier == null ? "" : carrier, target.getUUID(), assembly.definitionId(), source.getTextName(), entered);
         List<String> lines = energyLines(assembly);
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), true);
         return 1;

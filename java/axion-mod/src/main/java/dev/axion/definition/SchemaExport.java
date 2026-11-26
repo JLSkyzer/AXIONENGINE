@@ -63,9 +63,10 @@ public final class SchemaExport {
      * (ADR-151 D3) se publie dans {@code docs/schema/definition-2.json}, le schéma 3 (ADR-163 D2) dans
      * {@code docs/schema/definition-3.json}, le schéma 4 (ADR-167) dans {@code docs/schema/definition-4.json}, le
      * schéma 5 (ADR-170) dans {@code docs/schema/definition-5.json}, le schéma 6 (ADR-171) dans
-     * {@code docs/schema/definition-6.json}.
+     * {@code docs/schema/definition-6.json}, le schéma 7 (ADR-174) dans {@code docs/schema/definition-7.json}, le schéma
+     * 8 (ADR-182) dans {@code docs/schema/definition-8.json}.
      *
-     * @param version 1, 2, 3, 4, 5 ou 6
+     * @param version de 1 à 8
      */
     public static String render(int version) {
         return new GsonBuilder()
@@ -94,6 +95,8 @@ public final class SchemaExport {
                                 : version == 5 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167 et l'ADR-170"
                                 : version == 6 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167, l'ADR-170 et l'ADR-171"
                                 : version == 7 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167, l'ADR-170, l'ADR-171 et l'ADR-174"
+                                : version == 8 ? ", l'ADR-151 D3, l'ADR-163 D2, l'ADR-167, l'ADR-170, l'ADR-171,"
+                                        + " l'ADR-174 et l'ADR-182"
                                 : "")
                         + ". AXION vérifie en plus, au chargement, "
                         + "ce que JSON Schema n'exprime pas : unicité des noms par catégorie "

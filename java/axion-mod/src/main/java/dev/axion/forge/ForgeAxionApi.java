@@ -334,6 +334,44 @@ public final class ForgeAxionApi implements AxionApi {
      * Le véhicule d'une assembly vu par l'API (ADR-159 D11, ADR-167 D9) : une fenêtre sur son entité. Au serveur, sur
      * le thread autoritatif ; au client, ses contrôleurs se lisent, le reste attend la prédiction (C-33).
      */
+    /** Une réserve d'une assembly, vue par l'API (ADR-182 D1) : son rang tient pour la definition qu'elle a. */
+    private record StoreView(AxionEntity entity, int slot, dev.axion.definition.EnergySpec.Store declared)
+            implements dev.axion.api.assembly.EnergyStore {
+
+        @Override
+        public String name() {
+            return declared.name();
+        }
+
+        @Override
+        public Optional<net.minecraft.resources.ResourceLocation> carrier() {
+            return Optional.ofNullable(declared.carrier()).map(net.minecraft.resources.ResourceLocation::tryParse);
+        }
+
+        @Override
+        public double capacity() {
+            return declared.capacity();
+        }
+
+        @Override
+        public double amount() {
+            AuthoritativeThread.require();
+            return entity.storeAmount(slot);
+        }
+
+        @Override
+        public double fill(net.minecraft.resources.ResourceLocation carrier, double amount) {
+            AuthoritativeThread.require();
+            return entity.fillStore(slot, carrier == null ? null : carrier.toString(), amount);
+        }
+
+        @Override
+        public void set(double amount) {
+            AuthoritativeThread.require();
+            entity.setStore(slot, amount);
+        }
+    }
+
     private record VehicleView(AxionEntity entity) implements dev.axion.api.vehicle.VehicleControl {
 
         /** Ce qui lit l'état ou écrit : au serveur seulement, sur le thread autoritatif (R-1755). */
@@ -550,6 +588,17 @@ public final class ForgeAxionApi implements AxionApi {
                 public void setBattery(double charge) {
                     AuthoritativeThread.require();
                     entity.setBattery(charge);
+                }
+
+                @Override
+                public java.util.List<dev.axion.api.assembly.EnergyStore> stores() {
+                    AuthoritativeThread.require();
+                    java.util.List<dev.axion.definition.EnergySpec.Store> declared = entity.energySpec().stores();
+                    java.util.List<dev.axion.api.assembly.EnergyStore> views = new java.util.ArrayList<>(declared.size());
+                    for (int slot = 0; slot < declared.size(); slot++) {
+                        views.add(new StoreView(entity, slot, declared.get(slot)));
+                    }
+                    return java.util.List.copyOf(views);
                 }
             };
         }

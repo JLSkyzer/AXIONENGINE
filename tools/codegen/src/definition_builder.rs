@@ -113,6 +113,7 @@ pub const SINGULARS: &[(&str, &str)] = &[
     ("ranges", "range"),
     ("seats", "seat"),
     ("sockets", "socket"),
+    ("stores", "store"),
     ("structural_links", "structural_link"),
     ("surfaces", "surface"),
     ("variables", "variable"),

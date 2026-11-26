@@ -86,6 +86,8 @@ final class SchemaOne {
             fixed("engine", "rpm", "load", "running"),
             // ADR-176 D3 : au schéma 7, le réservoir et la batterie d'un véhicule.
             fixed("energy", "fuel", "fuel_ratio", "battery").since(7),
+            // ADR-182 D5 : au schéma 8, le contenu d'une réserve nommée.
+            named("energy", NameCategory.STORE, "amount", "ratio").since(8),
             fixed("transmission", "gear", "shifting"),
             named("wheel", NameCategory.WHEEL, "spin_angle", "steer_angle", "compression",
                     "slip_long", "slip_lat", "on_ground", "damage", "wear").late("wear"),
@@ -140,6 +142,9 @@ final class SchemaOne {
     /** Racine du schéma 7 (ADR-174) : le schéma 6, et la liste ordonnée des actions d'une interaction. */
     static final SchemaNode ROOT_SEVEN = root(7);
 
+    /** Racine du schéma 8 (ADR-182) : le schéma 7 et les réserves d'énergie typées. */
+    static final SchemaNode ROOT_EIGHT = root(8);
+
 
     private SchemaOne() {}
 
@@ -150,6 +155,7 @@ final class SchemaOne {
      */
     static SchemaNode rootOf(int version) {
         return switch (version) {
+            case 8 -> ROOT_EIGHT;
             case 7 -> ROOT_SEVEN;
             case 6 -> ROOT_SIX;
             case 5 -> ROOT_FIVE;
@@ -208,7 +214,7 @@ final class SchemaOne {
             // ADR-176 D3 : l'énergie d'un véhicule, un réservoir et une batterie ; la cohérence (un réservoir déclare sa
             // consommation, une batterie exige un démarreur, la masse par litre exige physics.mass) se juge ensemble
             // (VehicleSpec.checkEnergy).
-            root.opt("energy", obj()
+            ObjBuilder energy = obj()
                     .opt("fuel", obj()
                             .req("capacity", number())
                             .opt("unit_mass", number())
@@ -218,14 +224,25 @@ final class SchemaOne {
                             .req("capacity", number())
                             .opt("starter_draw", number())
                             .opt("charge_rate", number())
-                            .build())
-                    .build());
+                            .build());
+            if (version >= 8) {
+                // ADR-182 D1 : jusqu'à 4 réserves nommées et typées ; le moteur et le démarreur nomment la leur
+                // (VehicleSpec.checkEnergy).
+                energy.opt("stores", new Arr(obj()
+                        .req("name", declares(NameCategory.STORE))
+                        .opt("carrier", id())
+                        .req("capacity", number())
+                        .opt("unit_mass", number())
+                        .opt("max_fill_rate", positive())
+                        .build(), 1, EnergySpec.MAX_STORES, false));
+            }
+            root.opt("energy", energy.build());
             // ADR-175 D3 : la révision, ce qui mène une sauvegarde d'une révision à la suivante, et les identifiants que
             // la definition remplace ; la cohérence des révisions se juge ensemble (DefinitionChecker.checkRevisions).
             root.opt("revision", new Num(1, 1_000_000, false, true));
             root.opt("migrations", cap(obj()
                     .req("from", new Num(1, 1_000_000, false, true))
-                    .opt("rename", renames())
+                    .opt("rename", renames(version))
                     .build(), Revisions.MAX_MIGRATIONS));
             root.opt("replaces", new Arr(id(), 1, Revisions.MAX_REPLACES, true));
             // ADR-174 D2 : les événements de contenu, et à qui chacun part.
@@ -441,9 +458,22 @@ final class SchemaOne {
                 .opt("braking_torque", number());
         if (version >= 7) {
             // ADR-176 D1 : le démarreur, et la variable booléenne qui est le contact.
-            engine.opt("starter", obj()
+            ObjBuilder starter = obj()
                     .req("time", number())
-                    .req("variable", refers(NameCategory.VARIABLE))
+                    .req("variable", refers(NameCategory.VARIABLE));
+            if (version >= 8) {
+                // ADR-182 D1 : la réserve que le démarreur tire et que le moteur qui tourne recharge.
+                starter.opt("store", refers(NameCategory.STORE))
+                        .opt("draw", number())
+                        .opt("charge_rate", number());
+            }
+            engine.opt("starter", starter.build());
+        }
+        if (version >= 8) {
+            // ADR-182 D1 : la réserve que le moteur brûle, et sa consommation en unités par heure.
+            engine.opt("fuel", obj()
+                    .req("store", refers(NameCategory.STORE))
+                    .req("consumption", curve())
                     .build());
         }
         return obj()
@@ -785,7 +815,7 @@ final class SchemaOne {
         if (version >= 7) {
             // ADR-174 D3 : ce que l'interaction fait ensuite, dans l'ordre, au même tick ; D2 : l'événement
             // qu'emit_event émet, sa valeur dans « value ».
-            interaction.opt("actions", new Arr(nodeAction(), 1, MAX_ACTIONS, true))
+            interaction.opt("actions", new Arr(nodeAction(version), 1, MAX_ACTIONS, true))
                     .opt("event", refers(NameCategory.EVENT))
                     // ADR-174 D6 : ce qu'une interaction d'addon reçoit, tel quel.
                     .opt("parameters", new Dict(new TextRule.Free(), any(), Integer.MAX_VALUE));
@@ -794,12 +824,25 @@ final class SchemaOne {
     }
 
     /** ADR-175 D3 : les noms qu'une migration change, par catégorie, ancien → nouveau. */
-    private static SchemaNode renames() {
+    private static SchemaNode renames(int version) {
         ObjBuilder renames = obj();
-        for (String kind : Revisions.KINDS) {
+        for (String kind : Revisions.kinds(version)) {
             renames.opt(kind, new Dict(new TextRule.Free(), text(), Revisions.MAX_RENAMES));
         }
         return renames.build();
+    }
+
+    /** L'action {@code refuel} : des litres au schéma 7 ; au schéma 8, aussi une quantité d'un type, dans une réserve. */
+    private static SchemaNode refuel(int version) {
+        if (version < 8) {
+            return obj().req("litres", positive()).build();
+        }
+        return obj()
+                .opt("litres", positive())
+                .opt("amount", positive())
+                .opt("carrier", id())
+                .opt("store", refers(NameCategory.STORE))
+                .build();
     }
 
     /** Actions d'une interaction, au plus (ADR-174 D3). */
@@ -810,7 +853,7 @@ final class SchemaOne {
      * ordre. {@code swap_mesh} désigne le maillage de remplacement par un node du même asset (décision de Killian,
      * tranche 9a2) ; sans {@code with}, l'original revient.
      */
-    private static SchemaNode nodeAction() {
+    private static SchemaNode nodeAction(int version) {
         return obj()
                 .opt("hide_node", refers(NameCategory.NODE))
                 .opt("show_node", refers(NameCategory.NODE))
@@ -822,8 +865,9 @@ final class SchemaOne {
                         .req("event", refers(NameCategory.EVENT))
                         .opt("value", number())
                         .build())
-                // ADR-176 D3 : verser du carburant dans le réservoir du véhicule (la definition en déclare un).
-                .opt("refuel", obj().req("litres", positive()).build())
+                // ADR-176 D3 : verser dans le réservoir du véhicule ; ADR-182 D2, au schéma 8, une quantité d'un type
+                // dans une réserve (DefinitionChecker.checkNodeAction).
+                .opt("refuel", refuel(version))
                 // ADR-176 D4 : poser l'usure du pneu d'une roue, ou de toutes (un pneu neuf : 0).
                 .opt("set_wear", obj()
                         .opt("wheel", refers(NameCategory.WHEEL))

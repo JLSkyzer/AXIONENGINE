@@ -366,6 +366,9 @@ final class DefinitionChecker {
     private static int versionOf(JsonObject root) {
         if (root.get("schema") instanceof JsonPrimitive schema && schema.isNumber()) {
             double number = schema.getAsDouble();
+            if (number == 8) {
+                return 8;
+            }
             if (number == 7) {
                 return 7;
             }
@@ -396,6 +399,11 @@ final class DefinitionChecker {
                 continue;
             }
             String rest = value.substring(head.length());
+            // Une famille à champs fixes et une famille nommée peuvent partager leur préfixe — energy.battery et
+            // energy.<réserve>.ratio (ADR-182) — : le point du reste les départage.
+            if (sharesPrefix(family) && family.named() != rest.contains(".")) {
+                continue;
+            }
             if (!family.named()) {
                 if (!family.fieldsAt(version).contains(rest)) {
                     invalid(path, "« " + rest + " » inconnu pour " + family.prefix()
@@ -432,6 +440,12 @@ final class DefinitionChecker {
             return;
         }
         invalid(path, "source « " + value + " » absente de l'ANNEXE A.4");
+    }
+
+    /** {@return vrai si une autre famille, connue de ce schéma, porte le même préfixe} */
+    private boolean sharesPrefix(SourceFamily family) {
+        return SchemaOne.SOURCES.stream().anyMatch(other -> other != family && other.since() <= version
+                && other.prefix().equals(family.prefix()));
     }
 
     /** Toute référence interne désigne un nom déclaré dans la definition. */
@@ -642,7 +656,7 @@ final class DefinitionChecker {
                 if (!(migration.get("rename") instanceof JsonObject rename)) {
                     continue;
                 }
-                for (String kind : Revisions.KINDS) {
+                for (String kind : Revisions.kinds(version)) {
                     if (!(rename.get(kind) instanceof JsonObject names)) {
                         continue;
                     }
@@ -701,8 +715,8 @@ final class DefinitionChecker {
         return found;
     }
 
-    /** Vrai si la definition déclare un réservoir : une action {@code refuel} a de quoi verser (ADR-176 D3). */
-    private boolean refuelable;
+    /** Les réserves de la definition : ce qu'une action {@code refuel} peut remplir (ADR-176 D3, ADR-182 D2). */
+    private EnergySpec energy = EnergySpec.NONE;
 
     /** Vrai si la definition déclare des roues : une action {@code set_wear} a un pneu à user (ADR-176 D4). */
     private boolean wheeled;
@@ -711,7 +725,7 @@ final class DefinitionChecker {
         if (!(root.get("interaction") instanceof JsonArray interactions)) {
             return;
         }
-        refuelable = EnergySpec.of(root).fuelCapacity() > 0f;
+        energy = EnergySpec.of(root);
         wheeled = root.get("wheels") instanceof JsonArray roues && !roues.isEmpty();
         for (int i = 0; i < interactions.size(); i++) {
             if (!(interactions.get(i) instanceof JsonObject interaction)) {
@@ -749,6 +763,41 @@ final class DefinitionChecker {
         }
     }
 
+    /**
+     * ADR-176 D3, ADR-182 D2 : {@code refuel} verse des {@code litres} dans le réservoir sans type que le moteur brûle, ou
+     * une {@code amount} d'un {@code carrier} dans la réserve {@code store}, ou dans la première qui l'accepte.
+     */
+    private void checkRefuel(JsonObject refuel, String path) {
+        boolean litres = refuel.get("litres") != null;
+        if (litres == (refuel.get("amount") != null)) {
+            invalid(path, "« litres » ou « amount », l'un des deux");
+            return;
+        }
+        if (litres) {
+            int fuel = energy.fuelStore();
+            if (fuel < 0 || energy.stores().get(fuel).carrier() != null) {
+                invalid(path, "« litres » verse dans le réservoir sans type que le moteur brûle (energy.fuel, ADR-176 D3) ;"
+                        + " pour une réserve typée, « amount » et « carrier »");
+            }
+            if (refuel.get("carrier") != null || refuel.get("store") != null) {
+                invalid(path, "« carrier » et « store » vont avec « amount »");
+            }
+            return;
+        }
+        String carrier = string(refuel, "carrier");
+        String store = string(refuel, "store");
+        if (store != null) {
+            int slot = energy.indexOf(store);
+            if (slot >= 0 && !energy.stores().get(slot).accepts(carrier)) {
+                invalid(path + ".carrier", "la réserve « " + store + " » n'accepte que "
+                        + energy.stores().get(slot).carrier());
+            }
+        } else if (energy.stores().stream().noneMatch(candidate -> candidate.accepts(carrier))) {
+            invalid(path, carrier == null ? "aucune réserve sans type : nommer « carrier »"
+                    : "aucune réserve n'accepte " + carrier);
+        }
+    }
+
     /** Bornes de l'émission qu'une action pose (ADR-174 D3) : de 0 à 16 fois celle du matériau. */
     static final double MAX_EMISSIVE = 16.0;
 
@@ -770,9 +819,8 @@ final class DefinitionChecker {
             invalid(path + ".set_wear", "l'action « set_wear » pose l'usure d'un pneu : la definition déclare des roues"
                     + " (wheels, ADR-176 D4)");
         }
-        if (step.get("refuel") != null && !refuelable) {
-            invalid(path + ".refuel", "l'action « refuel » verse dans le réservoir que la definition déclare"
-                    + " (energy.fuel, ADR-176 D3)");
+        if (step.get("refuel") instanceof JsonObject refuel) {
+            checkRefuel(refuel, path + ".refuel");
         }
         if (step.get("swap_mesh") instanceof JsonObject swap && swap.get("with") != null
                 && swap.get("with").equals(swap.get("node"))) {

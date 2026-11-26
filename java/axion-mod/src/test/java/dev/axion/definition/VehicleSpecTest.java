@@ -172,6 +172,32 @@ class VehicleSpecTest {
     }
 
     @Test
+    @DisplayName("ADR-182 D1 : au schéma 8, la section porte les réserves, leurs rangs, la consommation et le démarreur")
+    void reservesDansLaSection() throws DefinitionException {
+        ByteBuffer in = section("{\"schema\": 8, \"asset\": \"mymod:models/pickup.glb\", \"kind\": \"vehicle\","
+                + " \"physics\": {\"mass\": 1000}, " + MOTRICE + ","
+                + " \"variables\": {\"contact\": {\"type\": \"bool\", \"default\": false, \"replicate\": \"all\"}},"
+                + " \"energy\": {\"stores\": [{\"name\": \"auxiliaire\", \"capacity\": 2},"
+                + " {\"name\": \"gazole\", \"carrier\": \"axion:diesel\", \"capacity\": 60}]},"
+                + " \"powertrain\": {\"engine\": {\"torque_curve\": [[0, 0], [1000, 180]],"
+                + " \"fuel\": {\"store\": \"gazole\", \"consumption\": [[0, 0.5], [1, 9]]},"
+                + " \"starter\": {\"time\": 1, \"variable\": \"contact\", \"store\": \"auxiliaire\","
+                + " \"draw\": 0.25, \"charge_rate\": 0.125}}}}", TireProfiles.empty());
+        assertEquals(2, in.getShort(120), "points de consommation");
+        assertEquals(1, in.get(122), "le moteur brûle la réserve de rang 1");
+        assertEquals(0, in.get(123), "le démarreur tire celle de rang 0");
+        float[] capacites = {2f, 60f, 0f, 0f};
+        for (int rang = 0; rang < capacites.length; rang++) {
+            assertEquals(capacites[rang], in.getFloat(124 + rang * 4), "capacité du rang " + rang);
+        }
+        assertEquals(0.25f, in.getFloat(140), "draw, le tirage du démarreur");
+        assertEquals(0.125f, in.getFloat(144), "charge_rate");
+        int points = VehicleSpec.HEADER_BYTES + VehicleSpec.WHEEL_BYTES + 2 * 8;
+        assertEquals(0.5f, in.getFloat(points + 4), "la consommation est celle d'engine.fuel");
+        assertEquals(9f, in.getFloat(points + 12));
+    }
+
+    @Test
     @DisplayName("R-1090, ADR-159 tranche 3 : antipatinage et stabilité, désactivés par défaut, actifs par leur drapeau")
     void correcteurs() throws DefinitionException {
         ByteBuffer in = section(vehicule(MOTRICE + ", \"powertrain\": {" + MOTEUR

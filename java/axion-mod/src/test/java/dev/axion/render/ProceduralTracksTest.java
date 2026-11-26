@@ -156,6 +156,35 @@ class ProceduralTracksTest {
     }
 
     @Test
+    @DisplayName("ADR-182 D5 : energy.<réserve> lit la réserve nommée ; energy.fuel, celle que le moteur brûle")
+    void sourcesDesReserves() {
+        // VEHICULE : la réserve de rang 0 à 0,5, celle de rang 1 à 0,25.
+        String[][] attendus = {
+            {"energy.citerne.amount", "100"}, {"energy.citerne.ratio", "0.5"}, {"energy.gazole.amount", "15"},
+            {"energy.gazole.ratio", "0.25"}, {"energy.fuel", "15"}, {"energy.fuel_ratio", "0.25"},
+            {"energy.battery", "0"},
+        };
+        for (String[] attendu : attendus) {
+            List<String> journal = new ArrayList<>();
+            ProceduralTracks pistes = pistesAReserves(attendu[0], journal);
+            assertTrue(journal.isEmpty(), attendu[0] + " : " + journal);
+            assertEquals(Float.parseFloat(attendu[1]), translation(pistes, cadre(0, 0f, 0f, 0f)), 1e-5f, attendu[0]);
+        }
+        List<String> journal = new ArrayList<>();
+        assertSame(ProceduralTracks.NONE, pistesAReserves("energy.essence.ratio", journal));
+        assertEquals(1, journal.size(), journal.toString());
+    }
+
+    private static ProceduralTracks pistesAReserves(String source, List<String> journal) {
+        JsonObject racine = JsonParser.parseString("{\"schema\":8,\"energy\":{\"stores\":["
+                + "{\"name\":\"citerne\",\"capacity\":200},{\"name\":\"gazole\",\"capacity\":60}]},"
+                + "\"powertrain\":{\"engine\":{\"fuel\":{\"store\":\"gazole\",\"consumption\":[[0,1]]}}},"
+                + "\"procedural\":[{\"node\":\"caisse\",\"channel\":\"translation\",\"axis\":\"x\","
+                + "\"source\":\"" + source + "\"}]}").getAsJsonObject();
+        return ProceduralTracks.of(racine, NOMS, journal::add);
+    }
+
+    @Test
     @DisplayName("ADR-163 D1 : un siège inconnu, une source sans producteur ou une variable non déclarée sont ignorés")
     void sourcesNonPrisesEnCharge() {
         for (String source : new String[] {"seat.absent.occupied", "wheel.roue_g.slip_long", "var.inconnue",

@@ -38,6 +38,8 @@ enum NameCategory {
     EVENT("événement", true),
     /** Capteur déclaré, {@code sensors[].name} (ADR-174 D5). */
     SENSOR("capteur", true),
+    /** Réserve d'énergie, {@code energy.stores[].name} (schéma 8, ADR-182 D1). */
+    STORE("réserve", true),
     /** Vue de véhicule, {@code cameras[].name} (ADR-170). */
     CAMERA("vue", true),
     /** Jauge du tableau de bord, {@code dashboard.gauges[].name} (ADR-170). */

@@ -15,6 +15,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
@@ -462,14 +463,14 @@ class DefinitionSchemaTest {
     }
 
     @Test
-    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 8 est inconnu")
+    @DisplayName("ADR-151 D3 : le schéma 1 reste lu comme avant, sans les champs du schéma 2 ; le 9 est inconnu")
     void schemaUnInchange() {
         DefinitionException friction = refus(root -> at(root, "joints", "0").addProperty("friction", 4.0));
         assertEquals("$.joints[0].friction", friction.path());
         assertTrue(friction.getMessage().contains("clé inconnue du schéma 1"), friction.getMessage());
         assertEquals("$.bodies[0].mass",
                 refus(root -> at(root, "bodies", "0").addProperty("mass", 10.0)).path());
-        DefinitionException quatre = refus(root -> root.addProperty("schema", 8));
+        DefinitionException quatre = refus(root -> root.addProperty("schema", 9));
         assertEquals(DefinitionException.UNKNOWN_SCHEMA, quatre.code());
         assertEquals("$.variables", refus(root -> root.add("variables", new JsonObject())).path(),
                 "les variables n'existent qu'au schéma 3");
@@ -963,6 +964,157 @@ class DefinitionSchemaTest {
         JsonObject six = avecReservoir();
         six.addProperty("schema", 6);
         assertThrows(DefinitionException.class, () -> read(six), "l'énergie n'existe qu'au schéma 7");
+    }
+
+    /** Le véhicule à réservoir au schéma 8 : un gazole que le moteur brûle, une citerne, la batterie du démarreur. */
+    private static JsonObject auSchemaHuit() {
+        JsonObject root = avecReservoir();
+        root.addProperty("schema", 8);
+        JsonObject energy = at(root, "energy");
+        energy.remove("fuel");
+        energy.add("stores", JsonParser.parseString("[{\"name\": \"gazole\", \"carrier\": \"axion:diesel\","
+                + " \"capacity\": 60, \"unit_mass\": 0.84}, {\"name\": \"citerne\", \"capacity\": 200,"
+                + " \"unit_mass\": 1.0, \"max_fill_rate\": 5}]"));
+        at(root, "powertrain", "engine").add("fuel", JsonParser.parseString(
+                "{\"store\": \"gazole\", \"consumption\": [[0, 0.4], [1, 9]]}"));
+        return root;
+    }
+
+    private static String refuse(JsonObject root) {
+        return assertThrows(DefinitionException.class, () -> read(root)).path();
+    }
+
+    @Test
+    @DisplayName("ADR-182 D1 : au schéma 8, des réserves nommées et typées ; le moteur et le démarreur nomment la leur")
+    void lesReservesDuSchemaHuit() {
+        Definition definition = assertDoesNotThrow(() -> read(auSchemaHuit()));
+        EnergySpec spec = EnergySpec.of(definition.root());
+        assertEquals(List.of("gazole", "citerne", "battery"),
+                spec.stores().stream().map(EnergySpec.Store::name).toList());
+        assertEquals(0, spec.fuelStore());
+        assertEquals(2, spec.batteryStore(), "la batterie d'energy.battery vient après les réserves");
+        assertEquals("axion:diesel", spec.stores().get(0).carrier());
+        assertEquals(5f, spec.stores().get(1).maxFillRate());
+
+        JsonObject propreAuDemarreur = auSchemaHuit();
+        at(propreAuDemarreur, "energy").remove("battery");
+        at(propreAuDemarreur, "energy", "stores", "1").remove("max_fill_rate");
+        at(propreAuDemarreur, "powertrain", "engine", "starter").addProperty("store", "citerne");
+        at(propreAuDemarreur, "powertrain", "engine", "starter").addProperty("draw", 0.1);
+        EnergySpec autre = EnergySpec.of(assertDoesNotThrow(() -> read(propreAuDemarreur)).root());
+        assertEquals(1, autre.batteryStore(), "le démarreur tire la réserve qu'il nomme");
+
+        JsonObject citerne = auSchemaHuit();
+        citerne.remove("powertrain");
+        at(citerne, "energy").remove("battery");
+        citerne.remove("procedural");
+        citerne.remove("seats");
+        citerne.remove("variables");
+        assertDoesNotThrow(() -> read(citerne), "une réserve sans moteur : une remorque citerne");
+    }
+
+    @Test
+    @DisplayName("ADR-182 D1 : les refus des réserves, chacun à son chemin")
+    void lesRefusDesReserves() {
+        JsonObject deux = auSchemaHuit();
+        at(deux, "energy").add("fuel", JsonParser.parseString("{\"capacity\": 4, \"consumption\": [[0, 1]]}"));
+        assertEquals("$.energy.fuel", refuse(deux));
+
+        JsonObject sansReserves = avecReservoir();
+        sansReserves.addProperty("schema", 8);
+        at(sansReserves, "powertrain", "engine").add("fuel",
+                JsonParser.parseString("{\"store\": \"gazole\", \"consumption\": [[0, 1]]}"));
+        assertEquals("$.powertrain.engine.fuel", assertThrows(DefinitionException.class, () -> read(sansReserves))
+                .path().replace(".store", ""));
+
+        JsonObject inconnue = auSchemaHuit();
+        at(inconnue, "powertrain", "engine", "fuel").addProperty("store", "essence");
+        assertEquals("$.powertrain.engine.fuel.store", refuse(inconnue));
+
+        JsonObject deuxSources = auSchemaHuit();
+        at(deuxSources, "powertrain", "engine", "starter").addProperty("store", "citerne");
+        assertEquals("$.powertrain.engine.starter.store", refuse(deuxSources), "la batterie ou une réserve");
+
+        JsonObject partagee = auSchemaHuit();
+        at(partagee, "energy").remove("battery");
+        at(partagee, "powertrain", "engine", "starter").addProperty("store", "gazole");
+        assertEquals("$.powertrain.engine.starter.store", refuse(partagee));
+
+        JsonObject tirageSansReserve = auSchemaHuit();
+        at(tirageSansReserve, "powertrain", "engine", "starter").addProperty("draw", 1);
+        assertEquals("$.powertrain.engine.starter", refuse(tirageSansReserve));
+
+        JsonObject trop = auSchemaHuit();
+        for (String nom : new String[] {"c", "d"}) {
+            at(trop, "energy").getAsJsonArray("stores")
+                    .add(JsonParser.parseString("{\"name\": \"" + nom + "\", \"capacity\": 1}"));
+        }
+        assertEquals("$.energy.stores", refuse(trop), "quatre réserves et la batterie");
+
+        JsonObject batterie = auSchemaHuit();
+        at(batterie, "energy", "stores", "1").addProperty("name", "battery");
+        assertEquals("$.energy.stores[1].name", refuse(batterie));
+
+        JsonObject sansMasse = auSchemaHuit();
+        at(sansMasse, "physics").remove("mass");
+        assertEquals("$.energy.stores[0].unit_mass", refuse(sansMasse));
+
+        JsonObject sansRoues = auSchemaHuit();
+        sansRoues.remove("wheels");
+        assertThrows(DefinitionException.class, () -> read(sansRoues));
+
+        JsonObject sept = auSchemaHuit();
+        sept.addProperty("schema", 7);
+        assertThrows(DefinitionException.class, () -> read(sept), "les réserves n'existent qu'au schéma 8");
+    }
+
+    @Test
+    @DisplayName("ADR-182 D2, D5, D6 : refuel typé, sources et migrations des réserves au schéma 8")
+    void leRemplissageEtLesSourcesDuSchemaHuit() {
+        String action = "[{\"node\": \"siege_conducteur\", \"action\": \"actions\", \"actions\": [{\"refuel\": %s}]}]";
+        java.util.function.Function<String, JsonObject> avec = refuel -> {
+            JsonObject root = auSchemaHuit();
+            root.add("interaction", JsonParser.parseString(String.format(action, refuel)));
+            return root;
+        };
+        assertDoesNotThrow(() -> read(avec.apply("{\"amount\": 5, \"carrier\": \"axion:diesel\"}")));
+        assertDoesNotThrow(() -> read(avec.apply("{\"amount\": 5, \"store\": \"citerne\"}")));
+        assertEquals("$.interaction[0].actions[0].refuel", refuse(avec.apply("{\"litres\": 5}")),
+                "des litres sans type, quand le réservoir est typé");
+        assertEquals("$.interaction[0].actions[0].refuel.carrier",
+                refuse(avec.apply("{\"amount\": 5, \"carrier\": \"axion:petrol\", \"store\": \"gazole\"}")));
+        assertEquals("$.interaction[0].actions[0].refuel", refuse(avec.apply("{\"amount\": 5, \"litres\": 5}")));
+        JsonObject toutesTypees = avec.apply("{\"amount\": 5, \"carrier\": \"axion:petrol\"}");
+        at(toutesTypees, "energy", "stores", "1").addProperty("carrier", "axion:water");
+        at(toutesTypees, "energy").remove("battery");
+        assertEquals("$.interaction[0].actions[0].refuel", refuse(toutesTypees), "aucune réserve ne l'accepte");
+
+        String piste = "{\"node\": \"roue_avant_gauche\", \"channel\": \"rotation\", \"axis\": \"x\", \"source\": \"%s\"}";
+        for (String source : new String[] {"energy.gazole.ratio", "energy.citerne.amount", "energy.battery"}) {
+            JsonObject bon = auSchemaHuit();
+            bon.getAsJsonArray("procedural").add(JsonParser.parseString(String.format(piste, source)));
+            assertDoesNotThrow(() -> read(bon), source);
+        }
+        for (String source : new String[] {"energy.essence.ratio", "energy.gazole.capacity"}) {
+            JsonObject mauvais = auSchemaHuit();
+            mauvais.getAsJsonArray("procedural").add(JsonParser.parseString(String.format(piste, source)));
+            assertTrue(assertThrows(DefinitionException.class, () -> read(mauvais)).path().startsWith("$.procedural"),
+                    source);
+        }
+        JsonObject sept = avecReservoir();
+        sept.getAsJsonArray("procedural").add(JsonParser.parseString(String.format(piste, "energy.fuel.ratio")));
+        assertThrows(DefinitionException.class, () -> read(sept), "les sources par réserve n'existent qu'au schéma 8");
+
+        JsonObject migre = auSchemaHuit();
+        migre.addProperty("revision", 2);
+        migre.add("migrations", JsonParser.parseString(
+                "[{\"from\": 1, \"rename\": {\"stores\": {\"reservoir\": \"gazole\"}}}]"));
+        assertEquals(java.util.Map.of("reservoir", "gazole"), Revisions.of(assertDoesNotThrow(() -> read(migre)).root())
+                .migrations().get(0).of("stores"));
+        JsonObject ancienne = avecReservoir();
+        ancienne.addProperty("revision", 2);
+        ancienne.add("migrations", migre.get("migrations"));
+        assertThrows(DefinitionException.class, () -> read(ancienne), "le renommage des réserves est du schéma 8");
     }
 
     @Test

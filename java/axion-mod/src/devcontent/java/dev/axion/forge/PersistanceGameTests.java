@@ -578,6 +578,45 @@ public final class PersistanceGameTests {
     }
 
     /**
+     * ADR-182 D6 : les contenus se gardent par nom de réserve ; relus, chacun retrouve la sienne, et celui d'une réserve
+     * que la definition n'a plus reste dans la sauvegarde.
+     */
+    @GameTest(template = "test/plancher", timeoutTicks = 400)
+    public static void adr182_LesReservesSeSauventParNom(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(4.0, DESSUS_DALLE, 4.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule_energies",
+                new Vec3(4.5, DESSUS_DALLE + 0.6, 4.5), DROIT);
+        AxionEntity[] relue = {null};
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds() && vehicule.ignitionVariable() >= 0,
+                        "le véhicule est simulé"))
+                .thenExecute(() -> {
+                    vehicule.setStore(0, 12.5);
+                    vehicule.setStore(1, 30.0);
+                    CompoundTag sauvegarde = new CompoundTag();
+                    helper.assertTrue(vehicule.save(sauvegarde), "sauvegarde refusée");
+                    CompoundTag energie = sauvegarde.getCompound("axion:energy");
+                    helper.assertTrue(energie.getDouble("gazole") == 12.5 && energie.getDouble("eau") == 30.0
+                            && energie.getDouble("battery") == 1.0, "par nom : " + energie);
+                    energie.putDouble("ancienne", 3.0);
+                    vehicule.discard();
+                    relue[0] = rechargerSauvegarde(helper, sauvegarde);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(relue[0].hasPhysicalBounds() && relue[0].ignitionVariable() >= 0,
+                        "l'assembly relue est simulée"))
+                .thenExecute(() -> {
+                    helper.assertTrue(relue[0].storeAmount(0) == 12.5 && relue[0].storeAmount(1) == 30.0,
+                            "chacune la sienne : " + relue[0].storeAmount(0) + " ; " + relue[0].storeAmount(1));
+                    CompoundTag encore = new CompoundTag();
+                    helper.assertTrue(relue[0].save(encore), "sauvegarde refusée");
+                    helper.assertTrue(encore.getCompound("axion:energy").getDouble("ancienne") == 3.0,
+                            "la réserve disparue reste gardée : " + encore.getCompound("axion:energy"));
+                    relue[0].discard();
+                })
+                .thenSucceed();
+    }
+
+    /**
      * ADR-176 D3 : le carburant et la batterie se sauvent ({@code axion:energy}) et se relisent : une assembly relue à
      * demi pleine repart du natif à demi pleine — {@code SET_ENERGY} avant son premier pas —, non pleine comme tout corps
      * neuf, et sa masse suit.

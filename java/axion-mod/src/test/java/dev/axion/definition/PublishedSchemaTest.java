@@ -192,6 +192,25 @@ class PublishedSchemaTest {
     }
 
     @Test
+    @DisplayName("T-284 : docs/schema/definition-8.json est le rendu exact du schéma 8 (ADR-182)")
+    void schemaHuitPublieAJour() throws IOException {
+        Path file = property("axion.schema8.file");
+        String rendu = SchemaExport.render(8);
+
+        if (Boolean.getBoolean("axion.schema.update")) {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, rendu, StandardCharsets.UTF_8);
+        }
+
+        assertTrue(Files.isReadable(file), () -> "schéma publié absent : " + file);
+        String publie = Files.readString(file, StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals(rendu, publie,
+                "le schéma 8 publié a divergé du validateur ; le régénérer avec :\n"
+                        + "  ./gradlew :axion-mod:test --tests dev.axion.definition.PublishedSchemaTest"
+                        + " -Daxion.schema.update=true");
+    }
+
+    @Test
     @DisplayName("ADR-171 D2 : au schéma 6 un socket est un objet qui nomme ses types ; au schéma 5, un nom")
     void contraintesDuSchemaSix() {
         JsonObject six = JsonParser.parseString(SchemaExport.render(6)).getAsJsonObject()

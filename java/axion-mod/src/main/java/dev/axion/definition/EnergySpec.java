@@ -1,6 +1,9 @@
 package dev.axion.definition;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntToDoubleFunction;
@@ -8,7 +11,8 @@ import java.util.function.IntToDoubleFunction;
 /**
  * L'énergie qu'une definition déclare (ADR-176 D3, ADR-182) : ses réserves, dans l'ordre où le natif les range, celle que
  * le moteur brûle et celle que tire le démarreur. Au schéma 7, le réservoir {@code fuel} puis la batterie
- * {@code battery}, chacun s'il est déclaré. Logique pure.
+ * {@code battery}, chacun s'il est déclaré ; au schéma 8, les réserves de {@code stores} dans leur ordre, puis la batterie
+ * {@code battery} si elle est déclarée. Logique pure.
  *
  * @param stores les réserves, au plus {@link #MAX_STORES} ; leur rang est celui du natif
  * @param fuelStore le rang de la réserve que le moteur brûle, ou {@code -1}
@@ -32,14 +36,34 @@ public record EnergySpec(List<Store> stores, int fuelStore, int batteryStore) {
      */
     public static final int MASS_STEPS = 255;
 
+    /** La batterie du démarreur, {@code energy.battery} : son nom de réserve. */
+    public static final String BATTERY = "battery";
+
     /**
      * Une réserve.
      *
      * @param name son nom dans la definition : {@code fuel} et {@code battery} au schéma 7
+     * @param carrier ce qu'elle contient, un identifiant libre ; {@code null} : elle accepte tout (ADR-182 D1)
      * @param capacity sa capacité, dans l'unité de son contenu, positive
      * @param unitMass la masse d'une unité, en kg ; 0 : la masse ne la suit pas
+     * @param maxFillRate les unités qu'on peut y verser par seconde, au plus ; 0 : sans limite
      */
-    public record Store(String name, float capacity, float unitMass) {}
+    public record Store(String name, String carrier, float capacity, float unitMass, float maxFillRate) {
+
+        /** Une réserve qui accepte tout, sans limite de débit. */
+        public Store(String name, float capacity, float unitMass) {
+            this(name, null, capacity, unitMass, 0f);
+        }
+
+        /**
+         * {@return vrai si elle accepte un versement de ce type}
+         *
+         * @param offered le type versé, ou {@code null} sans type
+         */
+        public boolean accepts(String offered) {
+            return carrier == null || carrier.equals(offered);
+        }
+    }
 
     /** Copie les réserves. */
     public EnergySpec {
@@ -59,15 +83,55 @@ public record EnergySpec(List<Store> stores, int fuelStore, int batteryStore) {
         List<Store> stores = new ArrayList<>();
         int fuel = -1;
         int battery = -1;
-        if (energy.get("fuel") instanceof JsonObject tank && number(tank, "capacity") > 0f) {
+        if (energy.get("stores") instanceof JsonArray declared) {
+            for (JsonElement element : declared) {
+                if (element instanceof JsonObject store && number(store, "capacity") > 0f) {
+                    stores.add(new Store(text(store, "name"), text(store, "carrier"), number(store, "capacity"),
+                            number(store, "unit_mass"), number(store, "max_fill_rate")));
+                }
+            }
+            fuel = rank(stores, text(object(object(object(root, "powertrain"), "engine"), "fuel"), "store"));
+            battery = rank(stores, text(starter(root), "store"));
+        } else if (energy.get("fuel") instanceof JsonObject tank && number(tank, "capacity") > 0f) {
             fuel = stores.size();
             stores.add(new Store("fuel", number(tank, "capacity"), number(tank, "unit_mass")));
         }
         if (energy.get("battery") instanceof JsonObject cell && number(cell, "capacity") > 0f) {
             battery = stores.size();
-            stores.add(new Store("battery", number(cell, "capacity"), 0f));
+            stores.add(new Store(BATTERY, number(cell, "capacity"), 0f));
         }
         return new EnergySpec(stores, fuel, battery);
+    }
+
+    private static JsonObject starter(JsonObject root) {
+        return object(object(object(root, "powertrain"), "engine"), "starter");
+    }
+
+    private static JsonObject object(JsonObject parent, String key) {
+        return parent != null && parent.get(key) instanceof JsonObject child ? child : null;
+    }
+
+    private static String text(JsonObject parent, String key) {
+        return parent != null && parent.get(key) instanceof JsonPrimitive value && value.isString()
+                ? value.getAsString() : null;
+    }
+
+    private static int rank(List<Store> stores, String name) {
+        for (int slot = 0; slot < stores.size(); slot++) {
+            if (stores.get(slot).name().equals(name)) {
+                return slot;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * {@return le rang de la réserve de ce nom, ou {@code -1}}
+     *
+     * @param name son nom dans la definition
+     */
+    public int indexOf(String name) {
+        return rank(stores, name);
     }
 
     private static float number(JsonObject parent, String key) {

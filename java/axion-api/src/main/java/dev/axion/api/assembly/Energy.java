@@ -1,11 +1,13 @@
 package dev.axion.api.assembly;
 
 import dev.axion.api.Experimental;
+import java.util.List;
+import java.util.Optional;
 
 /**
- * L'énergie d'un véhicule (ADR-176 D3) : le carburant de son réservoir et la charge de sa batterie, tels que le natif les
- * simule — il brûle, il décharge, il recharge, il arrête le moteur au réservoir vide. Une definition qui ne déclare ni
- * réservoir ni batterie rend zéro partout.
+ * L'énergie d'un véhicule (ADR-176 D3, ADR-182) : ses réserves, telles que le natif les simule — il brûle celle du moteur,
+ * décharge et recharge celle du démarreur, arrête le moteur au réservoir vide. {@link #fuel} et {@link #battery} sont ces
+ * deux-là ; {@link #stores} les donne toutes. Une definition sans énergie rend zéro partout.
  *
  * <p>AXION ne fournit pas de pompe : le contenu la fait, avec {@link #refuel} ou l'action {@code refuel} d'une
  * interaction.
@@ -32,8 +34,23 @@ public interface Energy {
     /** {@return la capacité de la batterie ; 0 sans batterie} */
     double batteryCapacity();
 
+    /** {@return chaque réserve de la definition, dans son ordre ; vide sans énergie (ADR-182 D1)} */
+    default List<EnergyStore> stores() {
+        return List.of();
+    }
+
     /**
-     * Ajoute du carburant, jusqu'à la capacité du réservoir. Le natif le reçoit sans réveiller le véhicule ; un moteur
+     * {@return la réserve de ce nom ; vide si la definition n'en déclare pas}
+     *
+     * @param name son nom
+     */
+    default Optional<EnergyStore> store(String name) {
+        return stores().stream().filter(store -> store.name().equals(name)).findFirst();
+    }
+
+    /**
+     * Ajoute du carburant, jusqu'à la capacité du réservoir. Un réservoir typé (ADR-182 D2) n'accepte rien ainsi : voir
+     * {@link EnergyStore#fill}. Le natif le reçoit sans réveiller le véhicule ; un moteur
      * que le réservoir vide avait arrêté ne repart pas seul : il lui faut un nouveau front du contact.
      *
      * @param litres ce qu'on verse, de 0 ou plus

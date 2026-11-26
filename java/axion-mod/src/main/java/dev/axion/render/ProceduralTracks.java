@@ -94,7 +94,7 @@ public final class ProceduralTracks {
         WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND, WHEEL_WEAR,
         SPEED, FORWARD_SPEED, THROTTLE, BRAKE, STEER, HANDBRAKE, WET,
         RPM, LOAD, RUNNING,
-        FUEL, FUEL_RATIO, BATTERY,
+        FUEL, FUEL_RATIO, BATTERY, STORE_AMOUNT, STORE_RATIO,
         GEAR, SHIFTING,
         SEAT_OCCUPIED,
         SENSOR_COUNT,
@@ -359,12 +359,13 @@ public final class ProceduralTracks {
         Map<String, Integer> sockets = ranks(root, "sockets", "name");
         Map<String, Integer> sensors = ranks(root, "sensors", "name");
         Variables variables = Variables.of(root);
+        EnergySpec energy = EnergySpec.of(root);
         Map<Integer, Integer> slots = new LinkedHashMap<>();
         List<Track> tracks = new ArrayList<>();
         Set<String> notes = new LinkedHashSet<>();
         for (JsonElement entry : entries) {
             if (entry instanceof JsonObject track) {
-                read(track, wheels, seats, sockets, sensors, variables, nodeNames, slots, tracks, notes);
+                read(track, wheels, seats, sockets, sensors, variables, energy, nodeNames, slots, tracks, notes);
             }
         }
         notes.forEach(journal);
@@ -377,7 +378,7 @@ public final class ProceduralTracks {
         }
         return new ProceduralTracks(
                 tracks.toArray(new Track[0]), slots.keySet().stream().mapToInt(Integer::intValue).toArray(), defaults,
-                EnergySpec.of(root));
+                energy);
     }
 
     /**
@@ -414,7 +415,7 @@ public final class ProceduralTracks {
     public static Probe probe(JsonObject root, String source) {
         Variables variables = Variables.of(root);
         Reading reading = reading(source, ranks(root, "wheels", "node"), ranks(root, "seats", "name"),
-                ranks(root, "sockets", "name"), ranks(root, "sensors", "name"), variables);
+                ranks(root, "sockets", "name"), ranks(root, "sensors", "name"), variables, EnergySpec.of(root));
         if (reading == null) {
             return null;
         }
@@ -441,18 +442,18 @@ public final class ProceduralTracks {
 
     private static void read(JsonObject entry, Map<String, Integer> wheels, Map<String, Integer> seats,
             Map<String, Integer> sockets, Map<String, Integer> sensors,
-            Variables variables, List<String> names, Map<Integer, Integer> slots,
+            Variables variables, EnergySpec energy, List<String> names, Map<Integer, Integer> slots,
             List<Track> tracks, Set<String> notes) {
         String source = text(entry, "source");
         String name = text(entry, "node") != null ? text(entry, "node") : text(entry, "bone");
-        Reading reading = reading(source, wheels, seats, sockets, sensors, variables);
+        Reading reading = reading(source, wheels, seats, sockets, sensors, variables, energy);
         if (reading == null) {
             notes.add("piste procédurale ignorée : source « " + source + " » non prise en charge");
             return;
         }
         Reading gate = null;
         if (entry.has("gate")) {
-            gate = reading(text(entry, "gate"), wheels, seats, sockets, sensors, variables);
+            gate = reading(text(entry, "gate"), wheels, seats, sockets, sensors, variables, energy);
             if (gate == null) {
                 notes.add("piste procédurale ignorée : gate « " + text(entry, "gate") + " » non prise en charge");
                 return;
@@ -490,9 +491,9 @@ public final class ProceduralTracks {
     /** {@return ce que lit une source, ou {@code null} si ce jeu ne la prend pas en charge ou que son élément manque} */
     private static Reading reading(String source, Map<String, Integer> wheels, Map<String, Integer> seats,
             Map<String, Integer> sockets, Map<String, Integer> sensors,
-            Variables variables) {
+            Variables variables, EnergySpec energy) {
         Source kind = kind(source);
-        Integer index = kind == null ? null : index(kind, source, wheels, seats, sockets, sensors, variables);
+        Integer index = kind == null ? null : index(kind, source, wheels, seats, sockets, sensors, variables, energy);
         if (kind == null || index == null) {
             return null;
         }
@@ -589,7 +590,12 @@ public final class ProceduralTracks {
                 case "running" -> Source.RUNNING;
                 default -> null;
             };
-            case "energy" -> named ? null : switch (field) {
+            // ADR-182 D5 : energy.<réserve>.amount et .ratio nomment une réserve ; les autres sont celles du schéma 7.
+            case "energy" -> named ? switch (field) {
+                case "amount" -> Source.STORE_AMOUNT;
+                case "ratio" -> Source.STORE_RATIO;
+                default -> null;
+            } : switch (field) {
                 case "fuel" -> Source.FUEL;
                 case "fuel_ratio" -> Source.FUEL_RATIO;
                 case "battery" -> Source.BATTERY;
@@ -616,8 +622,12 @@ public final class ProceduralTracks {
     /** {@return le rang de la roue ou du siège qu'une source nomme, 0 pour une autre, {@code null} s'il manque} */
     private static Integer index(Source kind, String source, Map<String, Integer> wheels, Map<String, Integer> seats,
             Map<String, Integer> sockets, Map<String, Integer> sensors,
-            Variables variables) {
+            Variables variables, EnergySpec energy) {
         return switch (kind) {
+            case STORE_AMOUNT, STORE_RATIO -> {
+                int slot = energy.indexOf(element(source));
+                yield slot < 0 ? null : slot;
+            }
             case WHEEL_SPIN, WHEEL_STEER, WHEEL_COMPRESSION, WHEEL_ON_GROUND, WHEEL_WEAR ->
                     wheels.get(element(source));
             case SEAT_OCCUPIED -> seats.get(element(source));
@@ -770,6 +780,8 @@ public final class ProceduralTracks {
             case RPM -> (double) vehicle.rpm();
             case LOAD -> (double) vehicle.load();
             case RUNNING -> flag((vehicle.flags() & AssemblyState.Vehicle.RUNNING) != 0);
+            case STORE_AMOUNT -> (double) vehicle.storeRatio(track.index()) * energy.capacity(track.index());
+            case STORE_RATIO -> (double) vehicle.storeRatio(track.index());
             case FUEL -> (double) vehicle.storeRatio(energy.fuelStore()) * energy.fuelCapacity();
             case FUEL_RATIO -> (double) vehicle.storeRatio(energy.fuelStore());
             case BATTERY -> (double) vehicle.storeRatio(energy.batteryStore());

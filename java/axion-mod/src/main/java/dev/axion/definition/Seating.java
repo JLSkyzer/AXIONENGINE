@@ -652,6 +652,29 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         public static NodeAction refuel(double litres) {
             return new NodeAction(NodeActionKind.REFUEL, -1, "refuel", Float.NaN, null, -1, null, litres);
         }
+
+        /** Le nom d'un versement typé : {@code refuel { amount }}, distinct du plein en litres. */
+        public static final String FILL = "fill";
+
+        /**
+         * {@return un versement typé (ADR-182 D2)} Ses paramètres portent {@code store} et {@code carrier} quand ils sont
+         * déclarés.
+         *
+         * @param store la réserve visée, ou {@code null} : la première qui accepte le type
+         * @param carrier le type versé, ou {@code null}
+         * @param amount ce qu'elle verse, dans l'unité de la réserve
+         */
+        public static NodeAction fill(String store, String carrier, double amount) {
+            Map<String, Object> parameters = new java.util.LinkedHashMap<>();
+            if (store != null) {
+                parameters.put("store", store);
+            }
+            if (carrier != null) {
+                parameters.put("carrier", carrier);
+            }
+            return new NodeAction(NodeActionKind.REFUEL, -1, FILL, Float.NaN, null, -1, null, amount,
+                    java.util.Collections.unmodifiableMap(parameters));
+        }
     }
 
     /** Ce qu'une action fait à un node (ADR-174 D3). */
@@ -666,7 +689,10 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
         SWAP,
         /** Émettre un événement de contenu (ADR-174 D2) : le nom de l'action est celui de l'événement. */
         EMIT,
-        /** Verser du carburant dans le réservoir (ADR-176 D3) : la valeur est le nombre de litres. */
+        /**
+         * Verser dans un réservoir (ADR-176 D3) : la valeur est le nombre de litres, ou la quantité d'un versement typé
+         * (ADR-182 D2), nommé {@link NodeAction#FILL}.
+         */
         REFUEL,
         /** Poser l'usure du pneu d'une roue, ou de toutes (ADR-176 D4) : la valeur est l'usure, de 0 à 1. */
         SET_WEAR,
@@ -805,7 +831,10 @@ public record Seating(List<Seat> seats, List<Interaction> interactions, List<Str
                 actions.add(NodeAction.setWear(wear.get("wheel") == null ? null : wear.get("wheel").getAsString(),
                         wear.get("value").getAsDouble()));
             } else if (step.get("refuel") instanceof JsonObject refuel) {
-                actions.add(NodeAction.refuel(refuel.get("litres").getAsDouble()));
+                actions.add(refuel.has("litres") ? NodeAction.refuel(refuel.get("litres").getAsDouble())
+                        : NodeAction.fill(refuel.has("store") ? refuel.get("store").getAsString() : null,
+                                refuel.has("carrier") ? refuel.get("carrier").getAsString() : null,
+                                refuel.get("amount").getAsDouble()));
             } else if (step.get("emit_event") instanceof JsonObject emit) {
                 actions.add(NodeAction.emit(emit.get("event").getAsString(),
                         emit.has("value") ? emit.get("value").getAsDouble() : 1.0));

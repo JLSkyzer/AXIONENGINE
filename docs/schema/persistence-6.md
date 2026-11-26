@@ -34,7 +34,7 @@ axion:params  list      modificateurs posés, dans l'ordre de leur pose, absente
 axion:ctrls   list      contrôleurs de véhicule attachés par l'API, dans l'ordre de l'attache, absente sans eux
 axion:rev     int       révision de la definition à laquelle l'état a été écrit (ADR-175 D3), 1 si absente
 axion:sha     string    empreinte SHA-256 du contenu de cette definition, en hexadécimal
-axion:energy  compound  carburant et batterie d'un véhicule à énergie déclarée (ADR-176 D3), absente sans énergie
+axion:energy  compound  contenu de chaque réserve d'énergie, par nom (ADR-176 D3, ADR-182), absente sans énergie
 axion:wheels  compound  usure de chaque pneu, par nom de roue (ADR-176 D4), absente si aucun pneu n'est usé
 ```
 
@@ -75,8 +75,8 @@ l'état a été écrit (ADR-175 D3), réécrites à chaque sauvegarde. À la lec
 
 - un état d'une révision antérieure à celle de la definition est mené jusqu'à elle par ses `migrations`, dont le `from`
   va de la révision gardée à la courante : elles **renomment** ce que l'état nomme — les corps et l'état des nodes
-  (`nodes`), les joints, les variables et leurs sièges, les sockets des attaches, les paramètres des modificateurs —,
-  et rien d'autre ;
+  (`nodes`), les joints, les variables et leurs sièges, les sockets des attaches, les paramètres des modificateurs, les
+  réserves d'énergie (`stores`, schéma 8) —, et rien d'autre ;
 - un contenu qui a changé sans nouvelle révision, ou un état d'une révision plus récente, se restaure par nom (D2) et
   le dit une fois, en avertissement ;
 - `axion:def` suit l'identifiant que la definition a pris : une definition qui en `replaces` une autre reprend ses
@@ -104,11 +104,15 @@ cause mal formée, une quantité non finie — est ignorée, et une cause de l'e
 
 ### `axion:energy`
 
-Le carburant et la charge de la batterie d'un véhicule dont la definition déclare `energy` (ADR-176 D3) : un compound
-`fuel` (`double`, litres) et `battery` (`double`, unités de charge), tels que le natif les a rapportés. Une valeur
-absente, non finie ou négative vaut zéro, et la capacité de la definition borne le reste : un NBT ne fait pas foi. Une
-assembly relue avec cette clé envoie son énergie au natif (`SET_ENERGY`) avant son premier pas ; sans elle, elle naît
-pleine. Le schéma NBT reste à 6 : la clé est optionnelle, et un build qui l'ignore la garde à la réécriture.
+Le contenu des réserves d'un véhicule dont la definition déclare `energy` (ADR-176 D3, ADR-182 D6) : un compound
+`{ nom de la réserve : double }`, chacun dans l'unité de sa réserve, tel que le natif l'a rapporté. Au schéma de
+definition 7, les noms sont `fuel` (litres) et `battery` (unités de charge) ; au schéma 8, ceux d'`energy.stores`, plus
+`battery`. Une valeur non finie ou négative vaut zéro, et la capacité de la definition borne le reste : un NBT ne fait pas
+foi. Une réserve que la sauvegarde n'a pas naît pleine ; celle que la definition n'a plus est gardée telle quelle à la
+sauvegarde suivante (R-1710) et dite une fois au journal (`E-7012`). Les migrations de renommage des `stores` (ADR-175 D3)
+renomment les clés. Une assembly relue avec cette clé envoie son énergie au natif (`SET_ENERGY`) avant son premier pas ;
+sans elle, elle naît pleine. Le schéma NBT reste à 6 : la clé est optionnelle, et un build qui l'ignore la garde à la
+réécriture.
 
 ### `axion:wheels`
 

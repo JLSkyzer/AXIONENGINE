@@ -1,5 +1,5 @@
 // Fichier généré par `cargo run -p axion-codegen --bin gen_definition_builder` depuis
-// docs/schema/definition-7.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
+// docs/schema/definition-8.json (ADR-162 D4) : ne pas le modifier à la main. Le test de parité
 // parite_builder échoue s'il diverge du schéma.
 package dev.axion.api.content;
 
@@ -13,7 +13,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 7, dont il est généré.
+ * Le builder d'une definition (ADR-162 D3, D4) : une méthode par champ du schéma 8, dont il est généré.
  *
  * <p>Il produit le même document qu'un fichier JSON : {@link #build()} rend un {@link DefinitionDocument}
  * que {@link ContentRegistrar#register} enregistre, que le même schéma valide au chargement et dont
@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 public final class DefinitionBuilder {
 
     /** La version du schéma que ce builder écrit dans le champ {@code schema}. */
-    public static final int SCHEMA = 7;
+    public static final int SCHEMA = 8;
 
     private final Map<String, Object> values = new LinkedHashMap<>();
 
@@ -2049,6 +2049,72 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code energy.stores[]}. */
+    @Experimental
+    public static final class EnergyStore {
+
+        private final Map<String, Object> values;
+
+        private EnergyStore(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code energy.stores[].capacity}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyStore capacity(double value) {
+            values.put("capacity", value);
+            return this;
+        }
+
+        /**
+         * {@code energy.stores[].carrier}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyStore carrier(String value) {
+            values.put("carrier", Objects.requireNonNull(value, "carrier"));
+            return this;
+        }
+
+        /**
+         * {@code energy.stores[].max_fill_rate} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyStore maxFillRate(double value) {
+            values.put("max_fill_rate", value);
+            return this;
+        }
+
+        /**
+         * {@code energy.stores[].name} : déclare un nom (store).
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyStore name(String value) {
+            values.put("name", Objects.requireNonNull(value, "name"));
+            return this;
+        }
+
+        /**
+         * {@code energy.stores[].unit_mass}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public EnergyStore unitMass(double value) {
+            values.put("unit_mass", value);
+            return this;
+        }
+    }
+
     /** {@code energy}. */
     @Experimental
     public static final class Energy {
@@ -2081,6 +2147,34 @@ public final class DefinitionBuilder {
             Map<String, Object> nested = object(values, "fuel");
             Objects.requireNonNull(config, "config").accept(new EnergyFuel(nested));
             return this;
+        }
+
+        /**
+         * {@code energy.stores} : au moins 1 élément ; au plus 4 éléments.
+         *
+         * @param name le champ obligatoire {@code name}
+         * @param capacity le champ obligatoire {@code capacity}
+         * @param config règle l'élément, ajouté à la suite des précédents
+         * @return ce réglage, pour enchaîner
+         */
+        public Energy store(String name, double capacity, Consumer<EnergyStore> config) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", Objects.requireNonNull(name, "name"));
+            item.put("capacity", capacity);
+            Objects.requireNonNull(config, "config").accept(new EnergyStore(item));
+            list(values, "stores").add(item);
+            return this;
+        }
+
+        /**
+         * {@code energy.stores} : au moins 1 élément ; au plus 4 éléments.
+         *
+         * @param name le champ obligatoire {@code name}
+         * @param capacity le champ obligatoire {@code capacity}
+         * @return ce réglage, pour enchaîner
+         */
+        public Energy store(String name, double capacity) {
+            return store(name, capacity, item -> { });
         }
     }
 
@@ -2150,6 +2244,28 @@ public final class DefinitionBuilder {
         }
 
         /**
+         * {@code interaction[].actions[].refuel.amount} : plus de 0.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionRefuel amount(double value) {
+            values.put("amount", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].refuel.carrier}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionRefuel carrier(String value) {
+            values.put("carrier", Objects.requireNonNull(value, "carrier"));
+            return this;
+        }
+
+        /**
          * {@code interaction[].actions[].refuel.litres} : plus de 0.
          *
          * @param value la valeur
@@ -2157,6 +2273,17 @@ public final class DefinitionBuilder {
          */
         public InteractionActionRefuel litres(double value) {
             values.put("litres", value);
+            return this;
+        }
+
+        /**
+         * {@code interaction[].actions[].refuel.store} : nom (store) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public InteractionActionRefuel store(String value) {
+            values.put("store", Objects.requireNonNull(value, "store"));
             return this;
         }
     }
@@ -3077,6 +3204,19 @@ public final class DefinitionBuilder {
         public MigrationRename socket(String name, String value) {
             Map<String, Object> table = object(values, "sockets");
             table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "sockets"));
+            return this;
+        }
+
+        /**
+         * {@code migrations[].rename.stores}.
+         *
+         * @param name clé de la table
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public MigrationRename store(String name, String value) {
+            Map<String, Object> table = object(values, "stores");
+            table.put(Objects.requireNonNull(name, "name"), Objects.requireNonNull(value, "stores"));
             return this;
         }
 
@@ -4527,6 +4667,39 @@ public final class DefinitionBuilder {
         }
     }
 
+    /** {@code powertrain.engine.fuel}. */
+    @Experimental
+    public static final class PowertrainEngineFuel {
+
+        private final Map<String, Object> values;
+
+        private PowertrainEngineFuel(Map<String, Object> values) {
+            this.values = values;
+        }
+
+        /**
+         * {@code powertrain.engine.fuel.consumption}.
+         *
+         * @param rows les lignes, une par élément
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineFuel consumption(double[]... rows) {
+            values.put("consumption", rows(rows));
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.fuel.store} : nom (store) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineFuel store(String value) {
+            values.put("store", Objects.requireNonNull(value, "store"));
+            return this;
+        }
+    }
+
     /** {@code powertrain.engine.starter}. */
     @Experimental
     public static final class PowertrainEngineStarter {
@@ -4535,6 +4708,39 @@ public final class DefinitionBuilder {
 
         private PowertrainEngineStarter(Map<String, Object> values) {
             this.values = values;
+        }
+
+        /**
+         * {@code powertrain.engine.starter.charge_rate}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineStarter chargeRate(double value) {
+            values.put("charge_rate", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.starter.draw}.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineStarter draw(double value) {
+            values.put("draw", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.starter.store} : nom (store) dans le modèle.
+         *
+         * @param value la valeur
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngineStarter store(String value) {
+            values.put("store", Objects.requireNonNull(value, "store"));
+            return this;
         }
 
         /**
@@ -4578,6 +4784,18 @@ public final class DefinitionBuilder {
          */
         public PowertrainEngine brakingTorque(double value) {
             values.put("braking_torque", value);
+            return this;
+        }
+
+        /**
+         * {@code powertrain.engine.fuel}.
+         *
+         * @param config règle l'objet ; rappelée, elle complète le même
+         * @return ce réglage, pour enchaîner
+         */
+        public PowertrainEngine fuel(Consumer<PowertrainEngineFuel> config) {
+            Map<String, Object> nested = object(values, "fuel");
+            Objects.requireNonNull(config, "config").accept(new PowertrainEngineFuel(nested));
             return this;
         }
 

@@ -384,6 +384,21 @@ class PersistedStateTest {
     }
 
     @Test
+    @DisplayName("ADR-182 D6 : une migration renomme les réserves d'énergie gardées")
+    void migrationDesReserves() {
+        CompoundTag stored = new CompoundTag();
+        AssemblyTags.putEnergy(stored, java.util.Map.of("reservoir", 12.5, "citerne", 30.0));
+        dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(
+                com.google.gson.JsonParser.parseString("{\"schema\": 8, \"revision\": 2, \"migrations\": ["
+                        + "{\"from\": 1, \"rename\": {\"stores\": {\"reservoir\": \"gazole\"}}}]}").getAsJsonObject());
+        java.util.List<String> notes = new java.util.ArrayList<>();
+        AssemblyTags.evolve(stored, revisions, "sha", 1L, notes::add);
+
+        assertEquals(java.util.Map.of("gazole", 12.5, "citerne", 30.0), AssemblyTags.energy(stored));
+        assertTrue(notes.get(0).endsWith("1 nom(s) changé(s)"), notes.get(0));
+    }
+
+    @Test
     @DisplayName("ADR-175 D3 : un état déjà à la révision courante n'est pas migré ; un contenu changé sans révision, ou un état plus récent, se dit")
     void evolutionDit() {
         dev.axion.definition.Revisions revisions = dev.axion.definition.Revisions.of(

@@ -64,7 +64,7 @@ class PublishedPersistenceSchemaTest {
                 dev.axion.api.assembly.Modifier.Operation.ADD, -80)));
         AssemblyTags.putControllers(stored, List.of("turbo:gestion"));
         AssemblyTags.putRevision(stored, 3, "0".repeat(64));
-        AssemblyTags.putEnergy(stored, 12.5, 0.75);
+        AssemblyTags.putEnergy(stored, java.util.Map.of("fuel", 12.5, "battery", 0.75));
         AssemblyTags.putWheels(stored, java.util.Map.of("roue_arriere_gauche", 0.5));
 
         Set<String> publiees = new TreeSet<>();

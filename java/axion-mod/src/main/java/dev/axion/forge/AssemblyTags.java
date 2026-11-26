@@ -383,36 +383,35 @@ final class AssemblyTags {
     }
 
     /**
-     * Écrit le carburant et la batterie (ADR-176 D3).
+     * Écrit le contenu des réserves, par nom (ADR-176 D3, ADR-182 D6) : au schéma 7, {@code fuel} et {@code battery}.
      *
      * @param stored les clés gardées
-     * @param fuel le carburant, en litres
-     * @param battery la charge de la batterie
+     * @param amounts le contenu de chaque réserve, par nom, celles que la definition n'a plus comprises
      */
-    static void putEnergy(CompoundTag stored, double fuel, double battery) {
+    static void putEnergy(CompoundTag stored, Map<String, Double> amounts) {
         CompoundTag energy = new CompoundTag();
-        energy.putDouble("fuel", fuel);
-        energy.putDouble("battery", battery);
+        amounts.forEach(energy::putDouble);
         stored.put(ENERGY, energy);
     }
 
     /**
-     * {@return le carburant et la batterie gardés, {@code {fuel, battery}}, ou {@code null} sans {@code axion:energy}}
-     * Une valeur absente, non finie ou négative vaut zéro : un NBT ne fait pas foi (obligation 3.13) ; la capacité de la
-     * definition les borne ensuite.
+     * {@return le contenu gardé des réserves, par nom, dans l'ordre du compound, ou {@code null} sans {@code axion:energy}}
+     * Une valeur non finie ou négative vaut zéro : un NBT ne fait pas foi (obligation 3.13) ; la capacité de la definition
+     * la borne ensuite. Une clé qui n'est pas un nombre est ignorée.
      *
      * @param stored les clés gardées
      */
-    static double[] energy(CompoundTag stored) {
+    static Map<String, Double> energy(CompoundTag stored) {
         if (!stored.contains(ENERGY, Tag.TAG_COMPOUND)) {
             return null;
         }
         CompoundTag energy = stored.getCompound(ENERGY);
-        double[] saved = new double[2];
-        String[] keys = {"fuel", "battery"};
-        for (int i = 0; i < saved.length; i++) {
-            double value = energy.contains(keys[i], Tag.TAG_DOUBLE) ? energy.getDouble(keys[i]) : 0.0;
-            saved[i] = Double.isFinite(value) && value > 0.0 ? value : 0.0;
+        Map<String, Double> saved = new java.util.TreeMap<>();
+        for (String name : energy.getAllKeys()) {
+            if (energy.contains(name, Tag.TAG_DOUBLE)) {
+                double value = energy.getDouble(name);
+                saved.put(name, Double.isFinite(value) && value > 0.0 ? value : 0.0);
+            }
         }
         return saved;
     }
@@ -678,7 +677,8 @@ final class AssemblyTags {
 
     /**
      * Applique une migration aux noms que l'état garde (ADR-175 D3) : les nodes, des corps et de l'état des nodes ; les
-     * joints ; les variables, et leurs sièges ; les sockets des attaches ; les paramètres des modificateurs.
+     * joints ; les variables, et leurs sièges ; les sockets des attaches ; les paramètres des modificateurs ; les
+     * réserves d'énergie (ADR-182 D6).
      *
      * @param stored les clés gardées ; modifiées en place
      * @param migration les renommages
@@ -711,6 +711,9 @@ final class AssemblyTags {
         }
         if (stored.contains(WHEELS, Tag.TAG_COMPOUND)) {
             count += renameKeys(stored.getCompound(WHEELS), nodes);
+        }
+        if (stored.contains(ENERGY, Tag.TAG_COMPOUND)) {
+            count += renameKeys(stored.getCompound(ENERGY), migration.of("stores"));
         }
         count += renameField(stored, ATTACHMENTS, "socket", migration.of("sockets"));
         count += renameField(stored, PARAMETERS, "parameter", migration.of("parameters"));

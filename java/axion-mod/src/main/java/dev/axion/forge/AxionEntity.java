@@ -147,8 +147,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** Vrai tant que le natif n'a pas reçu le mouillé que Java tient ({@code SET_WET}). */
     private boolean wetPending;
-    /** L'énergie gardée par la sauvegarde, ou {@code null}. */
-    private double[] savedEnergy;
+    /** L'énergie gardée par la sauvegarde, par nom de réserve, ou {@code null}. */
+    private Map<String, Double> savedEnergy;
+    /** Ce qu'une réserve à débit borné a reçu au tick {@link #fillTick}, par rang (ADR-182 D1). */
+    private final double[] filled = new double[dev.axion.definition.EnergySpec.MAX_STORES];
+    /** Le tick du jeu auquel {@link #filled} se rapporte. */
+    private long fillTick = Long.MIN_VALUE;
     /** Vrai tant que le natif n'a pas reçu l'énergie que Java tient ({@code SET_ENERGY}). */
     private boolean energyPending;
 
@@ -979,7 +983,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     continue;
                 }
                 if (action.kind() == Seating.NodeActionKind.REFUEL) {
-                    refuel(action.value());
+                    if (Seating.NodeAction.FILL.equals(action.name())) {
+                        fillAny((String) action.parameters().get("store"), (String) action.parameters().get("carrier"),
+                                action.value());
+                    } else {
+                        refuel(action.value());
+                    }
                     continue;
                 }
                 if (action.kind() == Seating.NodeActionKind.SET_WEAR) {
@@ -3348,16 +3357,36 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             initial[slot] = spec.capacity(slot);
         }
         if (savedEnergy != null) {
-            if (spec.fuelStore() >= 0) {
-                initial[spec.fuelStore()] = Math.min(savedEnergy[0], spec.fuelCapacity());
-            }
-            if (spec.batteryStore() >= 0) {
-                initial[spec.batteryStore()] = Math.min(savedEnergy[1], spec.batteryCapacity());
+            // Par nom (ADR-182 D6) : une réserve nouvelle naît pleine ; celle que la definition n'a plus reste gardée.
+            for (int slot = 0; slot < spec.stores().size(); slot++) {
+                Double saved = savedEnergy.get(spec.stores().get(slot).name());
+                if (saved != null) {
+                    initial[slot] = Math.min(saved, spec.capacity(slot));
+                }
             }
             energyPending = true;
+            List<String> gone = savedEnergy.keySet().stream().filter(name -> spec.indexOf(name) < 0).toList();
+            if (!gone.isEmpty() && !level().isClientSide()) {
+                LOGGER.warn("AXION : E-7012 assembly {} — énergie gardée pour des réserves que {} ne déclare plus : {}",
+                        getUUID(), definitionId, gone);
+            }
         }
         stores = initial;
         syncFuelMass();
+    }
+
+    /** {@return le contenu à sauvegarder, par nom : les réserves de la definition, et celles qu'elle n'a plus} */
+    private Map<String, Double> savedAmounts() {
+        initEnergy();
+        Map<String, Double> amounts = new java.util.TreeMap<>();
+        if (savedEnergy != null) {
+            amounts.putAll(savedEnergy);
+        }
+        dev.axion.definition.EnergySpec spec = energySpec();
+        for (int slot = 0; slot < spec.stores().size(); slot++) {
+            amounts.put(spec.stores().get(slot).name(), stores[slot]);
+        }
+        return amounts;
     }
 
     /** {@return le contenu de la réserve au rang {@code slot}, 0 sans réserve à ce rang} */
@@ -3382,8 +3411,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     }
 
     /**
-     * Verse du carburant dans le réservoir (ADR-176 D3), jusqu'à sa capacité ; le natif le reçoit par {@code SET_ENERGY},
-     * sans que le véhicule soit réveillé.
+     * Verse du carburant dans le réservoir sans type que le moteur brûle (ADR-176 D3), jusqu'à sa capacité ; un réservoir
+     * typé n'accepte rien sans type (ADR-182 D2). Le natif le reçoit par {@code SET_ENERGY}, sans que le véhicule soit
+     * réveillé.
      *
      * @param litres ce qu'on verse, de 0 ou plus
      * @return ce qui est entré dans le réservoir, en litres
@@ -3398,13 +3428,98 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (!(spec.fuelCapacity() > 0f)) {
             return 0.0;
         }
+        return fillStore(spec.fuelStore(), null, litres);
+    }
+
+    /**
+     * Verse une quantité d'un type dans la réserve au rang {@code slot} (ADR-182 D2) : rien pour un autre type, jamais
+     * plus que sa place ni que son débit sur le tick du jeu.
+     *
+     * @param slot le rang de la réserve
+     * @param carrier le type versé, ou {@code null}
+     * @param amount ce qu'on verse, de 0 ou plus, dans l'unité de la réserve
+     * @return ce qui est entré
+     * @throws IllegalArgumentException si {@code amount} est négatif ou n'est pas fini
+     */
+    public double fillStore(int slot, String carrier, double amount) {
+        AuthoritativeThread.require();
+        if (!Double.isFinite(amount) || amount < 0.0) {
+            throw new IllegalArgumentException("quantité : un nombre fini, 0 ou plus, et non " + amount);
+        }
+        dev.axion.definition.EnergySpec spec = energySpec();
+        if (!(spec.capacity(slot) > 0f) || !spec.stores().get(slot).accepts(carrier)) {
+            return 0.0;
+        }
         initEnergy();
-        int slot = spec.fuelStore();
-        double before = stores[slot];
-        stores[slot] = Math.min(spec.fuelCapacity(), before + litres);
+        double accepted = Math.min(amount, spec.capacity(slot) - stores[slot]);
+        float rate = spec.stores().get(slot).maxFillRate();
+        if (rate > 0f) {
+            long tick = level().getGameTime();
+            if (tick != fillTick) {
+                java.util.Arrays.fill(filled, 0.0);
+                fillTick = tick;
+            }
+            accepted = Math.min(accepted, rate * dev.axion.net.ServerClock.TICK_MILLIS / 1000.0 - filled[slot]);
+        }
+        if (!(accepted > 0.0)) {
+            return 0.0;
+        }
+        filled[slot] += accepted;
+        stores[slot] += accepted;
         energyPending = true;
         syncFuelMass();
-        return stores[slot] - before;
+        return accepted;
+    }
+
+    /**
+     * Verse dans la réserve nommée, ou, sans nom, dans la première de la definition qui accepte ce type et où quelque
+     * chose entre (ADR-182 D2).
+     *
+     * @param store le nom de la réserve, ou {@code null}
+     * @param carrier le type versé, ou {@code null}
+     * @param amount ce qu'on verse
+     * @return ce qui est entré
+     */
+    public double fillAny(String store, String carrier, double amount) {
+        dev.axion.definition.EnergySpec spec = energySpec();
+        if (store != null) {
+            int slot = spec.indexOf(store);
+            return slot < 0 ? 0.0 : fillStore(slot, carrier, amount);
+        }
+        for (int slot = 0; slot < spec.stores().size(); slot++) {
+            double entered = fillStore(slot, carrier, amount);
+            if (entered > 0.0) {
+                return entered;
+            }
+        }
+        return 0.0;
+    }
+
+    /**
+     * Pose le contenu de la réserve au rang {@code slot}, ramené à sa capacité ; sans réserve à ce rang, rien.
+     *
+     * @param slot le rang de la réserve
+     * @param amount le contenu, de 0 ou plus
+     * @throws IllegalArgumentException si {@code amount} est négatif ou n'est pas fini
+     */
+    public void setStore(int slot, double amount) {
+        AuthoritativeThread.require();
+        if (!Double.isFinite(amount) || amount < 0.0) {
+            throw new IllegalArgumentException("contenu : un nombre fini, 0 ou plus, et non " + amount);
+        }
+        dev.axion.definition.EnergySpec spec = energySpec();
+        if (!(spec.capacity(slot) > 0f)) {
+            return;
+        }
+        initEnergy();
+        stores[slot] = Math.min(spec.capacity(slot), amount);
+        energyPending = true;
+        syncFuelMass();
+    }
+
+    /** {@return le contenu de la réserve au rang {@code slot}, dans son unité ; 0 sans réserve à ce rang} */
+    public double storeAmount(int slot) {
+        return stored(slot);
     }
 
     /**
@@ -3418,13 +3533,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         if (!Double.isFinite(charge) || charge < 0.0) {
             throw new IllegalArgumentException("charge : un nombre fini, 0 ou plus, et non " + charge);
         }
-        dev.axion.definition.EnergySpec spec = energySpec();
-        if (!(spec.batteryCapacity() > 0f)) {
-            return;
-        }
-        initEnergy();
-        stores[spec.batteryStore()] = Math.min(spec.batteryCapacity(), charge);
-        energyPending = true;
+        setStore(energySpec().batteryStore(), charge);
     }
 
     /** {@return la charge de la batterie ; 0 sans batterie (ADR-176 D3)} */
@@ -4092,7 +4201,7 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-176 D3 : le carburant et la batterie, tels que le natif les a rapportés ; sans énergie déclarée, la clé
         // gardée du NBT reste.
         if (!inert && energySpec().declared()) {
-            AssemblyTags.putEnergy(stored, fuel(), battery());
+            AssemblyTags.putEnergy(stored, savedAmounts());
         }
         // ADR-176 D4 : l'usure des pneus, par nom de roue ; celle d'une roue que la definition ne déclare plus reste.
         initWear();

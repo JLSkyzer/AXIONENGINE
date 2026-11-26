@@ -113,6 +113,11 @@ final class VehicleSpec {
      */
     static void check(JsonObject root, BiConsumer<String, String> fault) {
         if (!declared(root)) {
+            // ADR-182 : une réserve vit au natif, dans la section d'un véhicule.
+            if (object(root, "energy") != null && object(root, "energy").get("stores") != null) {
+                fault.accept("$.energy.stores", "les réserves vivent sur un véhicule : la definition déclare des roues"
+                        + " (wheels)");
+            }
             return;
         }
         if (!(root.get("kind") instanceof JsonPrimitive kind) || !"vehicle".equals(kind.getAsString())) {
@@ -175,6 +180,95 @@ final class VehicleSpec {
         }
     }
 
+    /** La consommation d'un moteur : charge de 0 à 1, strictement croissante, unités par heure. */
+    private static void checkConsumption(JsonObject owner, String at, BiConsumer<String, String> fault) {
+        if (!(owner.get("consumption") instanceof JsonArray curve) || curve.isEmpty()) {
+            fault.accept(at + ".consumption", "un réservoir déclare sa consommation : un point au moins");
+        } else if (curve.size() > MAX_CONSUMPTION_POINTS) {
+            fault.accept(at + ".consumption", "au plus " + MAX_CONSUMPTION_POINTS + " points");
+        } else {
+            double previous = -1;
+            for (int i = 0; i < curve.size(); i++) {
+                JsonArray point = curve.get(i).getAsJsonArray();
+                double load = point.get(0).getAsDouble();
+                if (load < 0 || load > 1 || load <= previous) {
+                    fault.accept(at + ".consumption[" + i + "]", "les charges sont dans [0, 1], strictement croissantes");
+                }
+                if (point.get(1).getAsDouble() < 0 || point.get(1).getAsDouble() > MAX_CONSUMPTION) {
+                    fault.accept(at + ".consumption[" + i + "]", "la consommation est de 0 à " + MAX_CONSUMPTION
+                            + " litres (ou unités) par heure");
+                }
+                previous = load;
+            }
+        }
+    }
+
+    /** ADR-182 D1 : la capacité, la masse et le nom de chaque réserve, et leur nombre, batterie comprise. */
+    private static void checkStores(JsonObject root, JsonObject energy, BiConsumer<String, String> fault) {
+        JsonArray stores = energy.getAsJsonArray("stores");
+        boolean dryMass = object(root, "physics") != null && object(root, "physics").get("mass") != null;
+        boolean battery = energy.get("battery") != null;
+        if (battery && stores.size() >= EnergySpec.MAX_STORES) {
+            fault.accept("$.energy.stores", "au plus " + EnergySpec.MAX_STORES + " réserves, la batterie comprise");
+        }
+        for (int i = 0; i < stores.size(); i++) {
+            JsonObject store = stores.get(i).getAsJsonObject();
+            String at = "$.energy.stores[" + i + "]";
+            if (!(number(store, "capacity", 0f) > 0f) || number(store, "capacity", 0f) > MAX_FUEL_CAPACITY) {
+                fault.accept(at + ".capacity", "la capacité d'une réserve est de 0 (exclu) à " + MAX_FUEL_CAPACITY);
+            }
+            if (number(store, "unit_mass", 0f) < 0f || number(store, "unit_mass", 0f) > MAX_UNIT_MASS) {
+                fault.accept(at + ".unit_mass", "la masse d'une unité est de 0 à " + MAX_UNIT_MASS + " kg");
+            }
+            if (number(store, "unit_mass", 0f) > 0f && !dryMass) {
+                fault.accept(at + ".unit_mass", "la masse suit la réserve : la definition déclare physics.mass, la masse"
+                        + " à vide");
+            }
+            if (battery && EnergySpec.BATTERY.equals(string(store, "name"))) {
+                fault.accept(at + ".name", "« battery » est la batterie qu'energy.battery déclare");
+            }
+        }
+    }
+
+    /**
+     * ADR-182 D1 : la réserve que brûle le moteur ({@code engine.fuel}) et celle du démarreur ({@code starter.store}), qui
+     * n'existent qu'avec {@code stores}, distinctes.
+     */
+    private static void checkEngineStores(JsonObject engine, boolean stores, JsonObject energy,
+            BiConsumer<String, String> fault) {
+        JsonObject fuel = object(engine, "fuel");
+        JsonObject starter = object(engine, "starter");
+        String starterStore = string(starter, "store");
+        if (fuel != null) {
+            if (!stores) {
+                fault.accept("$.powertrain.engine.fuel", "le moteur brûle une réserve d'energy.stores");
+            }
+            checkConsumption(fuel, "$.powertrain.engine.fuel", fault);
+        }
+        if (starter == null) {
+            return;
+        }
+        String at = "$.powertrain.engine.starter";
+        if (starterStore == null) {
+            if (starter.get("draw") != null || starter.get("charge_rate") != null) {
+                fault.accept(at, "« draw » et « charge_rate » vont avec « store » ; une batterie energy.battery déclare"
+                        + " les siens");
+            }
+            return;
+        }
+        if (!stores) {
+            fault.accept(at + ".store", "le démarreur tire une réserve d'energy.stores");
+        }
+        if (energy != null && energy.get("battery") != null) {
+            fault.accept(at + ".store", "le démarreur tire energy.battery ou une réserve, pas les deux");
+        }
+        if (starterStore.equals(string(fuel, "store"))) {
+            fault.accept(at + ".store", "le moteur et le démarreur ont chacun leur réserve");
+        }
+        atLeast(starter, "draw", at, true, fault);
+        atLeast(starter, "charge_rate", at, true, fault);
+    }
+
     /**
      * ADR-176 D3 : l'énergie d'un véhicule. Un réservoir déclare sa capacité et sa consommation (charge de 0 à 1,
      * strictement croissante, litres par heure) ; une batterie, sa capacité, ce que le démarreur en tire et ce que le
@@ -182,15 +276,28 @@ final class VehicleSpec {
      */
     private static void checkEnergy(JsonObject root, BiConsumer<String, String> fault) {
         JsonObject energy = object(root, "energy");
+        JsonObject powertrain = object(root, "powertrain");
+        JsonObject engine = object(powertrain, "engine");
+        boolean stores = energy != null && energy.get("stores") instanceof JsonArray;
+        checkEngineStores(engine, stores, energy, fault);
         if (energy == null) {
             return;
         }
-        JsonObject powertrain = object(root, "powertrain");
+        if (stores) {
+            checkStores(root, energy, fault);
+            if (energy.get("fuel") != null) {
+                fault.accept("$.energy.fuel", "avec « stores », le réservoir est une réserve que le moteur nomme"
+                        + " (powertrain.engine.fuel)");
+            }
+        }
+        // Une réserve se déclare sans moteur (ADR-182 D1) ; le réservoir et la batterie d'avant nourrissent un moteur.
         if (powertrain == null) {
-            fault.accept("$.energy", "l'énergie nourrit un groupe motopropulseur : la definition en déclare un");
+            if (!stores || energy.get("fuel") != null || energy.get("battery") != null) {
+                fault.accept("$.energy", "l'énergie nourrit un groupe motopropulseur : la definition en déclare un");
+            }
             return;
         }
-        JsonObject fuel = object(energy, "fuel");
+        JsonObject fuel = stores ? null : object(energy, "fuel");
         if (fuel != null) {
             String at = "$.energy.fuel";
             if (!(number(fuel, "capacity", 0f) > 0f) || number(fuel, "capacity", 0f) > MAX_FUEL_CAPACITY) {
@@ -205,25 +312,7 @@ final class VehicleSpec {
                 fault.accept(at + ".unit_mass", "la masse suit le carburant : la definition déclare physics.mass, la masse"
                         + " à sec");
             }
-            if (!(fuel.get("consumption") instanceof JsonArray curve) || curve.isEmpty()) {
-                fault.accept(at + ".consumption", "un réservoir déclare sa consommation : un point au moins");
-            } else if (curve.size() > MAX_CONSUMPTION_POINTS) {
-                fault.accept(at + ".consumption", "au plus " + MAX_CONSUMPTION_POINTS + " points");
-            } else {
-                double previous = -1;
-                for (int i = 0; i < curve.size(); i++) {
-                    JsonArray point = curve.get(i).getAsJsonArray();
-                    double load = point.get(0).getAsDouble();
-                    if (load < 0 || load > 1 || load <= previous) {
-                        fault.accept(at + ".consumption[" + i + "]", "les charges sont dans [0, 1], strictement croissantes");
-                    }
-                    if (point.get(1).getAsDouble() < 0 || point.get(1).getAsDouble() > MAX_CONSUMPTION) {
-                        fault.accept(at + ".consumption[" + i + "]", "la consommation est de 0 à " + MAX_CONSUMPTION
-                                + " litres par heure");
-                    }
-                    previous = load;
-                }
-            }
+            checkConsumption(fuel, at, fault);
         }
         JsonObject battery = object(energy, "battery");
         if (battery != null) {
@@ -456,14 +545,16 @@ final class VehicleSpec {
                 number(stability, "yaw_tolerance", STABILITY_YAW_TOLERANCE));
         // ADR-176 D3, ADR-182 : les réserves, celle que le moteur brûle et celle du démarreur (255 : aucune).
         EnergySpec reserves = EnergySpec.of(root);
-        JsonObject battery = object(object(root, "energy"), "battery");
+        JsonObject starter = object(engine, "starter");
+        boolean ownStore = string(starter, "store") != null;
+        JsonObject battery = ownStore ? starter : object(object(root, "energy"), "battery");
         out.putShort((short) consumption(root).size());
         out.put((byte) reserves.fuelStore());
         out.put((byte) reserves.batteryStore());
         for (int slot = 0; slot < EnergySpec.MAX_STORES; slot++) {
             out.putFloat(reserves.capacity(slot));
         }
-        put(out, number(battery, "starter_draw", 0f), number(battery, "charge_rate", 0f));
+        put(out, number(battery, ownStore ? "draw" : "starter_draw", 0f), number(battery, "charge_rate", 0f));
 
         Set<String> steered = listOr(steering, "steered_wheels");
         Set<String> driven = listOr(powertrain, "drive_wheels");
@@ -516,9 +607,13 @@ final class VehicleSpec {
         }
     }
 
-    /** {@return les points de consommation du réservoir, charge puis litres par heure ; vide sans réservoir} */
+    /**
+     * {@return les points de consommation de la réserve que le moteur brûle, charge puis unités par heure ; vide sans} Au
+     * schéma 8, ceux de {@code powertrain.engine.fuel} ; avant, ceux du réservoir {@code energy.fuel}.
+     */
     private static JsonArray consumption(JsonObject root) {
-        JsonObject fuel = object(object(root, "energy"), "fuel");
+        JsonObject engine = object(object(root, "powertrain"), "engine");
+        JsonObject fuel = object(engine, "fuel") != null ? object(engine, "fuel") : object(object(root, "energy"), "fuel");
         return fuel != null && fuel.get("consumption") instanceof JsonArray curve ? curve : new JsonArray();
     }
 

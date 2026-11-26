@@ -21,8 +21,18 @@ import java.util.Map;
  */
 public record Revisions(int revision, List<Migration> migrations, List<String> replaces) {
 
-    /** Ce qu'une migration renomme, dans l'ordre de la documentation. */
-    public static final List<String> KINDS = List.of("nodes", "joints", "variables", "seats", "sockets", "parameters");
+    /** Ce qu'une migration renomme, dans l'ordre de la documentation ; {@code stores} au schéma 8 (ADR-182 D6). */
+    public static final List<String> KINDS =
+            List.of("nodes", "joints", "variables", "seats", "sockets", "parameters", "stores");
+
+    /**
+     * {@return ce qu'une migration renomme au schéma {@code version}}
+     *
+     * @param version le schéma
+     */
+    static List<String> kinds(int version) {
+        return version >= 8 ? KINDS : KINDS.subList(0, KINDS.size() - 1);
+    }
 
     /** Migrations d'une definition, au plus. */
     public static final int MAX_MIGRATIONS = 64;
