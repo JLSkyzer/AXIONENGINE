@@ -2726,3 +2726,14 @@ positive ou au-dessus du seuil, et la chute de référence est une **bille**, qu
 
 **Règle.** Un test d'impulsion compare à une grandeur physique (`m·g·dt` au repos, `m·v` au choc), sur une forme à
 plusieurs points d'appui. Quand une règle dit « pour chaque paire », vérifier que la valeur est bien celle de la paire.
+
+## 2026-11-26 | Une poussée continue n'arrivait qu'au tiers à une entité
+
+**Ce qui a mal tourné.** ADR-146 a fait émettre un seul `CONTACT_IMPULSE` par paire et par tick, le plus fort. Le
+consommateur écrit avant (ADR-123, T5c) additionnait les événements des sous-pas : il n'en recevait plus qu'un.
+
+**Cause.** La cadence d'un événement a changé sans relire ceux qui le consomment ; aucun test ne disait ce qu'une
+entité reçoit sur un tick entier.
+
+**Règle.** Quand on change la cadence ou l'agrégation d'un événement, chercher chaque consommateur et ce qu'il
+additionne, compte ou compare ; poser un test qui compare le tick à une grandeur physique (`m·g·dt`).

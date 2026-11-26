@@ -318,6 +318,92 @@ fn t304_une_entite_declaree_deux_fois_garde_sa_premiere_declaration() {
     assert_eq!(driver.world_mut(0).unwrap().entity_proxy_count(), 1);
 }
 
+/// Une bille posée sur le dessus d'une entité-boîte, sous la pesanteur, lancée de côté pour que le contact frotte.
+fn bille_posee_sur_entite() -> SimDriver {
+    let mut driver = SimDriver::new();
+    driver.apply_dimension_env(0, Vec3::new(0.0, -9.81, 0.0), Vec3::ZERO, None);
+    let corps = bille(&mut driver, 0.0);
+    driver.begin_tick();
+    let mut dessous = entite(42, 0.0, 0.0);
+    dessous.center = DVec3::new(0.0, -1.5, 0.0);
+    driver.set_entity_proxies(0, vec![dessous]);
+    driver.sync_entity_proxies();
+    lancer(&mut driver, corps, 0.5);
+    driver
+}
+
+#[test]
+fn t304_une_poussee_continue_rapporte_tout_ce_que_l_entite_porte_sur_le_tick() {
+    // ADR-123 §7 : la bille (523,6 kg) pèse sur l'entité à chaque sous-pas. Le tick de trois sous-pas rapporte ses
+    // trois impulsions, m·g·3/60 ≈ 257 N·s, et non celle d'un seul sous-pas.
+    let mut driver = bille_posee_sur_entite();
+    let mut dernier = Vec::new();
+    for _ in 0..8 {
+        driver.advance_all(3.0 / 60.0);
+        dernier = du_genre(&driver.drain_events(), event_kind::CONTACT_IMPULSE);
+    }
+
+    assert_eq!(dernier.len(), 1, "{dernier:?}");
+    let poids = core::f32::consts::PI / 6.0 * 1000.0 * 9.81 * 3.0 / 60.0;
+    assert!(
+        (dernier[0].impulse - poids).abs() < 0.05 * poids,
+        "impulsion du tick : {} N·s, attendu {poids}",
+        dernier[0].impulse
+    );
+}
+
+#[test]
+fn t304_les_impulsions_d_une_entite_s_additionnent_sur_les_sous_pas_le_detail_du_plus_fort() {
+    // ADR-146, précision du 2026-11-26 : toujours un CONTACT_IMPULSE par paire et par tick ; avec une entité, ses
+    // impulsions, normale et tangentielle, sont la somme de celles des sous-pas, et le reste est le détail du plus
+    // fort. Le témoin avance d'un sous-pas à la fois sur la même scène.
+    let mut temoin = bille_posee_sur_entite();
+    let mut driver = bille_posee_sur_entite();
+    let mut ticks_a_plusieurs_sous_pas = 0;
+    let mut tangentielle = 0.0;
+    for tick in 0..8 {
+        let mut par_sous_pas = Vec::new();
+        for _ in 0..3 {
+            temoin.advance_all(1.0 / 60.0);
+            par_sous_pas.extend(du_genre(
+                &temoin.drain_events(),
+                event_kind::CONTACT_IMPULSE,
+            ));
+        }
+        driver.advance_all(3.0 / 60.0);
+        let impulsions = du_genre(&driver.drain_events(), event_kind::CONTACT_IMPULSE);
+
+        let attendu = par_sous_pas
+            .iter()
+            .copied()
+            .reduce(|fort, suivant| {
+                if suivant.impulse > fort.impulse {
+                    suivant
+                } else {
+                    fort
+                }
+            })
+            .map(|fort| PhysicsEvent {
+                impulse: par_sous_pas.iter().map(|e| e.impulse).sum(),
+                tangent_impulse: par_sous_pas.iter().map(|e| e.tangent_impulse).sum(),
+                ..fort
+            });
+        assert_eq!(
+            impulsions,
+            attendu.into_iter().collect::<Vec<_>>(),
+            "tick {tick} : sous-pas {par_sous_pas:?}"
+        );
+        if par_sous_pas.len() > 1 {
+            ticks_a_plusieurs_sous_pas += 1;
+        }
+        tangentielle += impulsions.iter().map(|e| e.tangent_impulse).sum::<f32>();
+    }
+    // Sans plusieurs sous-pas au contact, la somme ne se distinguerait pas du plus fort ; sans frottement, la somme
+    // tangentielle ne serait pas éprouvée.
+    assert!(ticks_a_plusieurs_sous_pas > 0);
+    assert!(tangentielle > 0.0, "la scène doit frotter");
+}
+
 /// Le premier `CONTACT_START` d'une bille lancée à 5 m/s vers une entité en x = 3.
 fn premier_choc(driver: &mut SimDriver) -> PhysicsEvent {
     for _ in 0..20 {

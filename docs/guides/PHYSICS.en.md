@@ -206,7 +206,9 @@ room is counted, never silenced.
 
 A contact event stands for **the whole pair** (R-615): its normal and tangential impulse is the
 sum of what all its points carried; its point, normal and materials are those of the deepest
-loaded point. A pair emits a single `CONTACT_IMPULSE` per tick, that of its strongest substep.
+loaded point. A pair emits a single `CONTACT_IMPULSE` per tick, that of its strongest substep. With a **vanilla
+entity**, its impulses are the sum over every substep of the tick: the entity receives everything the assembly
+carried into it (ADR-123).
 
 ## Degradation
 

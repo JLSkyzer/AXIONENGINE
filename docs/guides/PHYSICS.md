@@ -209,7 +209,9 @@ place est compté, jamais tu.
 Un événement de contact vaut pour **la paire entière** (R-615) : son impulsion, normale et
 tangentielle, est la somme de ce qu'ont porté tous ses points ; son point, sa normale et ses
 matériaux sont ceux du point le plus profond parmi les porteurs. Une paire n'émet qu'un
-`CONTACT_IMPULSE` par tick, celui de son sous-pas le plus fort.
+`CONTACT_IMPULSE` par tick, celui de son sous-pas le plus fort. Avec une **entité vanilla**, ses
+impulsions sont la somme de celles de tous les sous-pas du tick : l'entité reçoit tout ce que l'assembly lui a porté
+(ADR-123).
 
 ## Dégradation
 

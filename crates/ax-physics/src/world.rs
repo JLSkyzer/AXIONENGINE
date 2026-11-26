@@ -406,6 +406,9 @@ pub struct PhysicsWorld {
     /// (R-1011, ADR-146) : versée au lot une fois, après le dernier sous-pas, dans l'ordre
     /// des clés (R-1020).
     tick_impulses: BTreeMap<(u64, u64), PhysicsEvent>,
+    /// Pour chaque paire au contact d'une entité vanilla, la somme depuis le début du tick de ses impulsions,
+    /// normale puis tangentielle (ADR-123 §7) : celles que son événement rapporte. Consultée par clé.
+    tick_entity_impulses: BTreeMap<(u64, u64), (f32, f32)>,
     /// Bornes de vitesse propres à un corps (R-180). À défaut, les valeurs par
     /// défaut de la fiche (300 m/s, 100 rad/s) s'appliquent. Consultée par clé,
     /// jamais itérée (R-1020).
@@ -641,6 +644,7 @@ impl PhysicsWorld {
             aggregated_events: 0,
             event_slots: HashMap::new(),
             tick_impulses: BTreeMap::new(),
+            tick_entity_impulses: BTreeMap::new(),
             velocity_limits: HashMap::new(),
             last_valid: HashMap::new(),
             guard_flags: HashMap::new(),
@@ -984,7 +988,8 @@ impl PhysicsWorld {
             self.accumulator = (self.accumulator - dt).max(0.0);
             substeps += 1;
         }
-        // R-1011 (ADR-146) : une impulsion par paire et par tick, la plus forte des sous-pas.
+        // R-1011 (ADR-146) : un CONTACT_IMPULSE par paire et par tick, celui du sous-pas le plus fort — avec une
+        // entité vanilla, ses impulsions sont celles de tous les sous-pas (ADR-123 §7).
         self.flush_contact_impulses();
 
         // Étapes 7 à 12 (C-40, R-660) : la **chaîne de dommage** s'exécute une seule fois
@@ -1504,7 +1509,9 @@ impl PhysicsWorld {
     /// Un seul événement par paire et par tick : le contact [`solved_contact`] du sous-pas,
     /// et des sous-pas, le plus fort — l'agrégation par paire de R-1011, impulsion maximale
     /// conservée (ADR-146), que [`Self::flush_contact_impulses`] verse au lot après le
-    /// dernier sous-pas. Le seuil écarte les contacts légers de la remontée vers Java — et, au
+    /// dernier sous-pas. Une entité vanilla, elle, reçoit tout ce qu'elle a porté sur le tick :
+    /// les impulsions des sous-pas de sa paire s'additionnent (ADR-123 §7, précision du
+    /// 2026-11-26), le détail restant celui du plus fort. Le seuil écarte les contacts légers de la remontée vers Java — et, au
     /// passage, le bruit des contacts au repos, dont l'impulsion par pas (`mg·dt`) reste
     /// faible. La voie « sous seuil mais vers C-41 » (usure) attend C-41.
     fn collect_contact_impulses(&mut self) {
@@ -1517,7 +1524,13 @@ impl PhysicsWorld {
         for (a, b) in pairs {
             if let Some(event) = self.build_contact_event(a, b, event_kind::CONTACT_IMPULSE) {
                 if event.impulse >= threshold {
-                    keep_strongest(&mut self.tick_impulses, pair_key(a, b), event);
+                    let pair = pair_key(a, b);
+                    if event.data & event_data::CONTACT_OTHER_ENTITY != 0 {
+                        let total = self.tick_entity_impulses.entry(pair).or_default();
+                        total.0 += event.impulse;
+                        total.1 += event.tangent_impulse;
+                    }
+                    keep_strongest(&mut self.tick_impulses, pair, event);
                 }
             }
         }
@@ -1525,7 +1538,12 @@ impl PhysicsWorld {
 
     /// Verse au lot les impulsions retenues du tick, dans l'ordre des paires (R-1020).
     fn flush_contact_impulses(&mut self) {
-        for event in core::mem::take(&mut self.tick_impulses).into_values() {
+        let mut totals = core::mem::take(&mut self.tick_entity_impulses);
+        for (pair, mut event) in core::mem::take(&mut self.tick_impulses) {
+            if let Some((normal, tangent)) = totals.remove(&pair) {
+                event.impulse = normal;
+                event.tangent_impulse = tangent;
+            }
             self.push_event(event);
         }
     }
