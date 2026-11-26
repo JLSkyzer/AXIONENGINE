@@ -3972,7 +3972,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [ ] ADR-184 (CAP-14) — **accepté** le 2026-11-26 (A35), **mis en œuvre** le même jour (descripteur 18,
            `AXION-20`, R-1665) : essai à deux joueurs vert sans film (2/2), **rouge filmé (2/2)**. Reste : sous charge,
            le retard estimé par le serveur varie (7 à 10 ticks relevés) et la place répliquée glisse jusqu'à 1,05 bloc
-           (ADR-184, « Précision — les essais ») ; piste à choisir (question à Killian).
+           (ADR-184, « Précision — les essais »). Choix de Killian (2026-11-26) : lisser le retard côté serveur ;
+           d'abord relever le retard estimé et le retard réel du porté, puis corriger, deux passages filmés et deux sans.
      - [ ] ADR-183 (CAP-34, CAP-11) — **accepté** le 2026-11-26 (A34) : forces et couples, téléporter, figer,
            renommer ; tranches de l'ADR.
      - [ ] `motor.<nom>.regen` (ADR-182, question F, acceptée le 2026-11-26).
