@@ -54,6 +54,10 @@ public final class EssaiPorteur {
     /** Un second joueur, l'observateur ({@link EssaiObservateur}), regarde le porté : le serveur l'attend aussi. */
     private static final boolean DEUX = "1".equals(System.getenv("AXION_ESSAI_PORTEUR_DEUX"));
     private static final String OBSERVATEUR = "Observateur";
+    /** Un véhicule d'essai au siège réglé : le porté s'y assoit au volant au lieu d'être lâché dessus (ADR-177). */
+    private static final String SIEGE = System.getenv("AXION_ESSAI_SIEGE");
+    /** La place où il s'assoit : au volant, la voiture reste ; ailleurs, le serveur la conduit. */
+    private static final String PLACE = System.getenv().getOrDefault("AXION_ESSAI_PLACE", "conducteur");
     private static final long DELAI_MS = Long.getLong("axion.essai.porteur", -1L);
     private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
 
@@ -159,7 +163,7 @@ public final class EssaiPorteur {
                 joueur.setGameMode(GameType.SURVIVAL);
                 joueur.teleportTo(monde, SOL_COTE / 2.0, SOL_Y + 1.0, SOL_COTE / 2.0 + 5.0, 180f, 15f);
                 try {
-                    vehicule = AssembliesDeTest.poser(monde, VEHICULE,
+                    vehicule = AssembliesDeTest.poser(monde, SIEGE == null ? VEHICULE : SIEGE,
                             new Vec3(SOL_COTE / 2.0 + 0.5, SOL_Y + 1.3, SOL_COTE / 2.0 + 0.5),
                             new float[] {0f, 0f, 0f, 1f});
                 } catch (IllegalStateException refus) {
@@ -189,7 +193,10 @@ public final class EssaiPorteur {
                     avant = null;
                 }
             }
-            if (tick == CHARGEMENT) {
+            if (tick == CHARGEMENT && SIEGE != null) {
+                boolean assis = vehicule.reseat(joueur, PLACE);
+                LOGGER.info("[porteur] joueur lâché au-dessus du véhicule : assis à la place {} {}", PLACE, assis);
+            } else if (tick == CHARGEMENT) {
                 joueur.teleportTo(monde, vehicule.getX(), vehicule.getY() + 2.5, vehicule.getZ(), 180f, 15f);
                 LOGGER.info("[porteur] joueur lâché au-dessus du véhicule");
             }
@@ -198,6 +205,10 @@ public final class EssaiPorteur {
                 return;
             }
             var commande = ForgeAxionApi.view(vehicule).vehicle().orElseThrow();
+            // Assis au volant, le porté tient la voiture : un mod ne la conduit pas (ADR-167 D9), elle reste là.
+            if (SIEGE != null && "conducteur".equals(PLACE)) {
+                return;
+            }
             if (conduite < CONDUITE) {
                 commande.drive(CONDUIRE);
                 CarrySupports.Support support = CarrySupports.of(joueur);

@@ -59,6 +59,7 @@ public final class EssaiObservateur {
         private static double marche;
         private static double marcheMax;
         private static double ecartMax;
+        private static int assis;
         private static double distanceDepart;
         private static Vec3 avant;
         private static final List<String> lignes = new ArrayList<>();
@@ -105,8 +106,9 @@ public final class EssaiObservateur {
             double distance = vehicule == null ? Double.MAX_VALUE
                     : Math.hypot(porte.getX() - vehicule.getX(), porte.getZ() - vehicule.getZ());
             if (mesures == 0) {
-                // Le départ : le joueur est près du véhicule, au-dessus de lui, et le véhicule roule.
-                if (!roule || distance > 3.0 || porte.getY() <= vehicule.getY()) {
+                // Le départ : le joueur assis dans le véhicule, ou près de lui, au-dessus, et le véhicule qui roule.
+                boolean assisDedans = porte != null && vehicule != null && porte.getVehicle() == vehicule;
+                if (!assisDedans && (!roule || distance > 3.0 || porte.getY() <= vehicule.getY())) {
                     if (++enJeu > ATTENTE_MAX) {
                         terminer(minecraft, "aucun joueur porté par un véhicule qui roule, en " + ATTENTE_MAX / 20 + " s");
                     }
@@ -116,6 +118,7 @@ public final class EssaiObservateur {
                 LOGGER.info("[observateur] le véhicule roule, la mesure commence");
             }
             mesures++;
+            assis += porte.getVehicle() == vehicule ? 1 : 0;
             float jambes = porte.walkAnimation.speed();
             marche += jambes;
             marcheMax = Math.max(marcheMax, jambes);
@@ -142,8 +145,8 @@ public final class EssaiObservateur {
             double moyenne = mesures == 0 ? 0.0 : marche / mesures;
             String ligne = faute != null ? "ÉCHEC : " + faute : String.format(Locale.ROOT,
                     "%s : vu par un autre joueur sur %d ticks, jambes du porté à %.3f en moyenne (au plus %.2f) et %.3f au"
-                            + " plus, écart de sa place %.3f bloc au plus",
-                    moyenne <= MARCHE_MAX ? "VERT" : "ROUGE", mesures, moyenne, MARCHE_MAX, marcheMax, ecartMax);
+                            + " plus, écart de sa place %.3f bloc au plus, assis dans le véhicule %d ticks",
+                    moyenne <= MARCHE_MAX ? "VERT" : "ROUGE", mesures, moyenne, MARCHE_MAX, marcheMax, ecartMax, assis);
             lignes.add(ligne);
             LOGGER.info("[observateur] {}", ligne);
             try {

@@ -2690,6 +2690,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         move.accept(passenger, pose.x(), pose.y() + riderOffset(passenger), pose.z());
         if (!level().isClientSide() && !(passenger instanceof Player)) {
             turnRider(passenger, pose);
+        } else if (level().isClientSide() && passenger instanceof LivingEntity living) {
+            // Un passager ne marche pas : debout sur un véhicule qui roule (ADR-177 D1), ses jambes suivraient ce
+            // déplacement, que Minecraft anime après son tick pour un joueur distant ; assis, rien ne les dessine.
+            living.walkAnimation.setSpeed(0f);
         }
     }
 

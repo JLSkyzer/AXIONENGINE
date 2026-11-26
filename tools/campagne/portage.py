@@ -46,7 +46,7 @@ FAUTES = ("moved wrongly", "moved too quickly", "floating too long")
 SUPPORT_MIN = 0.9
 
 
-def essai(latence: int, film: bool, observateur: bool = False) -> bool:
+def essai(latence: int, film: bool, observateur: bool = False, assis: bool = False) -> bool:
     """Joue l'essai ; rend vrai si le client est vert et le serveur sans correction ni expulsion."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     for fichier in (JOURNAL_SERVEUR, RAPPORT, RAPPORT_OBSERVATEUR):
@@ -85,7 +85,7 @@ def essai(latence: int, film: bool, observateur: bool = False) -> bool:
             commande += ["-PessaiFilm"] if film else []
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
-        if client.returncode != 0:
+        if client.returncode != 0 and not assis:
             raise RuntimeError(f"client sorti en {client.returncode} (voir {journal_client})")
         # Le serveur d'essai s'arrête de lui-même quand son joueur part.
         try:
@@ -127,6 +127,9 @@ def essai(latence: int, film: bool, observateur: bool = False) -> bool:
         for ligne in releve or ["ÉCHEC : aucun rapport de l'observateur"]:
             print("observateur : " + ligne)
         vu = bool(releve) and releve[-1].startswith("VERT")
+    if assis:
+        # Assis, le porté n'est pas porté : son rapport ne vaut pas, seul ce que l'autre voit compte.
+        return vu
     return bool(lignes) and lignes[-1].startswith("VERT") and not fautes and part >= SUPPORT_MIN and vu
 
 
@@ -136,9 +139,17 @@ def main() -> int:
     parser.add_argument("--film", action="store_true",
                         help="filmer l'essai : le client tourne, tools/film/encoder.py fait le MP4")
     parser.add_argument("--observateur", action="store_true", help="un second client juge ce qu'il voit du porté")
+    parser.add_argument("--siege", metavar="VEHICULE",
+                        help="asseoir le porté dans ce véhicule d'essai : seul le verdict de l'observateur compte")
+    parser.add_argument("--place", default="conducteur",
+                        help="avec --siege : la place (conducteur : la voiture reste ; une autre : le serveur la conduit)")
     arguments = parser.parse_args()
     try:
-        vert = essai(arguments.latence, arguments.film, arguments.observateur)
+        if arguments.siege:
+            os.environ["AXION_ESSAI_SIEGE"] = arguments.siege
+            os.environ["AXION_ESSAI_PLACE"] = arguments.place
+        vert = essai(arguments.latence, arguments.film, arguments.observateur or bool(arguments.siege),
+                     bool(arguments.siege))
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
         print(f"ÉCHEC : {faute}")
         vert = False
