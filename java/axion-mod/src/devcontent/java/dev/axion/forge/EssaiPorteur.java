@@ -51,6 +51,9 @@ public final class EssaiPorteur {
     private static final Logger LOGGER = LoggerFactory.getLogger("AXION essai");
 
     private static final boolean SERVEUR = "1".equals(System.getenv("AXION_ESSAI_PORTEUR"));
+    /** Un second joueur, l'observateur ({@link EssaiObservateur}), regarde le porté : le serveur l'attend aussi. */
+    private static final boolean DEUX = "1".equals(System.getenv("AXION_ESSAI_PORTEUR_DEUX"));
+    private static final String OBSERVATEUR = "Observateur";
     private static final long DELAI_MS = Long.getLong("axion.essai.porteur", -1L);
     private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
 
@@ -89,6 +92,7 @@ public final class EssaiPorteur {
 
         private static long debut;
         private static ServerPlayer joueur;
+        private static ServerPlayer spectateur;
         private static AxionEntity vehicule;
         private static int tick;
         private static int portes;
@@ -133,12 +137,25 @@ public final class EssaiPorteur {
             }
             ServerLevel monde = serveur.overworld();
             if (joueur == null) {
-                if (serveur.getPlayerList().getPlayers().isEmpty()) {
+                ServerPlayer porte = null;
+                ServerPlayer regard = null;
+                for (ServerPlayer present : serveur.getPlayerList().getPlayers()) {
+                    if (DEUX && OBSERVATEUR.equals(present.getGameProfile().getName())) {
+                        regard = present;
+                    } else {
+                        porte = present;
+                    }
+                }
+                if (porte == null || DEUX && regard == null) {
                     return;
+                }
+                if (regard != null) {
+                    regard.setGameMode(GameType.SPECTATOR);
+                    spectateur = regard;
                 }
                 monde.setWeatherParameters(20 * 60 * 20, 0, false, false);
                 monde.setDayTime(6000);
-                joueur = serveur.getPlayerList().getPlayers().get(0);
+                joueur = porte;
                 joueur.setGameMode(GameType.SURVIVAL);
                 joueur.teleportTo(monde, SOL_COTE / 2.0, SOL_Y + 1.0, SOL_COTE / 2.0 + 5.0, 180f, 15f);
                 try {
@@ -152,6 +169,11 @@ public final class EssaiPorteur {
                 return;
             }
             tick++;
+            if (spectateur != null && vehicule != null) {
+                // L'observateur suit le véhicule, de trois quarts et au-dessus.
+                spectateur.teleportTo(monde, vehicule.getX() + 5.0, vehicule.getY() + 3.5, vehicule.getZ() + 6.0, 140f,
+                        22f);
+            }
             // Le témoin : le véhicule conduit seul, loin du joueur, avec la même commande, puis freiné.
             if (tick >= 20 && tick < CHARGEMENT) {
                 var seul = ForgeAxionApi.view(vehicule).vehicle().orElseThrow();

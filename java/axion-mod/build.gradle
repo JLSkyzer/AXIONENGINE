@@ -149,6 +149,16 @@ minecraft {
             args '--width', '1920', '--height', '1080'
         }
 
+        essaiClientObservateur {
+            // ADR-178, le second joueur de l'essai du portage (EssaiObservateur, contenu de développement) : il regarde le
+            // porté en spectateur ; le serveur sous AXION_ESSAI_PORTEUR=1 et AXION_ESSAI_PORTEUR_DEUX=1.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/essai-observateur')
+            property 'axion.essai.observateur', 'true'
+            property 'axion.souris.libre', 'true'
+            args '--username', 'Observateur'
+        }
+
         essaiClientPorteur {
             // ADR-178, essai à deux processus du portage (EssaiPorteur, contenu de développement) : ce client se connecte au
             // serveur de runServer, lancé sous AXION_ESSAI_PORTEUR=1, par un relais qui retarde chaque sens de
@@ -678,6 +688,14 @@ tasks.matching { it.name == 'runEssaiClientMesure' }.configureEach {
     standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
     doFirst {
         clientSilencieux(rootProject.file('.runs/essai-mesure'))
+    }
+}
+
+// ADR-178 : le second client de l'essai du portage, muet.
+tasks.matching { it.name == 'runEssaiClientObservateur' }.configureEach {
+    standardInput = new ByteArrayInputStream("n${System.lineSeparator()}".getBytes('US-ASCII'))
+    doFirst {
+        clientSilencieux(rootProject.file('.runs/essai-observateur'))
     }
 }
 
