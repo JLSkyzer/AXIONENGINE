@@ -174,6 +174,26 @@ public final class BancDeRendu {
     /** ADR-158 : la caisse à deux sièges. */
     private static final String SIEGE = "axion:test/siege";
 
+    /** ADR-177 D1 : la même caisse, ses sièges réglés — conducteur assis à 0,5 et œil déclaré, passager debout à 2. */
+    private static final String SIEGE_OCCUPANT = "axion:test/siege_occupant";
+
+    /** L'œil que {@link #SIEGE_OCCUPANT} déclare à son siège 0, dans le repère du siège. */
+    private static final float[] OEIL_DECLARE = {0f, 0.75f, 0.05f};
+
+    private static AxionEntity siegeRegle;
+    /** Vrai pendant les relevés du dessin de l'occupant (ADR-177 D1). */
+    private static boolean releveOccupant;
+    private static org.joml.Matrix4f occupantAvant;
+    private static org.joml.Matrix4f occupantApres;
+    private static Boolean occupantAssis;
+    private static long debutDessin;
+    /** Ce que dure le gestionnaire d'AXION avant puis après le dessin de l'occupant, image par image, en nanosecondes. */
+    private static final List<Long> COUT_AVANT = new ArrayList<>();
+    private static final List<Long> COUT_APRES = new ArrayList<>();
+    /** Par siège relevé : l'échelle mesurée, la dérive du point du siège, assis au modèle. */
+    private static final List<String> DESSINS = new ArrayList<>();
+    private static boolean dessinsJustes = true;
+
     /** ADR-163 D3 : le panneau dont trois variables pilotent l'apparence — émission, rouge, visibilité. */
     private static final String APPARENCE = "axion:test/materiaux/apparence";
 
@@ -326,11 +346,13 @@ public final class BancDeRendu {
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(SHADERS
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "ADR-164", "R-1490, changement de shaderpack",
-                    "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
+                    "T-491d, journal et statut", "T-472", "T-473", "ADR-177 D1, rendu", "erreurs AXION")
             : NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-164", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
-                    "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
-            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-164", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION"));
+                    "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "ADR-177 D1, rendu",
+                    "erreurs AXION")
+            : List.of("backend", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-164", "ADR-155, animation", "R-742", "ADR-155, overlays", "T-493", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-491d, journal et statut", "T-472", "T-473", "ADR-177 D1, rendu",
+                    "erreurs AXION"));
 
     private static JournalDuBanc journal;
     private static int courante;
@@ -877,6 +899,43 @@ public final class BancDeRendu {
                     String.format(Locale.ROOT, "au volant, la touche avant du vrai client donne au serveur un accélérateur de %.2f",
                             siege.seatInput(0).throttle())));
             une("relâcher l'avant", mc -> mc.options.keyUp.setDown(false));
+            // ADR-177 D1 : ce qu'un siège réglé fait au dessin de son occupant et à sa caméra, chez le client.
+            serveur("poser la caisse aux sièges réglés", s -> {
+                s.getPlayerList().getPlayers().get(0).stopRiding();
+                Vec3 ou = new Vec3(1.5 + 2 * DERRIERE.size() + 12, surface + 0.25, 6.5);
+                ObservateursDeTest.declarer(s.overworld(), ou);
+                siegeRegle = AssembliesDeTest.poser(s.overworld(), SIEGE_OCCUPANT, ou, IDENTITE);
+            });
+            jusqua("la caisse réglée simulée", 60, mc -> siegeRegle.hasPhysicalBounds()
+                    && mc.level.getEntity(siegeRegle.getId()) instanceof AxionEntity && mc.player.getVehicle() == null);
+            pendant("la caisse réglée au repos", 40);
+            for (int place : new int[] {1, 0}) {
+                serveur("asseoir au siège réglé " + place, s -> passagerAssis =
+                        siegeRegle.sit(s.getPlayerList().getPlayers().get(0), place));
+                jusqua("assis au siège réglé " + place, 60, mc -> mc.player.getVehicle() instanceof AxionEntity v
+                        && v.getId() == siegeRegle.getId() && v.seatOf(mc.player) == place);
+                // Sans vue déclarée, la caisse a les vues par défaut, cockpit puis poursuite (ADR-170) : F5, comme un joueur.
+                une("F5 : se voir de dos", mc -> net.minecraft.client.KeyMapping.click(mc.options.keyTogglePerspective.getKey()));
+                jusqua("la poursuite au siège réglé " + place, 30, mc -> !mc.options.getCameraType().isFirstPerson());
+                pendant("le dessin de l'occupant " + place, 40);
+                une("relever le dessin " + place, mc -> {
+                    occupantAvant = null;
+                    occupantApres = null;
+                    occupantAssis = null;
+                    releveOccupant = true;
+                });
+                pendant("des images de l'occupant " + place, 40);
+                une("juger le dessin " + place, mc -> releverDessin(mc, place));
+                une("F5 : revenir au cockpit", mc -> net.minecraft.client.KeyMapping.click(mc.options.keyTogglePerspective.getKey()));
+                jusqua("le cockpit au siège réglé " + place, 30, mc -> mc.options.getCameraType().isFirstPerson());
+            }
+            pendant("l'œil de l'occupant", 20);
+            une("juger ADR-177 D1, rendu", BancDeRendu::jugerOccupantRendu);
+            serveur("retirer la caisse réglée", s -> {
+                s.getPlayerList().getPlayers().get(0).stopRiding();
+                siegeRegle.discard();
+            });
+            jusqua("descendu de la caisse réglée", 60, mc -> mc.player.getVehicle() == null);
             // ADR-178 D3, D4 : le joueur, debout sur une assembly qui tombe et glisse, y garde sa place — en créatif (le
             // transport du client) puis en survie (le serveur le porte aussi : ni renvoyé en arrière, ni compté volant). Haut
             // au-dessus de tout, hors de vue : la caisse n'a rien à heurter avant la fin de la mesure.
@@ -2450,6 +2509,92 @@ public final class BancDeRendu {
     private static void jugerOverlaySieges(Minecraft minecraft) {
         int plages = AxionRenderPass.debugRangesByOverlay().getOrDefault(dev.axion.debug.DebugOverlays.Overlay.SEATS.rank(), 0);
         RAPPORT.noter("ADR-177 D1", plages > 0, "overlay seats : " + plages + " siège(s) tracé(s) autour du joueur assis");
+    }
+
+    /** @param event avant le gestionnaire d'AXION : la matrice du dessin telle que Minecraft la donne */
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+    public static void avantLOccupant(net.minecraftforge.client.event.RenderLivingEvent.Pre<?, ?> event) {
+        if (releveOccupant && event.getEntity() == Minecraft.getInstance().player) {
+            occupantAvant = new org.joml.Matrix4f(event.getPoseStack().last().pose());
+            debutDessin = System.nanoTime();
+        }
+    }
+
+    /** @param event après le gestionnaire d'AXION : la matrice dans laquelle l'occupant se dessine */
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
+    public static void apresLOccupant(net.minecraftforge.client.event.RenderLivingEvent.Pre<?, ?> event) {
+        if (releveOccupant && event.getEntity() == Minecraft.getInstance().player) {
+            COUT_AVANT.add(System.nanoTime() - debutDessin);
+            occupantApres = new org.joml.Matrix4f(event.getPoseStack().last().pose());
+        }
+    }
+
+    /** @param event avant le gestionnaire d'AXION qui défait l'échelle */
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
+    public static void finDuDessin(net.minecraftforge.client.event.RenderLivingEvent.Post<?, ?> event) {
+        if (releveOccupant && event.getEntity() == Minecraft.getInstance().player) {
+            debutDessin = System.nanoTime();
+        }
+    }
+
+    /** @param event après lui : le modèle garde la pose assise ou debout de l'image */
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
+    public static void poseDeLOccupant(net.minecraftforge.client.event.RenderLivingEvent.Post<?, ?> event) {
+        if (releveOccupant && event.getEntity() == Minecraft.getInstance().player) {
+            COUT_APRES.add(System.nanoTime() - debutDessin);
+            occupantAssis = event.getRenderer().getModel().riding;
+        }
+    }
+
+    /**
+     * ADR-177 D1 : le dessin de l'occupant du siège {@code place} — à l'échelle du siège, autour de son point, et debout
+     * quand le siège le dit.
+     */
+    private static void releverDessin(Minecraft minecraft, int place) {
+        releveOccupant = false;
+        float echelle = place == 0 ? 0.5f : 2f;
+        boolean assis = place == 0;
+        double mesuree = Double.NaN;
+        double derive = Double.NaN;
+        if (occupantAvant != null && occupantApres != null && minecraft.player.getVehicle() instanceof AxionEntity assembly) {
+            org.joml.Vector3f avant = occupantAvant.getColumn(0, new org.joml.Vector3f());
+            org.joml.Vector3f apres = occupantApres.getColumn(0, new org.joml.Vector3f());
+            mesuree = apres.length() / avant.length();
+            dev.axion.seat.SeatPlacement.Pose pose = assembly.seatPoseAt(place,
+                    assembly.renderPose(minecraft.getFrameTime()));
+            // Le point du siège, dans le repère du dessin, dont l'origine est aux pieds du passager.
+            float hauteur = (float) (pose.y() - minecraft.player.getY());
+            org.joml.Vector3f a = occupantAvant.transformPosition(new org.joml.Vector3f(0f, hauteur, 0f));
+            org.joml.Vector3f b = occupantApres.transformPosition(new org.joml.Vector3f(0f, hauteur, 0f));
+            derive = a.distance(b);
+        }
+        boolean juste = Math.abs(mesuree - echelle) < 1.0e-3 && derive < 2.0e-3
+                && occupantAssis != null && occupantAssis == assis;
+        dessinsJustes &= juste;
+        DESSINS.add(String.format(Locale.ROOT, "siège %d : échelle %.4f (%.1f attendue), point du siège déplacé de %.4f m (au"
+                + " plus 0,002), modèle %s (%s attendu)", place, mesuree, echelle, derive,
+                occupantAssis == null ? "non dessiné" : occupantAssis ? "assis" : "debout", assis ? "assis" : "debout"));
+    }
+
+    /**
+     * ADR-177 D1 : à la première personne, la caméra est à l'œil que le siège déclare ; avec les deux dessins relevés, et ce
+     * que les gestionnaires d'AXION ont coûté par image (médiane, mesurée ici, sans critère).
+     */
+    private static void jugerOccupantRendu(Minecraft minecraft) {
+        double ecart = Double.NaN;
+        if (minecraft.player.getVehicle() instanceof AxionEntity assembly && assembly.seatOf(minecraft.player) == 0) {
+            dev.axion.seat.SeatPlacement.Pose pose = assembly.seatPoseAt(0, assembly.renderPose(minecraft.getFrameTime()));
+            float[] r = pose.rotation();
+            org.joml.Vector3f oeil = new org.joml.Quaternionf(r[0], r[1], r[2], r[3])
+                    .transform(new org.joml.Vector3f(OEIL_DECLARE[0], OEIL_DECLARE[1], OEIL_DECLARE[2]));
+            ecart = minecraft.gameRenderer.getMainCamera().getPosition()
+                    .distanceTo(new Vec3(pose.x() + oeil.x, pose.y() + oeil.y, pose.z() + oeil.z));
+        }
+        boolean vert = passagerAssis && dessinsJustes && DESSINS.size() == 2 && ecart < 2.0e-3;
+        RAPPORT.noter("ADR-177 D1, rendu", vert, String.format(Locale.ROOT, "%s ; caméra à %.4f m de l'œil déclaré au siège 0"
+                + " (au plus 0,002) ; coût mesuré par image et par occupant, médianes sur %d images : %d ns avant le dessin,"
+                + " %d ns après", String.join(" ; ", DESSINS), ecart, COUT_AVANT.size(), mediane(COUT_AVANT),
+                mediane(COUT_APRES)));
     }
 
     /**
