@@ -346,7 +346,7 @@ public final class BancDeRendu {
     private static final List<Etape> SCENARIO = new ArrayList<>();
     private static final RapportDuBanc RAPPORT = new RapportDuBanc(SHADERS
             ? List.of("backend", "T-490", "T-470", "T-480", "cartes de matériau", "ADR-164", "R-1490, changement de shaderpack",
-                    "T-491d, journal et statut", "T-472", "T-473", "ADR-177 D1, rendu", "erreurs AXION")
+                    "T-491d, journal et statut", "T-472", "T-473", "erreurs AXION")
             : NATIF
             ? List.of("backend", "T-512", "T-470", "T-474", "ADR-151 D9", "ADR-151 D7", "cartes de matériau", "ADR-164", "ADR-155, animation", "T-908", "ADR-155, overlays", "T-541", "T-542", "T-476", "T-483", "ADR-150 D3", "T-713f", "T-410", "ADR-150 D7", "T-365", "ADR-163 D3", "T-471", "T-503", "T-510", "T-479", "T-511", "T-491", "T-491b",
                     "T-491c", "T-905", "T-904", "T-492", "T-481", "T-491d, journal et statut", "T-472", "T-473", "ADR-177 D1, rendu",

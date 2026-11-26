@@ -2748,3 +2748,13 @@ ailleurs. Les tests unitaires prouvaient les calculs, aucun ne prouvait que le c
 
 **Règle.** Dans une classe commune aux deux côtés, vérifier qui **écrit** un champ avant de le lire côté client. Toute
 valeur « prédite » se prouve à deux processus, contre ce que le serveur a, avec un cas où elle diffère de zéro.
+
+## 2026-11-26 | Un verdict attendu dans un banc qui ne le joue pas : CI rouge
+
+**Ce qui a mal tourné.** Le verdict des sièges, ajouté aux trois listes attendues du banc de rendu, manquait sous
+shaderpack, dont le scénario saute la scène des sièges ; seul le banc vanilla avait été rejoué avant de pousser.
+
+**Cause.** Les listes attendues et les blocs `if (!SHADERS)` du scénario n'ont pas été confrontés.
+
+**Règle.** Un verdict n'entre dans une liste attendue que si le scénario de ce backend le joue : vérifier le bloc qui
+l'entoure avant de pousser.
