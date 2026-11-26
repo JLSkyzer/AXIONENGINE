@@ -3754,9 +3754,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /**
      * Garde une impulsion pour le prochain pas (CAP-11) : le point du monde est ramené au repère du corps racine, tel
-     * que le dernier état l'a posé.
+     * que le dernier état l'a posé. Suspendue (ADR-153), l'assembly ne la reçoit pas : le natif la réveillerait avec
+     * cette seule vitesse, et celle qu'il gèle serait perdue.
      */
     void addImpulse(Vec3 impulse, Vec3 worldPoint) {
+        if (suspendedBody) {
+            return;
+        }
         float[] j = {(float) impulse.x, (float) impulse.y, (float) impulse.z};
         float[] local = null;
         if (worldPoint != null) {

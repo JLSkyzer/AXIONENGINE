@@ -168,7 +168,8 @@ public interface Assembly {
 
     /**
      * Donne à son corps racine une impulsion, au prochain pas physique, et le réveille. Elle est gardée tant que le
-     * moteur physique ne simule pas encore l'assembly ; un corps fixe ne bouge pas.
+     * moteur physique ne simule pas encore l'assembly ; elle est sans effet sur une assembly suspendue loin de tout
+     * joueur (R-612), et un corps fixe ne bouge pas.
      *
      * <p>Thread : autoritatif uniquement (R-1755), au serveur.
      *

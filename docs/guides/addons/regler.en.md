@@ -320,6 +320,7 @@ assembly.applyImpulse(new Vec3(2000, 0, 0), assembly.transform().position().add(
 ```
 
 - The impulse applies at the **next physics step**, to the root body, and wakes it. Given before the engine simulates
-  the assembly — right after `spawn` —, it waits for its first step.
+  the assembly — right after `spawn` —, it waits for its first step. On an assembly suspended far from every player,
+  it has no effect.
 - The velocity is **zero** for an assembly that is asleep, suspended far from every player, or not simulated yet.
 - Server only, on its thread; a non-finite value is refused.

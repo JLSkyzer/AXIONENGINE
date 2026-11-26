@@ -327,6 +327,7 @@ assembly.applyImpulse(new Vec3(2000, 0, 0), assembly.transform().position().add(
 ```
 
 - L'impulsion s'applique au **prochain pas physique**, au corps racine, et le réveille. Donnée avant que le moteur ne
-  simule l'assembly — juste après `spawn` —, elle attend son premier pas.
+  simule l'assembly — juste après `spawn` —, elle attend son premier pas. Sur une assembly suspendue loin de tout
+  joueur, elle est sans effet.
 - La vitesse est **nulle** pour une assembly endormie, suspendue loin de tout joueur, ou pas encore simulée.
 - Côté serveur seulement, sur son thread ; une valeur non finie est refusée.
