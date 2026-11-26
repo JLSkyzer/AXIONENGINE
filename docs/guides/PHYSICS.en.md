@@ -204,6 +204,10 @@ sleep and wake-up, contact start and end, contact impulse above
 (`JOINT_BROKEN`), jam enter and exit (`JOINT_JAMMED`). An event lost for lack of
 room is counted, never silenced.
 
+A contact event stands for **the whole pair** (R-615): its normal and tangential impulse is the
+sum of what all its points carried; its point, normal and materials are those of the deepest
+loaded point. A pair emits a single `CONTACT_IMPULSE` per tick, that of its strongest substep.
+
 ## Degradation
 
 The FM-21 governor judges the **p95** of the step duration over 100-tick windows, never a

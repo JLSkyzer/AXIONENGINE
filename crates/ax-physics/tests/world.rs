@@ -1084,6 +1084,93 @@ fn t305_une_paire_emet_une_impulsion_par_tick_la_plus_forte_de_ses_sous_pas() {
     );
 }
 
+/// Un cube de 1 m et 1 000 kg, posé à `centre`, et la dalle statique donnée par `(centre, demi-dimensions)`.
+fn cube_et_dalle(
+    config: PhysicsConfig,
+    centre: Vec3,
+    dalle: (Vec3, [f32; 3]),
+) -> (PhysicsWorld, BodyId) {
+    let mut world = PhysicsWorld::new(config);
+    world
+        .add_body(
+            BodyKind::Static,
+            dalle.0,
+            Quat::IDENTITY,
+            Shape::Cuboid {
+                half_extents: dalle.1,
+            },
+        )
+        .expect("une dalle est valide");
+    let cube = world
+        .add_assembly(
+            BodyKind::Dynamic,
+            centre,
+            Quat::IDENTITY,
+            &[BodyCollider {
+                shape: Shape::Cuboid {
+                    half_extents: [0.5; 3],
+                },
+                density: 1000.0,
+                material: ContactMaterial::default(),
+                translation: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+            }],
+        )
+        .expect("un cube est valide");
+    (world, cube)
+}
+
+#[test]
+fn r615_l_impulsion_d_une_paire_au_repos_est_celle_de_tous_ses_points() {
+    // R-615, R-1011 : l'unique événement d'une paire porte l'impulsion de la paire. Un cube posé à plat touche par
+    // plusieurs points ; ensemble ils rendent son poids sur le pas, m·g·dt = 1000 × 9,81 / 60 ≈ 163,5 N·s.
+    let (mut world, _) = cube_et_dalle(
+        config(),
+        Vec3::new(0.0, 0.5, 0.0),
+        (Vec3::new(0.0, -0.5, 0.0), [50.0, 0.5, 50.0]),
+    );
+    for _ in 0..30 {
+        world.advance(1.0 / 60.0);
+    }
+    let _ = world.drain_events();
+    world.advance(1.0 / 60.0);
+    let event = *events_of(&mut world, event_kind::CONTACT_IMPULSE)
+        .first()
+        .expect("le cube pèse sur la dalle");
+    let poids = 1000.0 * 9.81 / 60.0;
+    assert!(
+        (event.impulse - poids).abs() < 0.05 * poids,
+        "impulsion de la paire : {} N·s, attendu {poids}",
+        event.impulse
+    );
+}
+
+#[test]
+fn r615_un_choc_a_plat_rapporte_la_quantite_de_mouvement_arretee() {
+    // Un cube de 1 000 kg lancé à plat à 5 m/s contre un mur, sans pesanteur : le choc arrête 5 000 N·s, et les
+    // CONTACT_IMPULSE de la paire les rapportent — c'est ce que Java partage avec une entité heurtée (ADR-123 §7).
+    let mut sans_pesanteur = config();
+    sans_pesanteur.gravity = Vec3::ZERO;
+    let (mut world, cube) = cube_et_dalle(
+        sans_pesanteur,
+        Vec3::ZERO,
+        (Vec3::new(2.0, 0.0, 0.0), [0.5, 5.0, 5.0]),
+    );
+    world.apply_impulse(cube, Vec3::new(5000.0, 0.0, 0.0), Vec3::ZERO, false);
+    let mut rapportee = 0.0;
+    for _ in 0..60 {
+        world.advance(1.0 / 60.0);
+        rapportee += events_of(&mut world, event_kind::CONTACT_IMPULSE)
+            .iter()
+            .map(|event| event.impulse)
+            .sum::<f32>();
+    }
+    assert!(
+        (4500.0..5500.0).contains(&rapportee),
+        "impulsions rapportées : {rapportee} N·s sur 5 000 arrêtées"
+    );
+}
+
 #[test]
 fn un_capteur_emet_enter_puis_exit() {
     // §10.7 : un corps traversant un capteur produit SENSOR_ENTER puis

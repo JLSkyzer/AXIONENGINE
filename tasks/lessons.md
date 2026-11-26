@@ -2714,3 +2714,15 @@ de version ne l'a pas fait relire.
 
 **Règle.** Lire impulsions et points par `solver_manifolds()`, avec `subshape_pos1`. Un test de contact pose au moins un
 corps à cheval sur deux formes. À une montée de Rapier, relire les valeurs par défaut de `IntegrationParameters`.
+
+## 2026-11-26 | Un véhicule ne poussait presque pas ce qu'il heurtait : un événement de paire ne portait qu'un point
+
+**Ce qui a mal tourné.** `CONTACT_IMPULSE` annonçait l'impulsion d'un seul point de contact — le quart du poids d'un
+cube posé, ou presque rien quand le point choisi n'était pas chargé. La poussée des entités (ADR-123 §7) partageait
+cette miette.
+
+**Cause.** L'événement lisait `contact.data.impulse` du point représentatif. Les tests n'exigeaient qu'une impulsion
+positive ou au-dessus du seuil, et la chute de référence est une **bille**, qui n'a qu'un point.
+
+**Règle.** Un test d'impulsion compare à une grandeur physique (`m·g·dt` au repos, `m·v` au choc), sur une forme à
+plusieurs points d'appui. Quand une règle dit « pour chaque paire », vérifier que la valeur est bien celle de la paire.

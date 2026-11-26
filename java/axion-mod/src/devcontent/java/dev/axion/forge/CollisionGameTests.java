@@ -253,6 +253,46 @@ public final class CollisionGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * R-614, ADR-123 §7 : un véhicule qui heurte une entité la pousse de sa part du choc, {@code J / (m + m_eff)}. Le
+     * cochon, sans IA, garde cette vitesse sans s'en déplacer : on la lit. Une impulsion de paire réduite à un seul de
+     * ses points de contact le laissait immobile.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void unVehiculeQuiHeurteUneEntiteLaPousse(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity vehicule = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(8.0, DESSUS_DALLE + 0.6, 13.0), IDENTITE);
+        Pig cochon = EntityType.PIG.create(helper.getLevel());
+        double[] recu = {0.0};
+        boolean[] parti = {false};
+        helper.onEachTick(() -> {
+            if (parti[0]) {
+                vehicule.drive(new DriverInput(0.6, 0, 0, 0, 0, 1));
+                recu[0] = Math.max(recu[0], -cochon.getDeltaMovement().z);
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(vehicule.hasPhysicalBounds(), "le véhicule est simulé"))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    cochon.setNoAi(true);
+                    Vec3 pose = helper.absoluteVec(new Vec3(8.0, DESSUS_DALLE, 5.0));
+                    cochon.moveTo(pose.x, pose.y, pose.z, 0f, 0f);
+                    helper.getLevel().addFreshEntity(cochon);
+                    parti[0] = true;
+                })
+                // Un dixième de mètre par seconde fait 0,005 bloc par tick ; sa part d'un choc à plus de 3 m/s est bien
+                // au-dessus de 0,02.
+                .thenWaitUntil(() -> helper.assertTrue(recu[0] > 0.02,
+                        "le cochon reçoit sa part du choc : " + recu[0] + " bloc/tick"))
+                .thenExecute(() -> {
+                    cochon.discard();
+                    vehicule.discard();
+                })
+                .thenSucceed();
+    }
+
     /** ADR-178 : dans un ensemble attaché (ADR-171), une entité est portée une fois, par le membre qu'elle touche. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 200)
     public static void unEnsembleAttachePorteParLeMembreTouche(GameTestHelper helper) {

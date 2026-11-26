@@ -206,6 +206,11 @@ sommeil et réveil, début et fin de contact, impulsion de contact au-delà de
 (`JOINT_BROKEN`), entrée et sortie de grippage (`JOINT_JAMMED`). Un événement perdu faute de
 place est compté, jamais tu.
 
+Un événement de contact vaut pour **la paire entière** (R-615) : son impulsion, normale et
+tangentielle, est la somme de ce qu'ont porté tous ses points ; son point, sa normale et ses
+matériaux sont ceux du point le plus profond parmi les porteurs. Une paire n'émet qu'un
+`CONTACT_IMPULSE` par tick, celui de son sous-pas le plus fort.
+
 ## Dégradation
 
 Le gouverneur FM-21 juge le **p95** de la durée du pas sur des fenêtres de 100 ticks, jamais un

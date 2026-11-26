@@ -1400,12 +1400,7 @@ impl PhysicsWorld {
             if rolling <= 0.0 {
                 continue;
             }
-            let normal_impulse: f32 = pair
-                .solver_manifolds()
-                .iter()
-                .flat_map(|manifold| manifold.points.iter())
-                .map(|contact| contact.data.impulse)
-                .sum();
+            let (normal_impulse, _) = pair_impulses(pair);
             if normal_impulse <= 0.0 {
                 continue;
             }
@@ -1470,6 +1465,7 @@ impl PhysicsWorld {
     ) -> Option<PhysicsEvent> {
         let pair = self.inner.contact_pair(a, b)?;
         let (manifold, contact) = solved_contact(pair)?;
+        let (impulse, tangent_impulse) = pair_impulses(pair);
         let normal = manifold.data.normal;
         let world_point = contact_point(self.inner.colliders.get(a)?, manifold, contact);
 
@@ -1490,8 +1486,8 @@ impl PhysicsWorld {
             node_b: identity_b.node,
             point: world_point.to_array(),
             normal: normal.to_array(),
-            impulse: contact.data.impulse,
-            tangent_impulse: contact.data.tangent_impulse.norm(),
+            impulse,
+            tangent_impulse,
             relative_velocity,
             effective_mass: effective_mass_at(world_point, normal, body_a, body_b),
             material_a: self.material_at(a, world_point).index,
@@ -3674,6 +3670,21 @@ fn solver_rule(rule: CombineRule) -> CoefficientCombineRule {
         CombineRule::Multiply => CoefficientCombineRule::Multiply,
         CombineRule::Max => CoefficientCombineRule::Max,
     }
+}
+
+/// Les impulsions d'une paire sur le sous-pas, normale puis tangentielle : la somme des modules de tous les points que
+/// le solveur a vus. Un événement vaut pour la paire entière (R-615, R-1011) ; un seul de ses points n'en porte qu'une
+/// part — le quart pour une face posée à plat —, ou rien.
+fn pair_impulses(pair: &ContactPair) -> (f32, f32) {
+    pair.solver_manifolds()
+        .iter()
+        .flat_map(|manifold| manifold.points.iter())
+        .fold((0.0, 0.0), |(normal, tangent), contact| {
+            (
+                normal + contact.data.impulse,
+                tangent + contact.data.tangent_impulse.norm(),
+            )
+        })
 }
 
 /// Le contact d'une paire que lisent ses événements et son roulement (R-615, ADR-149 D6), avec sa variété : le plus
