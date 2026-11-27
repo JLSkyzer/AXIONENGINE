@@ -2933,3 +2933,25 @@ n'essayaient que des corps du moteur (une caisse). Un mob sur son chemin n'étai
 
 **Règle.** Une promesse « elle agit sur X » se prouve pour chaque famille de X — corps du moteur, mobs, objets,
 joueurs —, pas pour la plus facile à tester.
+
+## 2026-11-27 | une première passe de mesure donnait un coût seize fois trop grand
+
+**Ce qui a mal tourné.** La première paire (portés contre au sol) donnait 9,56 ms par tick d'écart ; les deux suivantes
+0,60 et 0,24.
+
+**Cause.** La passe portée avait été perturbée (cause non identifiée) : son pas physique natif, que le portage ne touche
+pas, avait lui aussi plus que doublé.
+
+**Règle.** Une mesure se relève avec son témoin et avec une grandeur que le changement ne peut pas toucher ; si elle
+bouge, la passe ne vaut rien. Au moins deux paires avant de dire un chiffre, et le bruit entre témoins à côté de l'écart.
+
+## 2026-11-27 | une tâche de fond arrêtée a pris le verrou Minecraft ensuite
+
+**Ce qui a mal tourné.** Après l'arrêt d'une mesure qui attendait ou tenait le verrou, ses processus ont continué : le
+verrou s'est retrouvé pris, un serveur lancé.
+
+**Cause.** Sous Windows, arrêter une tâche de fond ne tue pas les processus que son shell a lancés (note déjà dans
+`D:\BDC`, pas appliquée).
+
+**Règle.** Après tout arrêt : lister les processus qui portent les arguments de la tâche, les arrêter nommément (et leur
+serveur), puis relire le verrou et la file. Découper un lancement long en tours courts plutôt que de devoir l'arrêter.
