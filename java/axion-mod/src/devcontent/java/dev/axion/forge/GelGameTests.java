@@ -176,6 +176,51 @@ public final class GelGameTests {
                 .thenSucceed();
     }
 
+    /** Figée et immobile, une assembly n'envoie plus d'état aux joueurs (R-1663) ; menée, elle en envoie de nouveau. */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr183_uneAssemblyFigeeImmobileNEnvoiePlusRien(GameTestHelper helper) {
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(8.0, DESSUS_DALLE + 2.0, 8.0), DROIT);
+        dev.axion.forge.net.JoueurSimule[] temoin = new dev.axion.forge.net.JoueurSimule[1];
+        helper.onEachTick(() -> {
+            if (temoin[0] != null && temoin[0].connecte()) {
+                temoin[0].tick();
+            }
+        });
+        Vec3[] place = new Vec3[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "simulée"))
+                .thenExecute(() -> {
+                    temoin[0] = dev.axion.forge.net.JoueurSimule.rejoindre(helper.getLevel(), "temoin_gel",
+                            helper.absoluteVec(new Vec3(4.0, DESSUS_DALLE, 4.0)));
+                    ForgeAxionApi.view(assembly).setFrozen(true);
+                    place[0] = assembly.position();
+                })
+                .thenIdle(40)
+                .thenExecute(() -> temoin[0].drainRecus())
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    long recus = temoin[0].drainRecus().stream().filter(r -> r.handle() == assembly.getId()).count();
+                    helper.assertTrue(recus <= 1, "immobile, rien : " + recus + " état(s) en 40 ticks");
+                })
+                .thenExecuteFor(10, () -> {
+                    place[0] = place[0].add(0.1, 0.0, 0.0);
+                    ForgeAxionApi.view(assembly).setKinematicTransform(
+                            new Transform(place[0], assembly.orientation(), new Vec3(1, 1, 1)));
+                })
+                .thenIdle(2)
+                .thenExecute(() -> {
+                    try {
+                        long recus = temoin[0].drainRecus().stream().filter(r -> r.handle() == assembly.getId()).count();
+                        helper.assertTrue(recus >= 5, "menée, ses états partent : " + recus);
+                    } finally {
+                        temoin[0].quitter();
+                        assembly.discard();
+                    }
+                })
+                .thenSucceed();
+    }
+
     /** Le conducteur d'une assembly figée reçoit, au plus une fois par seconde, la correction qui lui rend la main. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 100)
     public static void adr183_lAssemblyFigeeRendLaMainAuConducteurUneFoisParSeconde(GameTestHelper helper) {
