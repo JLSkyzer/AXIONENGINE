@@ -292,6 +292,18 @@ minecraft {
             args '--width', '1920', '--height', '984'
         }
 
+        filmGel {
+            // ADR-183 : le film du gel (FilmDuGel) : figer, mener comme un pont élévateur, rendre au moteur, téléporter.
+            parent minecraft.runs.client
+            workingDirectory rootProject.file('.runs/film-gel')
+            property 'axion.film', 'gel'
+            property 'axion.souris.libre', 'true'
+            def local = rootProject.file('local/contenu/axion/definitions/local/charger.json').exists()
+            property 'axion.film.definition', local ? 'axion:local/charger' : 'axion:test/vehicule'
+            jvmArgs '-Xmx4G'
+            args '--width', '1920', '--height', '984'
+        }
+
         filmVues {
             // ADR-170, tranche 7b : la scene du film du vehicule, filmee par la camera de vehicule elle-meme (F5).
             parent minecraft.runs.client
@@ -822,7 +834,7 @@ tasks.matching { it.name == 'runFilmVues' }.configureEach {
     }
 }
 
-['runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur', 'runFilmMoteur': 'moteur',
+['runFilmGel': 'gel', 'runFilmParametres': 'parametres', 'runFilmSport': 'sport', 'runFilmLimiteur': 'limiteur', 'runFilmMoteur': 'moteur',
         'runFilmPneus': 'pneus', 'runFilmPluie': 'pluie', 'runFilmOccupants': 'occupants', 'runGenMannequin': 'mannequin'].each { tache, scene ->
     tasks.matching { it.name == tache }.configureEach {
         standardInput = new ByteArrayInputStream('n\n'.getBytes('US-ASCII'))
