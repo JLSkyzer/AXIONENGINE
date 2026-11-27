@@ -3989,6 +3989,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            processus du gel au volant réussi. **Tranche 4** (grille D7, bornes, téléportation dessinée) FAITE le 2026-11-27 ; question K (gel à plusieurs causes) à Killian.
            Le 2026-11-27 aussi : passagers téléportés au loin, `/tp` de Minecraft et NBT recopié ailleurs corrigés (le
            point non éprouvé de la tranche 2 l'est : GameTests et essai `prediction.py --tp`) ; film `runFilmGel`.
+          Éprouvés à deux processus : l'ascenseur (`portage.py --ascenseur`) et la poussée d'un joueur au sol
+          (`portage.py --poussee`).
      - [ ] CAP-11, restes de M5 : [ADR-187](../docs/decisions/ADR-187.md) **proposé** le 2026-11-27 (écouteurs de la
            vie d'une assembly, des chocs et des commandes du conducteur), attend Killian.
      - [x] `motor.<nom>.regen` (ADR-182, question F) — FAIT le 2026-11-27, ABI 42.

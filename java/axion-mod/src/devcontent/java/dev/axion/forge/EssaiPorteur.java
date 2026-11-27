@@ -85,6 +85,15 @@ public final class EssaiPorteur {
     private static final int DESCEND = 120;
     private static final double PAS = 0.05;
 
+    /**
+     * ADR-183 D4 : le joueur debout au sol devant le véhicule, que le serveur fige et mène contre lui. Au serveur sous
+     * {@code AXION_ESSAI_POUSSEE=1} ; le client, jamais porté, s'en va de lui-même, et seul le serveur juge.
+     */
+    private static final boolean POUSSEE = "1".equals(System.getenv("AXION_ESSAI_POUSSEE"));
+    /** Les ticks de poussée, et la distance du joueur devant le véhicule au départ, en blocs. */
+    private static final int POUSSE = 120;
+    private static final double DEVANT = 4.0;
+
     private static final int DUREE_SERVEUR_S = 300;
     private static final String HOTE = "127.0.0.1";
     private static final int PORT = 25599;
@@ -128,6 +137,7 @@ public final class EssaiPorteur {
         private static double parcoursSeul;
         private static Vec3 avant;
         private static Vec3 base;
+        private static double joueurAuDepart;
 
         private Serveur() {}
 
@@ -146,6 +156,30 @@ public final class EssaiPorteur {
             double haut = PAS * Math.min(t, MONTE) - PAS * Math.max(0, Math.min(t - MONTE - TIENT, DESCEND));
             double cote = PAS * Math.max(0, t - MONTE - TIENT - DESCEND);
             return base.add(cote, haut, 0.0);
+        }
+
+        /**
+         * Mène le véhicule figé vers le joueur, à {@link #PAS} bloc par tick, puis l'arrête ; dit de combien le joueur a
+         * été déplacé, sa hauteur au-dessus du véhicule — poussé devant, ou monté dessus s'il s'y marche (ADR-178 D5) —
+         * et de combien il y est encore enfoncé au serveur, qui le voit en retard de sa latence.
+         */
+        private static void pousser(int conduite) {
+            var assembly = ForgeAxionApi.view(vehicule);
+            if (base == null) {
+                assembly.setFrozen(true);
+                base = vehicule.position();
+                joueurAuDepart = joueur.getX();
+            }
+            assembly.setKinematicTransform(new dev.axion.api.assembly.Transform(
+                    base.add(PAS * Math.min(conduite, POUSSE), 0.0, 0.0), vehicule.orientation(), new Vec3(1, 1, 1)));
+            Vec3 sortie = AssemblyCollision.pushOut(joueur);
+            double enfonce = sortie == null ? 0.0 : sortie.length();
+            if (conduite % 20 == 0 || conduite == POUSSE + 40) {
+                LOGGER.info(String.format(Locale.ROOT, "[porteur] poussée : tick %d, véhicule à x %.2f, joueur à x %.2f,"
+                        + " poussé de %.2f bloc, %.2f au-dessus du véhicule, enfoncé de %.2f bloc", conduite,
+                        vehicule.getX(), joueur.getX(), joueur.getX() - joueurAuDepart, joueur.getY() - vehicule.getY(),
+                        enfonce));
+            }
         }
 
         /** Mène le plateau figé à sa place de ce tick, et compte le portage comme la conduite le fait. */
@@ -291,6 +325,9 @@ public final class EssaiPorteur {
                         assembly.variables().setBoolean("contact", true);
                     }
                 }
+            } else if (tick == CHARGEMENT && POUSSEE) {
+                joueur.teleportTo(monde, vehicule.getX() + DEVANT, SOL_Y + 1.0, vehicule.getZ(), 90f, 10f);
+                LOGGER.info("[porteur] joueur lâché au sol devant le véhicule");
             } else if (tick == CHARGEMENT) {
                 joueur.teleportTo(monde, vehicule.getX(), vehicule.getY() + 2.5, vehicule.getZ(), 180f, 15f);
                 LOGGER.info("[porteur] joueur lâché au-dessus du véhicule");
@@ -308,6 +345,12 @@ public final class EssaiPorteur {
             }
             // Assis au volant, le porté tient la voiture : un mod ne la conduit pas (ADR-167 D9), elle reste là.
             if (SIEGE != null && "conducteur".equals(PLACE)) {
+                return;
+            }
+            if (POUSSEE) {
+                if (conduite <= POUSSE + 40) {
+                    pousser(conduite);
+                }
                 return;
             }
             if (ASCENSEUR) {

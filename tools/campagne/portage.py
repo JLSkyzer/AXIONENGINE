@@ -17,7 +17,10 @@ de Minecraft avant de la lancer, là où il y en a un.
 Avec --observateur, un second client (`runEssaiClientObservateur`, `EssaiObservateur`) regarde le porté en spectateur
 et juge ce qu'un autre joueur voit : ses jambes au repos, et sa place sur le véhicule.
 
-Usage : python tools/campagne/portage.py [--latence MS] [--film] [--observateur]   (JAVA_HOME : un JDK 17)
+Avec --ascenseur, le serveur fige le véhicule et le mène en hauteur puis de côté (ADR-183 D4). Avec --poussee, il le mène
+contre le joueur debout au sol, que son client doit sortir du chemin (ADR-178 D5) : seul le journal du serveur juge.
+
+Usage : python tools/campagne/portage.py [--latence MS] [--film] [--observateur | --ascenseur | --poussee]   (JAVA_HOME : un JDK 17)
 Défaut : 100 ms par sens.
 """
 
@@ -90,8 +93,37 @@ def moteur_lu(releve: list[str], journal: list[str]) -> bool:
     return juste
 
 
+# Ce qui peut rester d'enfoncement une fois le véhicule arrêté, en blocs : le contact, pas une pénétration.
+ENFONCE_MAX = 0.05
+# En marche, le serveur voit le joueur sortir en retard : le véhicule avance à 1 bloc/s (0,05 par tick d'EssaiPorteur)
+# pendant l'aller et le retour du relais, le délai d'interpolation du client (net.interpolation_delay_ms, 100 ms par
+# défaut) et deux ticks de 50 ms.
+VITESSE_POUSSEE = 1.0
+RETARD_CLIENT_S = 0.2
+
+
+def poussee_jugee(journal: list[str], latence: int) -> bool:
+    """Le joueur au sol, déplacé d'au moins deux blocs, enfoncé en marche de pas plus que son retard, et hors du
+    véhicule arrêté (ADR-183 D4, ADR-178 D5)."""
+    motif = re.compile(r"poussée : tick \d+,.*poussé de (-?[\d.]+) bloc, (-?[\d.]+) au-dessus du véhicule,"
+                       r" enfoncé de ([\d.]+) bloc")
+    dits = [m for ligne in journal if (m := motif.search(ligne))]
+    if not dits:
+        print("poussée : rien au journal du serveur")
+        return False
+    pousse, hauteur, enfonce = (float(valeur) for valeur in dits[-1].groups())
+    en_marche = max(float(m.group(3)) for m in dits)
+    # Les enfoncements sont écrits au centième : la borne se compare avec ce même grain.
+    borne = round(VITESSE_POUSSEE * (2 * latence / 1000 + RETARD_CLIENT_S), 2)
+    juste = pousse >= 2.0 and en_marche <= borne and enfonce <= ENFONCE_MAX
+    print(f"poussée : joueur déplacé de {pousse} blocs, à {hauteur + 0.0} au-dessus du véhicule, enfoncé d'au plus"
+          f" {en_marche} bloc en marche (borne {borne}) et de {enfonce} une fois arrêté : "
+          + ("réussie" if juste else "EN ÉCHEC"))
+    return juste
+
+
 def essai(latence: int, film: bool, observateur: bool = False, assis: bool = False, gigue: int = 0,
-          ascenseur: bool = False) -> bool:
+          ascenseur: bool = False, poussee: bool = False) -> bool:
     """Joue l'essai ; rend vrai si le client est vert et le serveur sans correction ni expulsion."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     for fichier in (JOURNAL_SERVEUR, RAPPORT, RAPPORT_OBSERVATEUR):
@@ -107,6 +139,9 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
     environnement.pop("AXION_ESSAI_PREDICTION", None)
     environnement.pop("AXION_ESSAI_PORTEUR_DEUX", None)
     environnement.pop("AXION_ESSAI_ASCENSEUR", None)
+    environnement.pop("AXION_ESSAI_POUSSEE", None)
+    if poussee:
+        environnement["AXION_ESSAI_POUSSEE"] = "1"
     if ascenseur:
         environnement["AXION_ESSAI_ASCENSEUR"] = "1"
     if observateur:
@@ -136,7 +171,7 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
             commande += ["-PessaiAscenseur"] if ascenseur else []
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
-        if client.returncode != 0 and not assis:
+        if client.returncode != 0 and not assis and not poussee:
             raise RuntimeError(f"client sorti en {client.returncode} (voir {journal_client})")
         # Le serveur d'essai s'arrête de lui-même quand son joueur part.
         try:
@@ -171,7 +206,8 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
     print(f"corrections et expulsions au journal du serveur : {len(fautes)}")
     reconnu = next((m for ligne in journal if (m := re.search(r"porté (\d+) ticks sur (\d+) de conduite", ligne))), None)
     part = int(reconnu.group(1)) / max(int(reconnu.group(2)), 1) if reconnu else 0.0
-    print(f"support reconnu au serveur : {part:.0%} des ticks de conduite (au moins {SUPPORT_MIN:.0%})")
+    if not poussee:
+        print(f"support reconnu au serveur : {part:.0%} des ticks de conduite (au moins {SUPPORT_MIN:.0%})")
     vu = True
     if observateur:
         releve = RAPPORT_OBSERVATEUR.read_text("utf-8").splitlines() if RAPPORT_OBSERVATEUR.exists() else []
@@ -183,6 +219,8 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
     if assis:
         # Assis, le porté n'est pas porté : son rapport ne vaut pas, seul ce que l'autre voit compte.
         return vu
+    if poussee:
+        return poussee_jugee(journal, latence) and not fautes
     return bool(lignes) and lignes[-1].startswith("VERT") and not fautes and part >= SUPPORT_MIN and vu
 
 
@@ -195,6 +233,8 @@ def main() -> int:
     parser.add_argument("--observateur", action="store_true", help="un second client juge ce qu'il voit du porté")
     parser.add_argument("--ascenseur", action="store_true",
                         help="le plateau figé et mené vers le haut, le bas et de côté au lieu d'être conduit (ADR-183 D4)")
+    parser.add_argument("--poussee", action="store_true",
+                        help="le véhicule figé et mené contre le joueur debout au sol ; seul le serveur juge (ADR-183 D4)")
     parser.add_argument("--gigue", type=int, default=0, metavar="MS",
                         help="gigue du relais : chaque envoi attend de 0 à MS millisecondes de plus, au hasard")
     parser.add_argument("--retard", action="store_true",
@@ -216,7 +256,7 @@ def main() -> int:
         if arguments.retard:
             os.environ["AXION_ESSAI_RETARD"] = "1"
         vert = essai(arguments.latence, arguments.film, arguments.observateur or bool(arguments.siege),
-                     bool(arguments.siege), arguments.gigue, arguments.ascenseur)
+                     bool(arguments.siege), arguments.gigue, arguments.ascenseur, arguments.poussee)
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
         print(f"ÉCHEC : {faute}")
         vert = False
