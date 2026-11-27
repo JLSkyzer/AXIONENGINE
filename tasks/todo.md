@@ -3989,6 +3989,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            processus du gel au volant réussi. **Tranche 4** (grille D7, bornes, téléportation dessinée) FAITE le 2026-11-27 ; question K (gel à plusieurs causes) à Killian.
            Le 2026-11-27 aussi : passagers téléportés au loin, `/tp` de Minecraft et NBT recopié ailleurs corrigés (le
            point non éprouvé de la tranche 2 l'est : GameTests et essai `prediction.py --tp`) ; film `runFilmGel`.
+     - [ ] CAP-11, restes de M5 : [ADR-187](../docs/decisions/ADR-187.md) **proposé** le 2026-11-27 (écouteurs de la
+           vie d'une assembly, des chocs et des commandes du conducteur), attend Killian.
      - [x] `motor.<nom>.regen` (ADR-182, question F) — FAIT le 2026-11-27, ABI 42.
      - [ ] ADR-176, tranche 11b (énergie) : plan et contrats C1 à C7 dans l'ADR (précision « découpage et contrats de
            11b »). 11b1 natif et contrat FAIT (2026-11-20, ABI 31) → 11b2 instance Java/sauvegarde/masse FAIT (2026-11-20) → 11b3 réseau/prédiction/sources FAIT (2026-11-20) → 11b4 API/commande/action/buggy FAIT (2026-11-20, film à faire) →

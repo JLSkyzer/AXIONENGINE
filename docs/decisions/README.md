@@ -130,6 +130,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-187](ADR-187.md) | Écouter la vie d'une assembly : apparition, retrait, chocs, commandes du conducteur (CAP-11) | 2026-11-27 | proposé |
 | [ADR-166](ADR-166.md) | La version d'API qu'un addon exige, le kit de GameTest et le validateur hors jeu | 2026-11-12 | accepté |
 | [ADR-165](ADR-165.md) | Les addons exigés à la connexion, et ce qu'un administrateur règle sans code | 2026-11-11 | accepté |
 | [ADR-162](ADR-162.md) | L'API d'enregistrement du contenu : un mod Java déclare ce qu'AXION connaît | 2026-11-10 | accepté |
