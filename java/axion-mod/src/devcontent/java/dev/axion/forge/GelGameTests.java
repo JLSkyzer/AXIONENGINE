@@ -221,15 +221,21 @@ public final class GelGameTests {
                 .thenSucceed();
     }
 
-    /** Menée contre un mob qui se tient sur son chemin, une assembly figée le pousse devant elle (D4). */
+    /**
+     * Menée contre un mob qui se tient sur son chemin, une assembly figée le pousse devant elle (D4) ; un porte-armure,
+     * que Minecraft ne tient pas pour poussable, reste à sa place, comme contre un véhicule qui roule.
+     */
     @GameTest(template = "test/plancher_16", timeoutTicks = 200)
     public static void adr183_uneAssemblyMeneePousseUnMobSurSonChemin(GameTestHelper helper) {
         ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
         AxionEntity mur = AssembliesDeTest.poser(helper, CAISSE, new Vec3(4.5, DESSUS_DALLE + 0.05, 8.5), DROIT);
         net.minecraft.world.entity.animal.Pig cochon =
                 net.minecraft.world.entity.EntityType.PIG.create(helper.getLevel());
+        net.minecraft.world.entity.decoration.ArmorStand mannequin =
+                net.minecraft.world.entity.EntityType.ARMOR_STAND.create(helper.getLevel());
         Vec3[] but = new Vec3[1];
         double[] depart = new double[1];
+        Vec3[] place = new Vec3[1];
         helper.startSequence()
                 .thenWaitUntil(() -> helper.assertTrue(mur.hasPhysicalBounds() && mur.carryPoses(0) != null, "simulé"))
                 .thenIdle(10)
@@ -240,11 +246,16 @@ public final class GelGameTests {
                     cochon.goalSelector.removeAllGoals(goal -> true);
                     cochon.moveTo(devant.x, devant.y, devant.z, 0f, 0f);
                     helper.getLevel().addFreshEntity(cochon);
+                    Vec3 plus = helper.absoluteVec(new Vec3(9.5, DESSUS_DALLE, 8.5));
+                    mannequin.moveTo(plus.x, plus.y, plus.z, 0f, 0f);
+                    mannequin.setNoGravity(true);
+                    helper.getLevel().addFreshEntity(mannequin);
                 })
                 .thenIdle(10)
                 .thenExecute(() -> {
                     but[0] = mur.position();
                     depart[0] = cochon.getX();
+                    place[0] = mannequin.position();
                 })
                 .thenExecuteFor(40, () -> {
                     but[0] = but[0].add(0.1, 0.0, 0.0);
@@ -256,7 +267,10 @@ public final class GelGameTests {
                     double pousse = cochon.getX() - depart[0];
                     helper.assertTrue(pousse > 1.0, "poussé : de " + pousse + " bloc ; mur en " + mur.position()
                             + ", cochon en " + cochon.position() + ", emprise " + mur.getBoundingBox());
+                    helper.assertTrue(mannequin.position().distanceTo(place[0]) < 0.01,
+                            "le porte-armure reste : " + mannequin.position() + " pour " + place[0]);
                     cochon.discard();
+                    mannequin.discard();
                     mur.discard();
                 })
                 .thenSucceed();

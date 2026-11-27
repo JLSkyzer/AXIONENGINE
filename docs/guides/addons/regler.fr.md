@@ -382,5 +382,6 @@ assembly.setKinematicTransform(new Transform(ici.position().add(0, 0.05, 0), ici
 ```
 
 Menée sur une assembly dynamique, elle lève `IllegalStateException` : pour la déplacer d'un coup, `teleport`. Menée,
-elle porte ce qui se tient dessus et pousse devant elle les mobs et les objets sur son chemin, sans les blesser (tant que
-`physics.entity_push` est vrai) ; un joueur est poussé comme par tout véhicule qui avance.
+elle porte ce qui se tient dessus et pousse devant elle, sans les blesser, ce que pousse un véhicule qui roule — mobs,
+bateaux, wagonnets ; ni les objets au sol, ni les cadres, ni les porte-armures — tant que `physics.entity_push` est
+vrai ; un joueur est poussé comme par tout véhicule qui avance.

@@ -237,10 +237,10 @@ public final class ServerCarry {
     }
 
     /**
-     * Sort les entités des assemblies menées qui avancent contre elles (ADR-183 D4). Le contact de R-614 les pousse
-     * contre une assembly simulée ; une assembly figée, cinématique, n'en a aucun contre elles. Comme pour un joueur chez
-     * son client (ADR-178 D5), la plus courte sortie, bornée, arrêtée par les blocs. Ce qu'elle porte est transporté,
-     * pas poussé.
+     * Sort les entités des assemblies menées qui avancent contre elles (ADR-183 D4). Le contact de R-614 pousse celles
+     * que la physique voit ({@link EntityPresenceBridge#eligible}) contre une assembly simulée ; une assembly figée,
+     * cinématique, n'en a aucun contre elles. Les mêmes sont sorties comme un joueur chez son client (ADR-178 D5) : la
+     * plus courte sortie, bornée, arrêtée par les blocs. Ce qu'elle porte est transporté, pas poussé.
      */
     private static void pushByDriven(ServerLevel level, List<AxionEntity> assemblies) {
         for (AxionEntity assembly : assemblies) {
@@ -249,7 +249,7 @@ public final class ServerCarry {
                 continue;
             }
             for (Entity entity : level.getEntities(assembly, assembly.getBoundingBox().inflate(0.1),
-                    entity -> !(entity instanceof Player) && !(entity instanceof AxionEntity))) {
+                    entity -> !(entity instanceof Player) && EntityPresenceBridge.eligible(entity))) {
                 CarrySupports.Support support = CarrySupports.of(entity);
                 if (support != null && support.assembly() == assembly) {
                     continue;
