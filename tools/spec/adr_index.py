@@ -20,7 +20,7 @@ SUJETS = [
     ("Physique", [112, 113, 114, 117, 120, 123, 147, 149, 151, 152, 180, 181]),
     ("Rendu", [118, 121, 127, 129, 133, 154, 157, 164]),
     ("Animation", [155]),
-    ("Réseau et persistance", [150, 153, 169]),
+    ("Réseau et persistance", [150, 153, 169, 186]),
     ("Assets et compilation", [106, 107, 108, 110, 115, 119, 122, 135, 136, 139, 140]),
     ("API publique et enregistrement du contenu", [143, 162, 165, 166]),
     ("Noyau natif, mémoire et déterminisme", [104, 116, 138]),

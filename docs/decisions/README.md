@@ -103,6 +103,7 @@ Généré par `python tools/spec/adr_index.py` : ne pas éditer à la main.
 
 | ADR | Décision | Date | Statut |
 |---|---|---|---|
+| [ADR-186](ADR-186.md) | Les messages du client au serveur se comptent par genre (R-1690) | 2026-11-27 | proposé |
 | [ADR-169](ADR-169.md) | Le rattrapage de la course de connexion de Forge 47, chez le joueur | 2026-11-14 | accepté |
 | [ADR-153](ADR-153.md) | La persistance de M4 : schéma NBT 3, état restauré à la création (ABI 8), journal latéral, `CustomData` | 2026-10-25 | accepté |
 | [ADR-150](ADR-150.md) | Le réseau de M4 : l'entité de Minecraft porte la visibilité, le canal d'AXION porte l'état ; handshake à la connexion, modèles compilés chez chaque client | 2026-10-18 | accepté |

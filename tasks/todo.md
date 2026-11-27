@@ -3979,9 +3979,9 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            (`C2S_Carried`, `AXION-21`, R-1666) : tests unitaires, 167 GameTests, essais à deux joueurs verts le
            2026-11-27 (dérive dessinée 0,008 bloc, gigue 40 et 100 ms et film compris ; un porté mis à jour avant son
            assembly corrigé).
-     - [ ] À vérifier (R-1690, lu dans le code le 2026-11-27, non reproduit) : un conducteur envoie 20 entrées et jusqu'à
-           20 accusés par seconde, le plafond `net.max_packets_per_second` (40) ; les entrées ajoutées par la régulation
-           de la file le dépassent, et cinq secondes de suite déconnectent. À mesurer à l'essai de prédiction sous gigue.
+     - [ ] R-1690 : des messages d'un conducteur honnête ignorés au plafond (7 des 12 essais de prédiction à 20 ms de
+           gigue, et à 100 ms le 2026-11-27 ; aucune déconnexion vue) — [ADR-186](../docs/decisions/ADR-186.md)
+           **proposé** (compter par genre), attend Killian.
      - [ ] ADR-183 (CAP-34, CAP-11) — **accepté** le 2026-11-26 (A34) : forces et couples, téléporter, figer,
            renommer ; tranches de l'ADR.
      - [ ] `motor.<nom>.regen` (ADR-182, question F, acceptée le 2026-11-26).
