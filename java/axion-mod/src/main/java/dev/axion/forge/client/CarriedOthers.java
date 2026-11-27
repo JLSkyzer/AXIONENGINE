@@ -15,6 +15,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -26,7 +27,8 @@ import net.minecraftforge.fml.common.Mod;
  * <ul>
  *   <li><b>À chaque image</b>, elle est posée à sa place sur le corps tel que l'image le dessine.</li>
  *   <li><b>À son tick</b>, un être vivant part de sa place d'avant sur le corps du tick et vise celle d'après : son
- *       animation et son corps ne lisent que son mouvement sur le plateau, son regard suit comme d'ordinaire.</li>
+ *       animation et son corps ne lisent que son mouvement sur le plateau, son regard suit comme d'ordinaire ; à la fin du
+ *       tick, il se repose sur la pose que l'assembly vient de prendre.</li>
  *   <li><b>Plus listée</b>, elle revient à la position de Minecraft, lissée sur 200 ms.</li>
  * </ul>
  *
@@ -114,6 +116,46 @@ public final class CarriedOthers {
         entity.lerpY = end[1];
         entity.lerpZ = end[2];
         HELD.put(entity.getId(), new Held(ridden.assembly(), body, local));
+    }
+
+    /**
+     * @param event la fin d'un tick du client, les assemblies mises à jour : un porté mis à jour avant la sienne retrouve sa
+     *     place sur la pose de ce tick, sans quoi sa boîte, où il se vise, aurait un tick de retard sur le véhicule
+     */
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onCarriedClientTickEnd(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || HELD.isEmpty()) {
+            return;
+        }
+        AuthoritativeThread.requireClient();
+        Minecraft minecraft = Minecraft.getInstance();
+        ClientLevel level = minecraft.level;
+        if (level == null || minecraft.isPaused()) {
+            return;
+        }
+        for (Map.Entry<Integer, Held> entry : HELD.entrySet()) {
+            Held held = entry.getValue();
+            double[] poses = held.assembly().collisionPoses();
+            if (!(level.getEntity(entry.getKey()) instanceof LivingEntity entity) || !follows(entity) || poses == null
+                    || held.body() >= poses.length / BodyFrame.POSE) {
+                continue;
+            }
+            double[] world = BodyFrame.toWorld(poses, held.body(), held.local());
+            double dx = world[0] - entity.getX();
+            double dy = world[1] - entity.getY();
+            double dz = world[2] - entity.getZ();
+            // Les positions d'avant suivent : le déplacement lu, qui anime ses jambes, reste le sien.
+            entity.setPos(world[0], world[1], world[2]);
+            entity.xo += dx;
+            entity.yo += dy;
+            entity.zo += dz;
+            entity.xOld += dx;
+            entity.yOld += dy;
+            entity.zOld += dz;
+            entity.lerpX = world[0];
+            entity.lerpY = world[1];
+            entity.lerpZ = world[2];
+        }
     }
 
     /**

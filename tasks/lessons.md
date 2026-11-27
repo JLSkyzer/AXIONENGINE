@@ -2855,3 +2855,14 @@ que quand la gigue grandit, ce qu'un essai sur une machine au repos ne provoque 
 **Règle.** Un comportement réseau se prouve au moins **deux fois**, dont une sous charge (filmer suffit à en donner une),
 et un relevé tick par tick vaut mieux qu'un verdict seul. Un verdict d'essai juge ce que l'écran dessine, pas seulement
 des positions de tick, qui comptent l'ordre de mise à jour des entités.
+
+## 2026-11-27 | ADR-185 : une position de tick en retard d'un tick sur un support mis à jour après
+
+**Ce qui a mal tourné.** Les trois premiers essais verts, le quatrième rouge sur le seul écart au tick (0,42 bloc), le
+dessin restant juste.
+
+**Cause.** L'ordre de mise à jour des entités chez un client n'est pas garanti : une entité posée sur le support à son
+propre tick lit la pose du tick d'avant quand le support passe après elle.
+
+**Règle.** Ce qui se place sur un support à un tick se repose sur lui à la fin du tick (`ClientTickEvent.END`), les
+positions d'avant suivant d'autant ; juger séparément le dessin et la position de tick.
