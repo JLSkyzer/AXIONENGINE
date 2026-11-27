@@ -115,6 +115,13 @@ public final class EssaiPrediction {
      */
     private static final boolean RECHARGE = "1".equals(System.getenv("AXION_ESSAI_RECHARGE"));
     private static final boolean RECHARGE_CLIENT = Boolean.getBoolean("axion.essai.recharge");
+    /** Le serveur fige le véhicule en pleine conduite, puis le rend (ADR-183 D3). */
+    private static final boolean GEL = "1".equals(System.getenv("AXION_ESSAI_GEL"));
+    /** Le client juge ce gel. */
+    private static final boolean GEL_CLIENT = Boolean.getBoolean("axion.essai.gel");
+    /** Ticks de conduite avant le gel, et durée du gel. */
+    private static final int AVANT_LE_GEL = 40;
+    private static final int GELE = 60;
     private static final String REMPLACEE = "axion:test/vehicule_remplace";
 
     /** Les rapports passés avant d'accélérer : la première d'une boîte manuelle, qui part au neutre. */
@@ -164,8 +171,29 @@ public final class EssaiPrediction {
         private static boolean assis;
         /** Les ticks où le conducteur a accéléré, avant le rechargement. */
         private static int conduit;
+        /** Les ticks depuis le premier accélérateur du conducteur, pour le gel ; -1 avant. */
+        private static int depuisLAccelerateur = -1;
 
         private Serveur() {}
+
+        /** Fige le véhicule {@link #AVANT_LE_GEL} ticks après le premier accélérateur, {@link #GELE} ticks durant. */
+        private static void geler() {
+            int siege = vehicule.seatOf(conducteur);
+            if (depuisLAccelerateur < 0) {
+                if (siege >= 0 && vehicule.seatInput(siege).throttle() > 0) {
+                    depuisLAccelerateur = 0;
+                }
+                return;
+            }
+            depuisLAccelerateur++;
+            if (depuisLAccelerateur == AVANT_LE_GEL) {
+                vehicule.setFrozen(true);
+                LOGGER.info("[essai] serveur : véhicule figé à {}", vehicule.position());
+            } else if (depuisLAccelerateur == AVANT_LE_GEL + GELE) {
+                LOGGER.info("[essai] serveur : véhicule rendu au moteur à {}", vehicule.position());
+                vehicule.setFrozen(false);
+            }
+        }
 
         /** Recharge les definitions : {@link #VEHICULE} disparaît, {@link #REMPLACEE} le remplace, deux fois plus lourde. */
         private static void recharger() {
@@ -330,6 +358,9 @@ public final class EssaiPrediction {
                     recharger();
                     conduit = -1;
                 }
+            }
+            if (GEL && assis) {
+                geler();
             }
             if (assis && serveur.getTickCount() % 20 == 0) {
                 long[] corrections = dev.axion.forge.net.EssaiReseau.corrections(conducteur.getUUID());
@@ -667,6 +698,9 @@ public final class EssaiPrediction {
             }
             basculer(assembly);
             noter(assembly, avant, gauche);
+            if (GEL_CLIENT) {
+                suivreLeGel(assembly);
+            }
             int[] proxies = ClientPrediction.proxyCounts();
             proxiesAssemblies = Math.max(proxiesAssemblies, proxies[0]);
             proxiesEntites = Math.max(proxiesEntites, proxies[1]);
@@ -966,6 +1000,9 @@ public final class EssaiPrediction {
             rapport.add(t415(boucle));
             rapport.add(t416(boucle));
             rapport.add(vueAuClient);
+            if (GEL_CLIENT) {
+                rapport.add(gel(boucle));
+            }
             if (RECHARGE_CLIENT) {
                 rapport.add(recharge(minecraft));
             }
@@ -1033,6 +1070,68 @@ public final class EssaiPrediction {
             }
             fermerRelais();
             minecraft.stop();
+        }
+
+        /** La prédiction a tourné avant le gel ; la position au premier relevé. */
+        private static boolean predisait;
+        private static Vec3 departDuGel;
+        /** Les ticks où la prédiction s'est fermée, puis rouverte ; -1 avant. */
+        private static int gelDebut = -1;
+        private static int gelFin = -1;
+        /** Les corrections rejouées à la fermeture, et pendant elle. */
+        private static long rejeuxALaFermeture;
+        private static long rejeuxPendant = -1;
+        /** La route faite avant le gel, et le plus grand écart à la place prise une fois les snapshots rejoints. */
+        private static double avantLeGel;
+        private static Vec3 placeFigee;
+        private static double derive;
+
+        private static void suivreLeGel(AxionEntity vehicule) {
+            if (tick < ATTENTE) {
+                return;
+            }
+            if (departDuGel == null) {
+                departDuGel = vehicule.position();
+            }
+            boolean predit = ClientPrediction.predicting();
+            Prediction boucle = ClientPrediction.loop();
+            if (gelDebut < 0) {
+                predisait |= predit;
+                if (predisait && !predit) {
+                    gelDebut = tick;
+                    rejeuxALaFermeture = boucle == null ? 0 : boucle.replays();
+                    avantLeGel = vehicule.position().distanceTo(departDuGel);
+                }
+            } else if (gelFin < 0) {
+                if (predit) {
+                    gelFin = tick;
+                    rejeuxPendant = boucle == null ? 0 : boucle.replays() - rejeuxALaFermeture;
+                } else if (tick >= gelDebut + 15) {
+                    if (placeFigee == null) {
+                        placeFigee = vehicule.position();
+                    }
+                    derive = Math.max(derive, vehicule.position().distanceTo(placeFigee));
+                }
+            }
+        }
+
+        /**
+         * {@return le verdict du gel au volant (ADR-183 D3)} La prédiction, ouverte, se ferme une fois pendant le gel et
+         * ne corrige rien tant qu'il dure ; le véhicule dessiné ne bouge pas alors que l'accélérateur reste enfoncé ; le
+         * dégel la rouvre, et ses corrections se resserrent.
+         */
+        private static String gel(Prediction boucle) {
+            double[] apres = ecarts.stream().filter(e -> gelFin >= 0 && e[3] >= gelFin + REPRISE)
+                    .mapToDouble(e -> e[0]).toArray();
+            double pire = java.util.Arrays.stream(apres).max().orElse(Double.NaN);
+            int duree = gelFin < 0 ? -1 : gelFin - gelDebut;
+            boolean reussi = avantLeGel > 0.5 && duree >= GELE - 20 && duree <= GELE + 20 && rejeuxPendant <= 1
+                    && placeFigee != null && derive <= 0.1 && apres.length >= 10 && pire < 0.3;
+            return String.format(Locale.ROOT, "GEL : %s — %.2f blocs parcourus avant ; prédiction fermée au tick %d,"
+                    + " rouverte au tick %d (%d ticks pour %d figés) ; %d correction(s) rejouée(s) entre les deux ;"
+                    + " véhicule figé dessiné à %.4f bloc de sa place au plus ; %d correction(s) après la reprise, pire"
+                    + " écart %.4f m (au moins 10, sous 0,3 m)", reussi ? "réussi" : "ÉCHOUÉ", avantLeGel, gelDebut, gelFin,
+                    duree, GELE, rejeuxPendant, derive, apres.length, pire);
         }
 
         /** {@return combien de sections de la piste le client coupe à plusieurs matériaux, par ses correspondances} */

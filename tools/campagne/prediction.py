@@ -16,6 +16,8 @@ R-450, précision 6c d'ADR-168) : d'où deux processus, et une campagne hors de 
 
 Avec --recharge, le serveur recharge les definitions pendant la conduite — le véhicule remplacé par un autre, deux fois
 plus lourd — et le client juge ce qu'il en suit (verdict RECHARGE, ADR-175 D5).
+Avec --gel, le serveur fige le véhicule en pleine conduite puis le rend, et le client juge sa prédiction (verdict GEL,
+ADR-183 D3).
 
 Avec --sol-mixte, les roues gauches passent un tronçon sur deux sur de la glace (ADR-180) : les verdicts T-415 et T-416
 valent sur ce sol, et le rapport dit les sections à plusieurs matériaux que le client coupe.
@@ -66,7 +68,7 @@ def arreter(processus: subprocess.Popen) -> None:
 
 
 def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
-          sol_mixte: bool = False, energie: bool = False) -> dict[str, str]:
+          sol_mixte: bool = False, energie: bool = False, gel: bool = False) -> dict[str, str]:
     """Joue un essai à deux processus ; rend le verdict de chaque test, ou lève RuntimeError."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     defaut = "axion:test/vehicule_reservoir" if energie else "axion:test/vehicule"
@@ -90,6 +92,9 @@ def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
     environnement.pop("AXION_ESSAI_PLUIE", None)
     if energie:
         environnement["AXION_ESSAI_PLUIE"] = "1"
+    environnement.pop("AXION_ESSAI_GEL", None)
+    if gel:
+        environnement["AXION_ESSAI_GEL"] = "1"
     if film:
         # Le serveur d'un essai filmé met le temps au clair ; le client filme (Tournage, tools/film/encoder.py).
         environnement["AXION_ESSAI_FILM"] = "1"
@@ -109,6 +114,7 @@ def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
             commande = [str(GRADLE), ":axion-mod:runEssaiClientPrediction", f"-PessaiLatence={latence}",
                         f"-PessaiGigue={gigue}"] + (["-PessaiFilm"] if film else []) + (
                             ["-PessaiRecharge", "-PessaiProlonger=3"] if recharge else []) + (
+                            ["-PessaiGel", "-PessaiProlonger=3"] if gel else []) + (
                             ["-PessaiBasculer=contact", "-PessaiBasculeTick=20"] if energie else [])
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
@@ -129,7 +135,8 @@ def essai(latence: int, gigue: int, film: bool = False, recharge: bool = False,
         if (ESSAI / releve).exists():
             (SORTIES / f"{releve[:-4]}-{nom}.csv").write_bytes((ESSAI / releve).read_bytes())
     verdicts = {}
-    attendus = ("RECHARGE",) if recharge else ("ENERGIE", "MOUILLE") if energie else VERDICTS
+    attendus = (("RECHARGE",) if recharge else ("ENERGIE", "MOUILLE") if energie else ("GEL",) if gel
+                else VERDICTS)
     for test in attendus:
         ligne = next((l for l in lignes if l.startswith(test + " : ")), None)
         if ligne is None:
@@ -150,6 +157,8 @@ def main() -> int:
                         help="roues gauches sur la glace un tronçon sur deux (ADR-180)")
     parser.add_argument("--energie", action="store_true",
                         help="réservoir, démarreur et pluie : seuls les verdicts ENERGIE et MOUILLE comptent (ADR-176)")
+    parser.add_argument("--gel", action="store_true",
+                        help="figer le véhicule en pleine conduite (ADR-183 D3) ; seul le verdict GEL compte")
     arguments = parser.parse_args()
     reglages = [tuple(int(x) for x in r.split(":")) for r in (arguments.reglage or ["100:20", "50:20"])]
     echecs = 0
@@ -157,7 +166,7 @@ def main() -> int:
         print(f"--- {latence} ms par sens, gigue de 0 à {gigue} ms", flush=True)
         try:
             verdicts = essai(latence, gigue, arguments.film, arguments.recharge, arguments.sol_mixte,
-                             arguments.energie)
+                             arguments.energie, arguments.gel)
         except RuntimeError as faute:
             print(f"ÉCHEC : {faute}")
             echecs += 1
