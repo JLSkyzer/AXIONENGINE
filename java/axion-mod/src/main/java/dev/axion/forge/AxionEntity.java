@@ -3866,14 +3866,34 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         System.arraycopy(turned(turn, angularVelocity, reset), 0, angularVelocity, 0, 3);
         bodyRotation.set(arrival);
         if (level() instanceof net.minecraft.server.level.ServerLevel server) {
-            server.getChunkSource().addRegionTicket(net.minecraft.server.level.TicketType.POST_TELEPORT,
-                    new net.minecraft.world.level.ChunkPos(net.minecraft.core.BlockPos.containing(position)), 2,
+            net.minecraft.world.level.ChunkPos at =
+                    new net.minecraft.world.level.ChunkPos(net.minecraft.core.BlockPos.containing(position));
+            server.getChunkSource().addRegionTicket(net.minecraft.server.level.TicketType.POST_TELEPORT, at, 2,
                     getId());
+            // Chargé avant le saut, comme pour /tp : sinon elle quitte le suivi un instant, et ses passagers descendent.
+            server.getChunk(at.x, at.z);
         }
         setPos(position);
+        bringPassengers();
         releaseCarried();
         pendingMove = new Move(new double[] {position.x, position.y, position.z},
                 new float[] {arrival.x, arrival.y, arrival.z, arrival.w}, reset);
+    }
+
+    /**
+     * Fait suivre ses passagers aussitôt, à leurs sièges, comme le fait la téléportation de Minecraft : restés au départ,
+     * ils tiendraient chargé le départ et non l'arrivée, qui se déchargerait avec elle.
+     */
+    private void bringPassengers() {
+        for (Entity passenger : getIndirectPassengers()) {
+            Entity seat = passenger.getVehicle();
+            if (seat != null) {
+                seat.positionRider(passenger);
+            }
+            if (passenger instanceof ServerPlayer player) {
+                player.serverLevel().getChunkSource().move(player);
+            }
+        }
     }
 
     private static float[] turned(Quaternionf turn, float[] velocity, boolean reset) {

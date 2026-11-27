@@ -156,6 +156,46 @@ public final class TeleportationGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * Téléportée au loin avec son conducteur, l'assembly l'emmène : il reste à son siège, et elle reste suivie à
+     * l'arrivée. Sans quoi le chunk d'arrivée, tenu cinq ticks par la téléportation, se décharge avec elle.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr183_leConducteurSuitSonVehiculeAuLoin(GameTestHelper helper) {
+        AxionEntity assembly = AssembliesDeTest.poser(helper, "axion:test/vehicule",
+                new Vec3(8.0, DESSUS_DALLE + 0.1, 8.0), DROIT);
+        dev.axion.forge.net.JoueurSimule[] conducteur = new dev.axion.forge.net.JoueurSimule[1];
+        helper.onEachTick(() -> {
+            if (conducteur[0] != null && conducteur[0].connecte()) {
+                conducteur[0].tick();
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "simulée"))
+                .thenExecute(() -> {
+                    conducteur[0] = dev.axion.forge.net.JoueurSimule.rejoindre(helper.getLevel(), "conducteur_tp",
+                            helper.absoluteVec(new Vec3(5.0, DESSUS_DALLE, 8.0)));
+                    helper.assertTrue(assembly.reseat(conducteur[0].joueur(), "conducteur"), "assis au volant");
+                })
+                .thenIdle(10)
+                .thenExecute(() -> ForgeAxionApi.view(assembly).teleport(new dev.axion.api.assembly.Transform(
+                        assembly.position().add(1000.0, 1.0, 0.0), assembly.orientation(), new Vec3(1, 1, 1)), true))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    try {
+                        helper.assertTrue(!assembly.isRemoved(), "suivie à l'arrivée : " + assembly.getRemovalReason());
+                        helper.assertTrue(conducteur[0].joueur().getVehicle() == assembly, "le conducteur reste assis : "
+                                + conducteur[0].joueur().getVehicle());
+                        double ecart = conducteur[0].joueur().position().distanceTo(assembly.position());
+                        helper.assertTrue(ecart < 6.0, "il est avec elle : à " + ecart + " blocs");
+                    } finally {
+                        conducteur[0].quitter();
+                        assembly.discard();
+                    }
+                })
+                .thenSucceed();
+    }
+
     /** Une arrivée hors du monde de Minecraft est refusée, à la commande comme à l'API, et rien ne bouge. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 100)
     public static void adr183_uneArriveeHorsDuMondeEstRefusee(GameTestHelper helper) {

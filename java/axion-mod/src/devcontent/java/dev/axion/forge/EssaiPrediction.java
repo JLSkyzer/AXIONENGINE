@@ -119,9 +119,15 @@ public final class EssaiPrediction {
     private static final boolean GEL = "1".equals(System.getenv("AXION_ESSAI_GEL"));
     /** Le client juge ce gel. */
     private static final boolean GEL_CLIENT = Boolean.getBoolean("axion.essai.gel");
-    /** Ticks de conduite avant le gel, et durée du gel. */
+    /** Ticks de conduite avant le gel ou la téléportation, et durée du gel. */
     private static final int AVANT_LE_GEL = 40;
     private static final int GELE = 60;
+    /** Le serveur téléporte le véhicule conduit hors de la portée de chargement (ADR-183 D2). */
+    private static final boolean TP = "1".equals(System.getenv("AXION_ESSAI_TP"));
+    /** Le client juge cette téléportation. */
+    private static final boolean TP_CLIENT = Boolean.getBoolean("axion.essai.tp");
+    /** Le décalage en x de la piste d'arrivée, en blocs : au-delà de la portée de chargement du départ. */
+    private static final int DECALAGE_TP = 640;
     private static final String REMPLACEE = "axion:test/vehicule_remplace";
 
     /** Les rapports passés avant d'accélérer : la première d'une boîte manuelle, qui part au neutre. */
@@ -171,13 +177,16 @@ public final class EssaiPrediction {
         private static boolean assis;
         /** Les ticks où le conducteur a accéléré, avant le rechargement. */
         private static int conduit;
-        /** Les ticks depuis le premier accélérateur du conducteur, pour le gel ; -1 avant. */
+        /** Les ticks depuis le premier accélérateur du conducteur, pour le gel et la téléportation ; -1 avant. */
         private static int depuisLAccelerateur = -1;
 
         private Serveur() {}
 
-        /** Fige le véhicule {@link #AVANT_LE_GEL} ticks après le premier accélérateur, {@link #GELE} ticks durant. */
-        private static void geler() {
+        /**
+         * {@link #AVANT_LE_GEL} ticks après le premier accélérateur, fige le véhicule {@link #GELE} ticks durant, ou le
+         * téléporte sur la piste d'arrivée sans l'arrêter.
+         */
+        private static void perturber() {
             int siege = vehicule.seatOf(conducteur);
             if (depuisLAccelerateur < 0) {
                 if (siege >= 0 && vehicule.seatInput(siege).throttle() > 0) {
@@ -186,10 +195,16 @@ public final class EssaiPrediction {
                 return;
             }
             depuisLAccelerateur++;
-            if (depuisLAccelerateur == AVANT_LE_GEL) {
+            if (TP && depuisLAccelerateur == AVANT_LE_GEL) {
+                Vec3 arrivee = vehicule.position().add(DECALAGE_TP, 0.5, 0.0);
+                ForgeAxionApi.view(vehicule).teleport(new dev.axion.api.assembly.Transform(arrivee,
+                        vehicule.orientation(), new Vec3(1, 1, 1)), false);
+                LOGGER.info("[essai] serveur : véhicule téléporté en {}", arrivee);
+            }
+            if (GEL && depuisLAccelerateur == AVANT_LE_GEL) {
                 vehicule.setFrozen(true);
                 LOGGER.info("[essai] serveur : véhicule figé à {}", vehicule.position());
-            } else if (depuisLAccelerateur == AVANT_LE_GEL + GELE) {
+            } else if (GEL && depuisLAccelerateur == AVANT_LE_GEL + GELE) {
                 LOGGER.info("[essai] serveur : véhicule rendu au moteur à {}", vehicule.position());
                 vehicule.setFrozen(false);
             }
@@ -290,6 +305,10 @@ public final class EssaiPrediction {
                         boolean glace = SOL_MIXTE && x < 8 && Math.floorMod(Math.floorDiv(z, 8), 2) == 1;
                         monde.setBlockAndUpdate(new BlockPos(x, SOL_Y, z),
                                 (glace ? Blocks.PACKED_ICE : Blocks.STONE).defaultBlockState());
+                        if (TP) {
+                            monde.setBlockAndUpdate(new BlockPos(x + DECALAGE_TP, SOL_Y, z),
+                                    Blocks.STONE.defaultBlockState());
+                        }
                     }
                 }
                 conducteur.teleportTo(monde, 8.0, SOL_Y + 1.0, SOL_LONGUEUR - 4.0, 180f, 0f);
@@ -359,8 +378,8 @@ public final class EssaiPrediction {
                     conduit = -1;
                 }
             }
-            if (GEL && assis) {
-                geler();
+            if ((GEL || TP) && assis) {
+                perturber();
             }
             if (assis && serveur.getTickCount() % 20 == 0) {
                 long[] corrections = dev.axion.forge.net.EssaiReseau.corrections(conducteur.getUUID());
@@ -659,6 +678,9 @@ public final class EssaiPrediction {
                 if (tick < 0 && ++enJeu > VOLANT_MAX) {
                     echec(minecraft, "jamais au volant en " + VOLANT_MAX / 20 + " s");
                 }
+                if (TP_CLIENT && tick >= 0 && ++horsVolant == 100) {
+                    echec(minecraft, "plus au volant depuis 5 s après la téléportation");
+                }
                 return;
             }
             if (FILM && tick < 0) {
@@ -700,6 +722,9 @@ public final class EssaiPrediction {
             noter(assembly, avant, gauche);
             if (GEL_CLIENT) {
                 suivreLeGel(assembly);
+            }
+            if (TP_CLIENT) {
+                suivreLaTeleportation(minecraft, assembly);
             }
             int[] proxies = ClientPrediction.proxyCounts();
             proxiesAssemblies = Math.max(proxiesAssemblies, proxies[0]);
@@ -1003,6 +1028,9 @@ public final class EssaiPrediction {
             if (GEL_CLIENT) {
                 rapport.add(gel(boucle));
             }
+            if (TP_CLIENT) {
+                rapport.add(teleportation());
+            }
             if (RECHARGE_CLIENT) {
                 rapport.add(recharge(minecraft));
             }
@@ -1070,6 +1098,48 @@ public final class EssaiPrediction {
             }
             fermerRelais();
             minecraft.stop();
+        }
+
+        /** Les ticks passés hors du volant après le départ, et le tick où le saut se voit ; -1 avant. */
+        private static int horsVolant;
+        private static int tickTp = -1;
+        /** La prédiction rouverte après le saut ; -1 avant. */
+        private static int predictionApresTp = -1;
+        private static Vec3 dernierePlace;
+        /** Le plus grand écart du joueur à son véhicule, une seconde après le saut et au-delà. */
+        private static double joueurLoin;
+
+        private static void suivreLaTeleportation(Minecraft minecraft, AxionEntity vehicule) {
+            Vec3 place = vehicule.position();
+            if (tickTp < 0 && dernierePlace != null && place.x - dernierePlace.x > DECALAGE_TP / 2.0) {
+                tickTp = tick;
+            }
+            dernierePlace = place;
+            if (tickTp < 0) {
+                return;
+            }
+            if (predictionApresTp < 0 && tick > tickTp && ClientPrediction.predicting()) {
+                predictionApresTp = tick;
+            }
+            if (tick >= tickTp + 20 && minecraft.player != null) {
+                joueurLoin = Math.max(joueurLoin, minecraft.player.position().distanceTo(place));
+            }
+        }
+
+        /**
+         * {@return le verdict de la téléportation au volant (ADR-183 D2)} Le saut se voit, le conducteur reste à son
+         * siège près de son véhicule, la prédiction tourne de nouveau et ses corrections se resserrent.
+         */
+        private static String teleportation() {
+            double[] apres = ecarts.stream().filter(e -> tickTp >= 0 && e[3] >= tickTp + REPRISE)
+                    .mapToDouble(e -> e[0]).toArray();
+            double pire = java.util.Arrays.stream(apres).max().orElse(Double.NaN);
+            boolean reussi = tickTp > 0 && horsVolant < 40 && joueurLoin < 6.0 && predictionApresTp > 0
+                    && apres.length >= 10 && pire < 0.3;
+            return String.format(Locale.ROOT, "TP : %s — saut vu au tick %d ; %d tick(s) hors du volant ; conducteur à"
+                    + " %.2f bloc(s) de son véhicule au plus une seconde après ; prédiction ouverte au tick %d ; %d"
+                    + " correction(s) après la reprise, pire écart %.4f m (au moins 10, sous 0,3 m)",
+                    reussi ? "réussi" : "ÉCHOUÉ", tickTp, horsVolant, joueurLoin, predictionApresTp, apres.length, pire);
         }
 
         /** La prédiction a tourné avant le gel ; la position au premier relevé. */

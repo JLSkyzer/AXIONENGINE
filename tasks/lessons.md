@@ -2889,3 +2889,14 @@ membre restait sur place — un vrai défaut, que le test ne voyait que par ce h
 
 **Règle.** Un GameTest attend l'état qu'il suppose (`hasPhysicalBounds`) au lieu d'un nombre de ticks. Une opération sur
 un ensemble applique son effet à chaque membre côté Java, sans supposer que le natif les a.
+
+## 2026-11-27 | une téléportation lointaine faisait descendre le conducteur
+
+**Ce qui a mal tourné.** Un véhicule conduit téléporté à 640 blocs : déchargé à l'arrivée, conducteur éjecté. Les
+GameTests de la tranche 2 sautaient de quelques blocs, sans joueur à bord ; le défaut était noté « non éprouvé ».
+
+**Cause.** `Entity.setPos` ne déplace pas les passagers : le joueur, resté au départ, y gardait ses chunks ; le ticket
+`POST_TELEPORT` expire en cinq ticks et le chunk d'arrivée se décharge avec l'entité.
+
+**Règle.** Un « non éprouvé » d'une opération sur une entité montée se teste avant de passer à la suite, à une distance
+qui sort des chunks chargés, avec un joueur à bord (`JoueurSimule`).
