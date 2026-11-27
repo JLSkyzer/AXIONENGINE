@@ -194,6 +194,19 @@ fn apply_one(
             driver.apply_impulse(handle, vector, point, at_point);
             outcome.applied += 1;
         }
+        // ADR-183 D1 : une force ou un couple valent le prochain pas.
+        opcode::APPLY_FORCE | opcode::APPLY_TORQUE => {
+            expect_len(payload, ApplyForce::BYTES)?;
+            let handle = read_handle(payload, 0);
+            let vector = read_vec3(payload, 8);
+            if op == opcode::APPLY_TORQUE {
+                driver.apply_torque(handle, vector);
+            } else {
+                let point = read_vec3(payload, 20);
+                driver.apply_force(handle, vector, point, read_u32(payload, 32) != 0);
+            }
+            outcome.applied += 1;
+        }
         opcode::SET_DIMENSION_ENV => {
             expect_len(payload, SetDimensionEnv::BYTES)?;
             let dimension = read_u64(payload, 0);
@@ -419,10 +432,9 @@ fn apply_one(
         }
         // Connus mais non traités *ici* : CREATE_ASSEMBLY est extrait et appliqué
         // par la frontière (ax-ffi, `create_assembly_payloads`), qui seule décode
-        // les colliders ; APPLY_FORCE continu attend la boucle de forces. Les deux
-        // sont comptés « reportés » du point de vue d'ax-physics.
+        // les colliders, compté « reporté » du point de vue d'ax-physics.
         // ANIMATE_ASSEMBLY (ADR-155) : l'animation vit dans la session, que la frontière tient.
-        opcode::CREATE_ASSEMBLY | opcode::APPLY_FORCE | opcode::ANIMATE_ASSEMBLY => {
+        opcode::CREATE_ASSEMBLY | opcode::ANIMATE_ASSEMBLY => {
             outcome.deferred += 1;
         }
         // Inconnu : ignoré, comme les genres d'événements (ADR-113/114).
@@ -931,6 +943,47 @@ mod tests {
             velocity.y > 5.0,
             "l'impulsion accélère vers le haut : {}",
             velocity.y
+        );
+    }
+
+    #[test]
+    fn adr183_apply_force_et_apply_torque_sont_tenues_au_prochain_pas() {
+        let mut driver = SimDriver::new();
+        let handle = Handle::new(5, 1);
+        let ball = body_in(&mut driver, 0, handle);
+        let payload = |vecteur: [f32; 3]| {
+            let mut octets = handle.index.to_le_bytes().to_vec();
+            octets.extend_from_slice(&handle.generation.to_le_bytes());
+            octets.extend(f32s(&vecteur));
+            octets.extend(f32s(&[0.0, 0.0, 0.0]));
+            octets.extend_from_slice(&0u32.to_le_bytes());
+            octets
+        };
+        let mut bytes = stream();
+        push(
+            &mut bytes,
+            opcode::APPLY_FORCE,
+            &payload([0.0, 100_000.0, 0.0]),
+        );
+        push(
+            &mut bytes,
+            opcode::APPLY_TORQUE,
+            &payload([0.0, 1_000.0, 0.0]),
+        );
+        let outcome = apply_command_stream(&mut driver, &bytes, 2).unwrap();
+        assert_eq!(
+            (outcome.applied, outcome.deferred, outcome.ignored),
+            (2, 0, 0)
+        );
+        driver.advance_all(0.05);
+        let world = driver.world_mut(0).unwrap();
+        assert!(
+            world.velocity(ball).unwrap().y > 1.0,
+            "la force pousse vers le haut"
+        );
+        assert!(
+            world.angular_velocity(ball).unwrap().y > 0.1,
+            "le couple fait tourner"
         );
     }
 

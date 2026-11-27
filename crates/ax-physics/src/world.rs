@@ -109,6 +109,16 @@ fn half_thinnest_extent(shape: &dyn rapier3d::parry::shape::Shape) -> f32 {
     }
 }
 
+/// Une force ou un couple demandés sur un corps pour le prochain pas (ADR-183 D1).
+#[derive(Debug, Clone, Copy)]
+struct ExternalForce {
+    body: BodyId,
+    force: Vec3,
+    /// Point d'application au repère du corps ; au centre de masse sans.
+    local_point: Option<Vec3>,
+    torque: Vec3,
+}
+
 /// Le plan de forces d'un corps pour un sous-pas : une force centrale (traînée)
 /// et des forces appliquées à des points (portances, qui créent un moment).
 struct BodyForcePlan {
@@ -439,6 +449,9 @@ pub struct PhysicsWorld {
     /// celui du solveur (un contact qui commence) : il repart alors de son état courant.
     /// Consultée par clé, jamais itérée (R-1020).
     forced_sleep: HashMap<BodyId, ForcedSleep>,
+    /// Forces et couples demandés pour le prochain pas (ADR-183 D1), dans l'ordre de leurs commandes (R-1020) ;
+    /// vidés après lui.
+    external: Vec<ExternalForce>,
     /// Rang de création de chaque corps, l'ancienneté de R-613 : l'ordre d'itération de
     /// `rapier` réutilise les emplacements libérés et n'en donne qu'une approximation.
     /// Consultée par clé, jamais itérée (R-1020).
@@ -654,6 +667,7 @@ impl PhysicsWorld {
             invalid_state_count: 0,
             bounds_unavailable: AtomicU64::new(0),
             forced_sleep: HashMap::new(),
+            external: Vec::new(),
             births: HashMap::new(),
             ccd_threshold: HashMap::new(),
             ccd_declared: HashSet::new(),
@@ -955,7 +969,10 @@ impl PhysicsWorld {
             let integration_start = Instant::now();
             // ADR-171 D5 : chaque treuil rejoint sa longueur cible, à sa vitesse.
             self.advance_winches(dt);
+            // ADR-183 D1 : les forces demandées se reposent à chaque sous-pas, après la remise à zéro et la traînée.
+            self.reset_external_forces();
             self.apply_aero_forces();
+            self.apply_external_forces();
             self.update_automatic_ccd(dt);
             self.record_pre_step_motion();
             let collector = ContactCollector::default();
@@ -988,6 +1005,11 @@ impl PhysicsWorld {
             self.accumulator = (self.accumulator - dt).max(0.0);
             substeps += 1;
         }
+        // ADR-183 D1 : elles valaient ce pas ; sans sous-pas, elles attendent le suivant.
+        if substeps > 0 {
+            self.reset_external_forces();
+            self.external.clear();
+        }
         // R-1011 (ADR-146) : un CONTACT_IMPULSE par paire et par tick, celui du sous-pas le plus fort — avec une
         // entité vanilla, ses impulsions sont celles de tous les sous-pas (ADR-123 §7).
         self.flush_contact_impulses();
@@ -998,6 +1020,39 @@ impl PhysicsWorld {
         // mais son créneau est ici, à sa place normative.
 
         substeps
+    }
+
+    /// Remet à zéro les forces et les couples des corps qui en ont reçu de demandés (ADR-183 D1) : `rapier` les garde
+    /// d'un pas à l'autre.
+    fn reset_external_forces(&mut self) {
+        for external in &self.external {
+            if let Some(body) = self.inner.bodies.get_mut(external.body.handle()) {
+                body.reset_forces(false);
+                body.reset_torques(false);
+            }
+        }
+    }
+
+    /// Pose les forces et les couples demandés sur leurs corps, un point au repère du corps pris à sa pose du
+    /// sous-pas. Un corps qu'ils poussent se réveille ; une assembly endormie par l'activité le reste (ADR-153 D4).
+    fn apply_external_forces(&mut self) {
+        for external in &self.external {
+            if self.forced_sleep.contains_key(&external.body) {
+                continue;
+            }
+            let Some(body) = self.inner.bodies.get_mut(external.body.handle()) else {
+                continue;
+            };
+            body.wake_up(true);
+            match external.local_point {
+                Some(point) => {
+                    let world = body.position().transform_point(point);
+                    body.add_force_at_point(external.force, world, false);
+                }
+                None => body.add_force(external.force, false),
+            }
+            body.add_torque(external.torque, false);
+        }
     }
 
     /// CCD automatique (fiche 5.23) : avant le sous-pas, la CCD complète d'un corps
@@ -2092,6 +2147,31 @@ impl PhysicsWorld {
                     body.add_force_at_point(force, point, false);
                 }
             }
+        }
+    }
+
+    /// Demande une force en repère monde pour le prochain pas, au centre de masse, ou au point du repère du corps
+    /// donné (ADR-183 D1). Une valeur non finie est ignorée.
+    pub fn apply_force(&mut self, id: BodyId, force: Vec3, local_point: Option<Vec3>) {
+        if force.is_finite() && local_point.is_none_or(Vec3::is_finite) {
+            self.external.push(ExternalForce {
+                body: id,
+                force,
+                local_point,
+                torque: Vec3::ZERO,
+            });
+        }
+    }
+
+    /// Demande un couple en repère monde pour le prochain pas (ADR-183 D1). Une valeur non finie est ignorée.
+    pub fn apply_torque(&mut self, id: BodyId, torque: Vec3) {
+        if torque.is_finite() {
+            self.external.push(ExternalForce {
+                body: id,
+                force: Vec3::ZERO,
+                local_point: None,
+                torque,
+            });
         }
     }
 

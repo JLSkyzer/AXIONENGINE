@@ -23,7 +23,8 @@ pub mod opcode {
     pub const REMOVE_ASSEMBLY: u32 = 1;
     /// Imposer la pose d'un corps cinématique (payload [`super::SetKinematic`]).
     pub const SET_KINEMATIC: u32 = 2;
-    /// Appliquer une force (payload [`super::ApplyForce`]).
+    /// Appliquer une force pendant le prochain pas du monde, à chacun de ses sous-pas (payload [`super::ApplyForce`],
+    /// ADR-183 D1).
     pub const APPLY_FORCE: u32 = 3;
     /// Appliquer une impulsion (même payload [`super::ApplyForce`]).
     pub const APPLY_IMPULSE: u32 = 4;
@@ -94,6 +95,9 @@ pub mod opcode {
     pub const SET_WEAR: u32 = 29;
     /// Poser le mouillé de la route sous un véhicule ([`super::SetWet`]). ADR-176 D5.
     pub const SET_WET: u32 = 30;
+    /// Appliquer un couple pendant le prochain pas du monde, à chacun de ses sous-pas (payload [`super::ApplyForce`] :
+    /// le vecteur est le couple en repère monde, le point est ignoré). ADR-183 D1.
+    pub const APPLY_TORQUE: u32 = 31;
 }
 
 /// Les formes d'un capteur déclaré, champ `shape` de [`SetSensor`] (ADR-174 D5).
@@ -1218,6 +1222,7 @@ mod tests {
         assert_eq!(opcode::SET_ENERGY, 28);
         assert_eq!(opcode::SET_WEAR, 29);
         assert_eq!(opcode::SET_WET, 30);
+        assert_eq!(opcode::APPLY_TORQUE, 31);
         assert_eq!(size_of::<SetWet>(), SetWet::BYTES);
         assert_eq!(align_of::<SetWet>(), 4);
         assert_eq!(offset_of!(SetWet, wet), 8);

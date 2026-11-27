@@ -272,6 +272,9 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Vrai tant que la gestion d'activité le suspend (ADR-153), au dernier état : ses vitesses gardées sont gelées. */
     private boolean suspendedBody;
 
+    /** Les forces et les couples du prochain pas (serveur, ADR-183 D1), et le tick où ils ont été demandés. */
+    private final List<Push> pushes = new ArrayList<>();
+    private long pushedAt;
     /** Les impulsions qu'un mod a données et qui attendent le prochain pas : {@code {impulsion, point local ou null}}. */
     private final List<float[][]> impulses = new ArrayList<>();
 
@@ -3770,14 +3773,59 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             return;
         }
         float[] j = {(float) impulse.x, (float) impulse.y, (float) impulse.z};
-        float[] local = null;
-        if (worldPoint != null) {
-            Vector3f point = new Quaternionf(bodyRotation).conjugate().transform(new Vector3f(
-                    (float) (worldPoint.x - getX()), (float) (worldPoint.y - getY()),
-                    (float) (worldPoint.z - getZ())));
-            local = new float[] {point.x, point.y, point.z};
+        impulses.add(new float[][] {j, worldPoint == null ? null : onRoot(worldPoint)});
+    }
+
+    /** Un point du monde au repère du corps racine, tel que le dernier état l'a posé. */
+    private float[] onRoot(Vec3 worldPoint) {
+        Vector3f point = new Quaternionf(bodyRotation).conjugate().transform(new Vector3f(
+                (float) (worldPoint.x - getX()), (float) (worldPoint.y - getY()), (float) (worldPoint.z - getZ())));
+        return new float[] {point.x, point.y, point.z};
+    }
+
+    /**
+     * Une force ou un couple demandés pour le prochain pas (ADR-183 D1).
+     *
+     * @param torque vrai pour un couple
+     * @param vector le vecteur, en N ou N·m, repère monde
+     * @param local le point d'une force au repère du corps racine, ou {@code null} : au centre de masse
+     */
+    record Push(boolean torque, float[] vector, float[] local) {}
+
+    /** Garde une force pour le prochain pas, au point du monde ou au centre de masse (ADR-183 D1). */
+    void addForce(Vec3 force, Vec3 worldPoint) {
+        push(new Push(false, new float[] {(float) force.x, (float) force.y, (float) force.z},
+                worldPoint == null ? null : onRoot(worldPoint)));
+    }
+
+    /** Garde un couple pour le prochain pas (ADR-183 D1). */
+    void addTorque(Vec3 torque) {
+        push(new Push(true, new float[] {(float) torque.x, (float) torque.y, (float) torque.z}, null));
+    }
+
+    /** Suspendue (ADR-153), l'assembly n'en reçoit pas ; ceux d'un tick que le natif n'a pas pris sont oubliés. */
+    private void push(Push push) {
+        if (suspendedBody) {
+            return;
         }
-        impulses.add(new float[][] {j, local});
+        long now = level().getGameTime();
+        if (now != pushedAt) {
+            pushes.clear();
+            pushedAt = now;
+        }
+        pushes.add(push);
+    }
+
+    /**
+     * {@return les forces et les couples du prochain pas, et les oublie ; aucun s'ils datent de plus d'un tick}
+     */
+    List<Push> takePushes() {
+        if (pushes.isEmpty()) {
+            return List.of();
+        }
+        List<Push> taken = level().getGameTime() - pushedAt <= 1 ? List.copyOf(pushes) : List.of();
+        pushes.clear();
+        return taken;
     }
 
     /** {@return les impulsions en attente, et les oublie} */

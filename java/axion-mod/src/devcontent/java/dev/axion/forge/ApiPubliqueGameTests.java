@@ -133,6 +133,71 @@ public final class ApiPubliqueGameTests {
     }
 
     /**
+     * ADR-183 D1 (CAP-11) : une force et un couple donnés à chaque tick poussent et font tourner ; la même poussée en une
+     * impulsion donne la même vitesse ; arrêtés, ils ne persistent pas. Les cubes sont en l'air, sans frottement.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 100)
+    public static void adr183_UneForceTenueUnTickPousseEtNePersistePas(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionApi api = AxionApi.get();
+        DefinitionRef cube = new DefinitionRef(new ResourceLocation("axion", "test_cube"));
+        Assembly[] cubes = new Assembly[3];
+        for (int i = 0; i < cubes.length; i++) {
+            cubes[i] = api.assemblies().spawn(helper.getLevel(), cube,
+                    helper.absoluteVec(new Vec3(3.0 + 5.0 * i, DESSUS_DALLE + 12.0, 8.0)), new Quaternionf());
+        }
+        // Les ticks de poussée restants ; la force vaut F × 0,05 s à chacun.
+        int[] poussees = {0};
+        helper.onEachTick(() -> {
+            if (poussees[0] > 0) {
+                poussees[0]--;
+                cubes[0].applyForce(new Vec3(0, 0, 6000), null);
+                cubes[2].applyTorque(new Vec3(0, 1500, 0));
+            }
+        });
+        double[] avant = new double[2];
+        helper.startSequence()
+                .thenWaitUntil(() -> {
+                    for (Assembly one : cubes) {
+                        helper.assertTrue(((AxionEntity) one.entity()).hasPhysicalBounds(), "les cubes sont simulés");
+                    }
+                })
+                .thenExecute(() -> {
+                    poussees[0] = 10;
+                    cubes[1].applyImpulse(new Vec3(0, 0, 3000), null);
+                })
+                .thenIdle(13)
+                .thenExecute(() -> {
+                    Vec3 force = cubes[0].linearVelocity();
+                    Vec3 impulsion = cubes[1].linearVelocity();
+                    helper.assertTrue(impulsion.z > 0.05 && Math.abs(force.z - impulsion.z) < 0.1 * impulsion.z,
+                            "dix ticks de 6000 N valent 3000 N·s : " + force + " pour " + impulsion);
+                    helper.assertTrue(cubes[2].angularVelocity().y > 0.1,
+                            "le couple fait tourner : " + cubes[2].angularVelocity());
+                    avant[0] = force.z;
+                    avant[1] = cubes[2].angularVelocity().y;
+                })
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    helper.assertTrue(Math.abs(cubes[0].linearVelocity().z - avant[0]) < 0.02 * avant[0],
+                            "la force ne persiste pas : " + cubes[0].linearVelocity().z + " après " + avant[0]);
+                    helper.assertTrue(Math.abs(cubes[2].angularVelocity().y - avant[1]) < 0.05 * avant[1],
+                            "le couple ne persiste pas : " + cubes[2].angularVelocity().y + " après " + avant[1]);
+                    boolean refuse = false;
+                    try {
+                        cubes[0].applyForce(new Vec3(Double.NaN, 0, 0), null);
+                    } catch (IllegalArgumentException attendu) {
+                        refuse = true;
+                    }
+                    helper.assertTrue(refuse, "une force non finie est refusée");
+                    for (Assembly one : cubes) {
+                        one.remove();
+                    }
+                })
+                .thenSucceed();
+    }
+
+    /**
      * ADR-173 D1 (CAP-43) : au serveur, un mod lit les sources procédurales d'une assembly par leur nom
      * ({@code Assembly.source}), et un contrôleur de même ({@code VehicleView.source}) — le monde au point de
      * l'assembly, son véhicule, ses variables ; un nom inconnu lève.

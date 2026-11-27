@@ -306,6 +306,13 @@ final class AxionCommands {
                                         .then(Commands.literal("reset")
                                                 .executes(context -> wearSet(context.getSource(),
                                                         EntityArgument.getEntity(context, "cible"), null, 0.0)))))
+                        // ADR-183 D5 : le nom d'une assembly, celui de toute entité de Minecraft.
+                        .then(Commands.literal("rename")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .then(Commands.argument("nom", StringArgumentType.greedyString())
+                                                .executes(context -> rename(context.getSource(),
+                                                        EntityArgument.getEntity(context, "cible"),
+                                                        StringArgumentType.getString(context, "nom"))))))
                         // ADR-178 : qui porte qui, au serveur.
                         .then(Commands.literal("carry")
                                 .executes(context -> carried(context.getSource())))
@@ -759,6 +766,25 @@ final class AxionCommands {
         List<String> lines = wearLines(assembly);
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
         return assembly.wheelNodes().size();
+    }
+
+    /**
+     * Nomme une assembly (ADR-183 D5) : le nom personnalisé de Minecraft, affiché au-dessus d'elle et sauvegardé avec
+     * elle. Commande d'administration, mutante, journalisée avec son auteur (R-810).
+     */
+    private static int rename(CommandSourceStack source, Entity target, String name) {
+        AuthoritativeThread.require();
+        if (!(target instanceof AxionEntity assembly)) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        assembly.setCustomName(Component.literal(name));
+        assembly.setCustomNameVisible(true);
+        LOGGER.info("AXION : /axion rename « {} » sur {} ({}) demandé par {}", name, target.getUUID(),
+                assembly.definitionId(), source.getTextName());
+        source.sendSuccess(() -> Component.literal("AXION : " + assembly.definitionId() + " nommée « " + name + " »"),
+                true);
+        return 1;
     }
 
     /** Les entités que les assemblies portent au serveur (ADR-178) : lecture seule. */

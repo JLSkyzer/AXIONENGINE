@@ -184,6 +184,36 @@ public interface Assembly {
     }
 
     /**
+     * Pousse son corps racine pendant le prochain pas physique, à chacun de ses sous-pas, et le réveille (ADR-183 D1,
+     * CAP-11). La force ne persiste pas : un mod qui pousse en continu la redonne à chaque tick. Elle est sans effet sur
+     * une assembly suspendue loin de tout joueur (R-612), perdue si le moteur ne simule pas encore l'assembly, et un
+     * corps fixe ne bouge pas.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755), au serveur.
+     *
+     * @param force la force, en newtons dans le repère du monde
+     * @param worldPoint le point du monde où elle s'applique au début du pas, qui suit ensuite le corps et le fait
+     *     tourner ; {@code null} : au centre de masse, sans rotation
+     * @throws IllegalArgumentException si une composante n'est pas finie
+     * @throws IllegalStateException chez un client
+     */
+    default void applyForce(net.minecraft.world.phys.Vec3 force, net.minecraft.world.phys.Vec3 worldPoint) {
+        throw new UnsupportedOperationException("applyForce : cette assembly ne se pousse pas");
+    }
+
+    /**
+     * Fait tourner son corps racine d'un couple pendant le prochain pas physique, aux conditions de {@link #applyForce}
+     * (ADR-183 D1).
+     *
+     * @param torque le couple, en N·m autour des axes du monde
+     * @throws IllegalArgumentException si une composante n'est pas finie
+     * @throws IllegalStateException chez un client
+     */
+    default void applyTorque(net.minecraft.world.phys.Vec3 torque) {
+        throw new UnsupportedOperationException("applyTorque : cette assembly ne se tourne pas");
+    }
+
+    /**
      * {@return les entités que cette assembly porte au serveur (ADR-178, CAP-14)} Celles posées sur un de ses corps ; une
      * copie, dans un ordre quelconque. Les passagers assis n'y sont pas : ils sont des passagers.
      *

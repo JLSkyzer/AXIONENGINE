@@ -563,6 +563,24 @@ public final class ForgeAxionApi implements AxionApi {
             serverSide().addImpulse(impulse, worldPoint);
         }
 
+        @Override
+        public void applyForce(Vec3 force, Vec3 worldPoint) {
+            java.util.Objects.requireNonNull(force, "force");
+            if (!finite(force) || worldPoint != null && !finite(worldPoint)) {
+                throw new IllegalArgumentException("force ou point non fini : " + force + ", " + worldPoint);
+            }
+            serverSide().addForce(force, worldPoint);
+        }
+
+        @Override
+        public void applyTorque(Vec3 torque) {
+            java.util.Objects.requireNonNull(torque, "torque");
+            if (!finite(torque)) {
+                throw new IllegalArgumentException("couple non fini : " + torque);
+            }
+            serverSide().addTorque(torque);
+        }
+
         private AxionEntity serverSide() {
             if (entity.level().isClientSide()) {
                 throw new IllegalStateException("R-1755 : la vitesse et les impulsions sont au serveur");

@@ -324,3 +324,18 @@ assembly.applyImpulse(new Vec3(2000, 0, 0), assembly.transform().position().add(
   it has no effect.
 - The velocity is **zero** for an assembly that is asleep, suspended far from every player, or not simulated yet.
 - Server only, on its thread; a non-finite value is refused.
+
+To **push continuously** — a thruster, a wind, a magnet —, give a force or a torque on every tick:
+
+```java
+// In a server tick: they last the next physics step, at each of its substeps, then are forgotten.
+assembly.applyForce(new Vec3(0, 12000, 0), null);   // in newtons, at the center of mass
+assembly.applyForce(new Vec3(500, 0, 0), assembly.transform().position().add(0, 0, 2));  // at a point
+assembly.applyTorque(new Vec3(0, 800, 0));          // in N·m around the world axes
+```
+
+Given again on every tick, a force pushes continuously; given once, it amounts to `F × 0.05` N·s. It wakes the body;
+given before the engine simulates the assembly, or to a suspended one, it is lost.
+
+An administrator **names** an assembly, like any entity: `/axion rename <target> <name>`. The name shows above it and
+is saved.

@@ -1902,6 +1902,26 @@ impl SimDriver {
         }
     }
 
+    /// Applique `APPLY_FORCE` : une force en repère monde sur le corps racine, au centre de masse ou en un point de son
+    /// repère, pendant le prochain pas (ADR-183 D1). Sans effet sur une assembly absente ou endormie par l'activité.
+    pub fn apply_force(&mut self, handle: Handle, force: Vec3, point: Vec3, at_point: bool) {
+        if let Some((dimension, body)) = self.assembly_body(handle) {
+            if let Some(sim) = self.dimensions.get_mut(&dimension) {
+                sim.world
+                    .apply_force(body, force, at_point.then_some(point));
+            }
+        }
+    }
+
+    /// Applique `APPLY_TORQUE` : un couple en repère monde sur le corps racine, pendant le prochain pas (ADR-183 D1).
+    pub fn apply_torque(&mut self, handle: Handle, torque: Vec3) {
+        if let Some((dimension, body)) = self.assembly_body(handle) {
+            if let Some(sim) = self.dimensions.get_mut(&dimension) {
+                sim.world.apply_torque(body, torque);
+            }
+        }
+    }
+
     /// Applique `SET_DIMENSION_ENV` : gravité, vent et fluide d'une dimension,
     /// créée au besoin (§10.6).
     ///
@@ -2379,6 +2399,119 @@ mod tests {
         driver.advance_all(1.0 / 60.0);
         let apres = driver.collect_states();
         assert!(apres[0].lin_vel[0] > 0.0, "l'impulsion a bien été routée");
+    }
+
+    /// Une bille dynamique de rayon 0,5, loin de tout, et sa masse.
+    fn bille_libre() -> (SimDriver, f32) {
+        let mut driver = SimDriver::new();
+        proxy_bille(&mut driver, 1, BodyKind::Dynamic, 0.0);
+        let masse = 1000.0 * 4.0 / 3.0 * core::f32::consts::PI * 0.125;
+        (driver, masse)
+    }
+
+    fn vitesses(driver: &mut SimDriver) -> ([f32; 3], [f32; 3]) {
+        let etat = driver.collect_states()[0];
+        (etat.lin_vel, etat.ang_vel)
+    }
+
+    #[test]
+    fn adr183_une_force_vaut_le_prochain_tick_a_chaque_sous_pas() {
+        // ADR-183 D1 : F·Δt/m sur le tick, puis plus rien.
+        let (mut driver, masse) = bille_libre();
+        driver.apply_force(
+            Handle::new(1, 1),
+            Vec3::new(10_000.0, 0.0, 0.0),
+            Vec3::ZERO,
+            false,
+        );
+        driver.advance_all(0.05);
+        let attendue = 10_000.0 * 0.05 / masse;
+        let (lineaire, angulaire) = vitesses(&mut driver);
+        assert!(
+            (lineaire[0] - attendue).abs() < 0.01,
+            "vx {} pour {attendue}",
+            lineaire[0]
+        );
+        assert!(
+            angulaire.iter().all(|v| v.abs() < 1.0e-4),
+            "au centre, rien ne tourne"
+        );
+        driver.advance_all(0.05);
+        let (apres, _) = vitesses(&mut driver);
+        assert!(
+            (apres[0] - lineaire[0]).abs() < 1.0e-4,
+            "la force ne persiste pas : {} puis {}",
+            lineaire[0],
+            apres[0]
+        );
+    }
+
+    #[test]
+    fn adr183_deux_forces_s_ajoutent_et_un_point_decentre_fait_tourner() {
+        let (mut driver, masse) = bille_libre();
+        let haut = Vec3::new(0.0, 0.5, 0.0);
+        for _ in 0..2 {
+            driver.apply_force(Handle::new(1, 1), Vec3::new(1_000.0, 0.0, 0.0), haut, true);
+        }
+        driver.advance_all(0.05);
+        let (lineaire, angulaire) = vitesses(&mut driver);
+        let attendue = 2_000.0 * 0.05 / masse;
+        assert!(
+            (lineaire[0] - attendue).abs() < 0.01,
+            "vx {} pour {attendue}",
+            lineaire[0]
+        );
+        assert!(
+            angulaire[2] < -0.1,
+            "pousser le haut vers +x fait tourner autour de -z : {angulaire:?}"
+        );
+        driver.advance_all(0.05);
+        let (_, apres) = vitesses(&mut driver);
+        assert!(
+            (apres[2] - angulaire[2]).abs() < 1.0e-3,
+            "aucun couple ne persiste"
+        );
+    }
+
+    #[test]
+    fn adr183_un_couple_vaut_le_prochain_tick() {
+        // I d'une bille pleine : 2/5 m r².
+        let (mut driver, masse) = bille_libre();
+        let inertie = 0.4 * masse * 0.25;
+        driver.apply_torque(Handle::new(1, 1), Vec3::new(0.0, 0.0, inertie * 10.0));
+        driver.advance_all(0.05);
+        let (lineaire, angulaire) = vitesses(&mut driver);
+        assert!(
+            (angulaire[2] - 0.5).abs() < 0.01,
+            "10 rad/s² pendant 0,05 s : {}",
+            angulaire[2]
+        );
+        assert!(lineaire[0].abs() < 1.0e-4, "un couple ne pousse pas");
+        driver.advance_all(0.05);
+        let (_, apres) = vitesses(&mut driver);
+        assert!(
+            (apres[2] - angulaire[2]).abs() < 1.0e-3,
+            "le couple ne persiste pas"
+        );
+    }
+
+    #[test]
+    fn adr183_une_force_non_finie_est_ignoree() {
+        let (mut driver, _) = bille_libre();
+        driver.apply_force(
+            Handle::new(1, 1),
+            Vec3::new(f32::NAN, 0.0, 0.0),
+            Vec3::ZERO,
+            false,
+        );
+        driver.apply_torque(Handle::new(1, 1), Vec3::new(f32::INFINITY, 0.0, 0.0));
+        driver.advance_all(0.05);
+        let (lineaire, angulaire) = vitesses(&mut driver);
+        assert!(lineaire[0].abs() < 1.0e-4 && angulaire[0].abs() < 1.0e-4);
+        assert!(lineaire
+            .iter()
+            .chain(angulaire.iter())
+            .all(|v| v.is_finite()));
     }
 
     /// Une bille de rayon 0,5 d'un type donné, sur la route du handle `index`.

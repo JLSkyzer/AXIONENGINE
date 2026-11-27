@@ -331,3 +331,18 @@ assembly.applyImpulse(new Vec3(2000, 0, 0), assembly.transform().position().add(
   joueur, elle est sans effet.
 - La vitesse est **nulle** pour une assembly endormie, suspendue loin de tout joueur, ou pas encore simulée.
 - Côté serveur seulement, sur son thread ; une valeur non finie est refusée.
+
+Pour **pousser en continu** — un propulseur, un vent, un aimant —, donne une force ou un couple à chaque tick :
+
+```java
+// Dans un tick du serveur : ils valent le prochain pas physique, à chacun de ses sous-pas, puis s'oublient.
+assembly.applyForce(new Vec3(0, 12000, 0), null);   // en newtons, au centre de masse
+assembly.applyForce(new Vec3(500, 0, 0), assembly.transform().position().add(0, 0, 2));  // en un point
+assembly.applyTorque(new Vec3(0, 800, 0));          // en N·m autour des axes du monde
+```
+
+Redonnée à chaque tick, une force pousse en continu ; donnée une seule fois, elle vaut `F × 0,05` N·s. Elle réveille
+le corps ; donnée avant que le moteur ne simule l'assembly, ou à une assembly suspendue, elle se perd.
+
+Un administrateur **nomme** une assembly, comme toute entité : `/axion rename <cible> <nom>`. Le nom s'affiche
+au-dessus d'elle et se sauvegarde.

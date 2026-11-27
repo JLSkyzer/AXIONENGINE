@@ -48,7 +48,13 @@ final class AxionEntityRenderer extends EntityRenderer<AxionEntity> {
                     && hit.getEntity() == entity) {
                 label = label.copy().append(" — visée");
             }
+            pose.pushPose();
+            // Au-dessus du nom que /axion rename lui a donné, quand il s'affiche (ADR-183 D5).
+            if (shouldShowName(entity)) {
+                pose.translate(0.0, 0.3, 0.0);
+            }
             renderNameTag(entity, label, pose, buffers, packedLight);
+            pose.popPose();
         }
     }
 

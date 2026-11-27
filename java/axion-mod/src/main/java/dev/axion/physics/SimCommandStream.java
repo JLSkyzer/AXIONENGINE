@@ -56,6 +56,10 @@ public final class SimCommandStream {
 
     /** Opcode de {@code APPLY_IMPULSE}. */
     public static final int OP_APPLY_IMPULSE = 4;
+    /** Opcode {@code APPLY_FORCE} (ADR-183 D1) : même payload qu'{@code APPLY_IMPULSE}. */
+    public static final int OP_APPLY_FORCE = 3;
+    /** Opcode {@code APPLY_TORQUE} (ADR-183 D1) : même payload, le vecteur est un couple. */
+    public static final int OP_APPLY_TORQUE = 31;
 
     /** Taille du payload de {@code APPLY_IMPULSE}, en octets. */
     public static final int APPLY_IMPULSE_BYTES = 36;
@@ -1055,11 +1059,42 @@ public final class SimCommandStream {
      * @return {@code this}, pour chaîner
      */
     public SimCommandStream impulse(int handleIndex, int handleGeneration, float[] impulse, float[] localPoint) {
-        ByteBuffer command = beginCommand(OP_APPLY_IMPULSE, APPLY_IMPULSE_BYTES);
+        return vectorAt(OP_APPLY_IMPULSE, handleIndex, handleGeneration, impulse, localPoint);
+    }
+
+    /**
+     * Ajoute une commande {@code APPLY_FORCE} (ADR-183 D1) : une force sur le corps racine pendant le prochain pas.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param force force {@code x, y, z} en N, repère monde
+     * @param localPoint point {@code x, y, z} dans le repère du corps racine, ou {@code null} : au centre de masse
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream force(int handleIndex, int handleGeneration, float[] force, float[] localPoint) {
+        return vectorAt(OP_APPLY_FORCE, handleIndex, handleGeneration, force, localPoint);
+    }
+
+    /**
+     * Ajoute une commande {@code APPLY_TORQUE} (ADR-183 D1) : un couple sur le corps racine pendant le prochain pas.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param torque couple {@code x, y, z} en N·m, repère monde
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream torque(int handleIndex, int handleGeneration, float[] torque) {
+        return vectorAt(OP_APPLY_TORQUE, handleIndex, handleGeneration, torque, null);
+    }
+
+    /** Le payload commun d'une impulsion, d'une force et d'un couple : handle, vecteur, point, drapeau du point. */
+    private SimCommandStream vectorAt(int opcode, int handleIndex, int handleGeneration, float[] vector,
+            float[] localPoint) {
+        ByteBuffer command = beginCommand(opcode, APPLY_IMPULSE_BYTES);
         command.putInt(handleIndex);
         command.putInt(handleGeneration);
         for (int axis = 0; axis < 3; axis++) {
-            command.putFloat(impulse[axis]);
+            command.putFloat(vector[axis]);
         }
         for (int axis = 0; axis < 3; axis++) {
             command.putFloat(localPoint == null ? 0f : localPoint[axis]);

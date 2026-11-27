@@ -594,11 +594,21 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         return true;
     }
 
-    /** Envoie les impulsions des mods (CAP-11) à chaque corps qui existe ; les autres assemblies les gardent. */
+    /**
+     * Envoie les impulsions des mods (CAP-11) à chaque corps qui existe ; les autres assemblies les gardent. Les forces
+     * et les couples valent ce tick (ADR-183 D1) : sans corps, ils se perdent.
+     */
     private void impulses(SimCommandStream stream) {
         ledger.forEachBody((index, assembly) -> {
             for (float[][] impulse : assembly.takeImpulses()) {
                 stream.impulse(index, GENERATION, impulse[0], impulse[1]);
+            }
+            for (AxionEntity.Push push : assembly.takePushes()) {
+                if (push.torque()) {
+                    stream.torque(index, GENERATION, push.vector());
+                } else {
+                    stream.force(index, GENERATION, push.vector(), push.local());
+                }
             }
         });
     }
