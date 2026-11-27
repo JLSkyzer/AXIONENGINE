@@ -17,7 +17,11 @@ Avec --client, un vrai client (`runEssaiClientMesure`, `MesureClient`) se connec
 grille et relève la durée de chaque image sur les mêmes fenêtres ; le serveur lui envoie des véhicules jusqu'à 288 blocs
 (portée de diffusion des entités à 300 %, distance de vue de 20 chunks), réglés le temps de la campagne.
 
-Usage : python tools/campagne/mesure.py [--paliers 0,1,8,32,64,128] [--client]   (JAVA_HOME : un JDK 17)
+Avec --portes K (CAP-14), chaque véhicule d'un palier unique porte K porte-armures ; avec --sol en plus, les mêmes sont
+au sol à l'écart de toute assembly : la différence des deux est le coût du portage au serveur.
+
+Usage : python tools/campagne/mesure.py [--paliers 0,1,8,32,64,128] [--client] [--portes K [--sol]]
+(JAVA_HOME : un JDK 17)
 Rapport : .runs/campagne/mesure/rapport.md et rapport.json
 """
 
@@ -126,7 +130,8 @@ def rendre_serveur(avant: str | None) -> None:
         PROPRIETES.write_text(avant, encoding="utf-8")
 
 
-def campagne(paliers: str, avec_client: bool = False, profil: bool = False) -> list[dict]:
+def campagne(paliers: str, avec_client: bool = False, profil: bool = False, portes: int = 0,
+             au_sol: bool = False) -> list[dict]:
     SORTIES.mkdir(parents=True, exist_ok=True)
     for fichier in (JOURNAL_SERVEUR, RELEVE_SERVEUR, RELEVE_CLIENT):
         fichier.unlink(missing_ok=True)
@@ -138,6 +143,17 @@ def campagne(paliers: str, avec_client: bool = False, profil: bool = False) -> l
         environnement.pop(autre, None)
     journal = SORTIES / "serveur.log"
     environnement.pop("AXION_MESURE_CLIENT", None)
+    environnement.pop("AXION_MESURE_PORTES", None)
+    environnement.pop("AXION_MESURE_PORTES_SOL", None)
+    environnement.pop("AXION_MESURE_PROFIL", None)
+    if profil:
+        environnement["AXION_MESURE_PROFIL"] = "1"
+        # JFR n'ouvre pas son fichier dans un dossier absent.
+        RELEVE_SERVEUR.parent.mkdir(parents=True, exist_ok=True)
+    if portes:
+        environnement["AXION_MESURE_PORTES"] = str(portes)
+        if au_sol:
+            environnement["AXION_MESURE_PORTES_SOL"] = "1"
     proprietes_avant = None
     client = None
     sortie_client = None
@@ -237,6 +253,11 @@ def rapport(releves: list[dict], materiel: str, avant: int) -> str:
         axion = sum(v for k, v in r["threads_cpu_s"].items() if k.startswith("axion"))
         lignes.append(f"- **{r['vehicules']} véhicules** (fenêtre de {r['murale_s']:.1f} s) : "
                       + " ; ".join(f"`{k}` {v:.2f}" for k, v in fortes) + f" ; pool natif d'AXION {axion:.3f}")
+    for r in releves:
+        if r.get("portes_par_vehicule"):
+            lignes.append(f"- porte-armures : {r['portes_par_vehicule']} par véhicule, "
+                          + ("au sol, à l'écart" if r["au_sol"] else "lâchés dessus")
+                          + f" ; portés en moyenne sur la fenêtre : {r['portes_moyens']}")
     clients = [r["client"] for r in releves if r.get("client")]
     if clients:
         c0 = clients[0]
@@ -263,12 +284,17 @@ def main() -> int:
     parser.add_argument("--paliers", default="0,1,8,32,64,128", help="nombres de véhicules, séparés par des virgules")
     parser.add_argument("--client", action="store_true", help="un vrai client relève la durée de ses images")
     parser.add_argument("--profil", action="store_true",
-                        help="enregistrer un profil JFR du client (.runs/essai-mesure/profil.jfr)")
+                        help="enregistrer des profils JFR du serveur (.runs/server/mesure/profil.jfr) et, avec"
+                             " --client, du client (.runs/essai-mesure/profil.jfr)")
+    parser.add_argument("--portes", type=int, default=0, help="porte-armures par véhicule (CAP-14), un seul palier")
+    parser.add_argument("--sol", action="store_true", help="avec --portes : les mêmes au sol, à l'écart, pour témoin")
     arguments = parser.parse_args()
+    if arguments.portes and "," in arguments.paliers:
+        parser.error("--portes va avec un seul palier")
     materiel = machine()
     avant = autres_java()
     try:
-        releves = campagne(arguments.paliers, arguments.client, arguments.profil)
+        releves = campagne(arguments.paliers, arguments.client, arguments.profil, arguments.portes, arguments.sol)
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
         print(f"ÉCHEC : {faute}")
         return 1

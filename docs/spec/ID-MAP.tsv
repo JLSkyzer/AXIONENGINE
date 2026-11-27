@@ -67,14 +67,14 @@ ADR-174	ADR		4565	19	18.2 Échantillonnage et blending
 ADR-175	ADR		5344	6	22.2 Format NBT
 ADR-176	ADR		3327	19	12.4 Modèle de pneu
 ADR-177	ADR		2326	10	5.44 C-53 : Interaction & Sièges
-ADR-178	ADR		2321	13	5.44 C-53 : Interaction & Sièges
+ADR-178	ADR		2321	14	5.44 C-53 : Interaction & Sièges
 ADR-179	ADR		2275	3	5.40 C-48 : Attachment System
 ADR-180	ADR		2090	5	5.30 C-38 : World Collision Provider
 ADR-181	ADR		3329	3	12.4 Modèle de pneu
 ADR-182	ADR		3351	17	12.5 Groupe motopropulseur
-ADR-183	ADR		2476	13	5.58 C-71 : Commandes
-ADR-184	ADR		5201	2	21.5 Snapshots, quantification, delta
-ADR-185	ADR		5141	4	21.4 Paquets
+ADR-183	ADR		2476	14	5.58 C-71 : Commandes
+ADR-184	ADR		5201	3	21.5 Snapshots, quantification, delta
+ADR-185	ADR		5141	5	21.4 Paquets
 B-01	B	6620	5987	9	30.2 Ce qui est mesuré
 B-02	B	6621	6621	3	30.2 Ce qui est mesuré
 B-03	B	6622	6622	1	30.2 Ce qui est mesuré
@@ -186,7 +186,7 @@ CAP-10	CAP	8475	3419	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (A
 CAP-11	CAP	8476	3419	6	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-12	CAP	8477	8030	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-13	CAP	8478	8031	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
-CAP-14	CAP	8479	2321	20	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
+CAP-14	CAP	8479	2321	21	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-15	CAP	8480	8024	2	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-16	CAP	8481	8028	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)
 CAP-17	CAP	8482	7450	3	ANNEXE A.7 — Capacités exigées hors du texte gelé (ADR-160)

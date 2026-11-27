@@ -129,6 +129,10 @@ minecraft {
             // CAP-53, mesure du serveur (tools/campagne/mesure.py) : son propre monde, neuf à chaque campagne.
             if (System.getenv('AXION_MESURE') != null) {
                 args '--world', 'mesure-monde'
+                // mesure.py --profil : un enregistrement JFR du serveur, pour dire où passe le temps de son thread.
+                if (System.getenv('AXION_MESURE_PROFIL') != null) {
+                    jvmArg "-XX:StartFlightRecording=settings=profile,filename=${rootProject.file('.runs/server/mesure/profil.jfr')},dumponexit=true"
+                }
             }
             // ADR-178, essai du portage (essaiClientPorteur) : son propre monde.
             if (System.getenv('AXION_ESSAI_PORTEUR') == '1') {

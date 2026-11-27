@@ -3991,6 +3991,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            point non éprouvé de la tranche 2 l'est : GameTests et essai `prediction.py --tp`) ; film `runFilmGel`.
           Éprouvés à deux processus : l'ascenseur (`portage.py --ascenseur`) et la poussée d'un joueur au sol
           (`portage.py --poussee`).
+     - [ ] CAP-14, coût (CAP-53) : entités au serveur **mesurées** le 2026-11-27 (`mesure.py --portes 8 [--sol]`,
+           3 à 7 µs par entité portée, au niveau du bruit) ; restent le joueur et le client.
      - [ ] CAP-11, restes de M5 : [ADR-187](../docs/decisions/ADR-187.md) **proposé** le 2026-11-27 (écouteurs de la
            vie d'une assembly, des chocs et des commandes du conducteur), attend Killian.
      - [x] `motor.<nom>.regen` (ADR-182, question F) — FAIT le 2026-11-27, ABI 42.

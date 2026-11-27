@@ -20,6 +20,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.TickEvent;
@@ -35,6 +37,10 @@ import org.slf4j.LoggerFactory;
  * variable d'environnement {@code AXION_MESURE} (les paliers, séparés par des virgules) ; contenu de développement, jamais
  * livré. {@code tools/campagne/mesure.py} la lance, relève les threads du processus entre les deux marques du journal, et
  * écrit le rapport.
+ *
+ * <p>Sous {@code AXION_MESURE_PORTES=k} ({@code mesure.py --portes k}, CAP-14), k porte-armures par véhicule : lâchés
+ * dessus, il les porte ; sous {@code AXION_MESURE_PORTES_SOL=1} ({@code --sol}), les mêmes au sol, à l'écart de toute
+ * assembly, pour témoin. Un seul palier alors.
  *
  * <p>Sous {@code AXION_MESURE_CLIENT=1} ({@code mesure.py --client}), le serveur attend un joueur, le pose en spectateur
  * devant la grille, ouvre la première fenêtre après {@value #CHARGEMENT} ticks, et lui dit chaque marque : son client la
@@ -65,6 +71,14 @@ public final class MesurePerformance {
     private static final int ECHANTILLON = 5;
     private static final int PAR_LIGNE = 12;
     private static final double ESPACE = 16.0;
+
+    private static final int PORTES = Integer.parseInt(System.getenv().getOrDefault("AXION_MESURE_PORTES", "0"));
+    private static final boolean AU_SOL = "1".equals(System.getenv("AXION_MESURE_PORTES_SOL"));
+    /** Les porte-armures se lâchent à ce tick, et la conduite attend qu'ils soient posés. */
+    private static final int LACHER = 20;
+    private static final int PARTIR = 100;
+    private static long portesCumules;
+    private static int portesReleves;
 
     private static int[] paliers;
     private static int palier;
@@ -116,9 +130,14 @@ public final class MesurePerformance {
             completer(monde, paliers[palier]);
             LOGGER.info("[mesure] palier {} véhicules : établissement", paliers[palier]);
         }
-        for (AxionEntity vehicule : VEHICULES) {
-            ForgeAxionApi.view(vehicule).vehicle().ifPresent(commande -> commande.drive(
-                    new DriverInput(0.3, 0, 0.45, 0, 0, 1)));
+        if (PORTES > 0 && tick == LACHER) {
+            lacher(monde);
+        }
+        if (PORTES == 0 || tick >= PARTIR) {
+            for (AxionEntity vehicule : VEHICULES) {
+                ForgeAxionApi.view(vehicule).vehicle().ifPresent(commande -> commande.drive(
+                        new DriverInput(0.3, 0, 0.45, 0, 0, 1)));
+            }
         }
         if (tick == ETABLIR) {
             commencer();
@@ -200,6 +219,25 @@ public final class MesurePerformance {
         }
     }
 
+    /** Lâche les porte-armures : sur chaque véhicule, ou au sol dans une bande sans véhicule. */
+    private static void lacher(ServerLevel monde) {
+        int rang = 0;
+        for (AxionEntity vehicule : VEHICULES) {
+            for (int i = 0; i < PORTES; i++, rang++) {
+                ArmorStand porte = EntityType.ARMOR_STAND.create(monde);
+                if (AU_SOL) {
+                    porte.moveTo((rang % 32 - 16) * 2.0, SOL, 40.0 + (rang / 32) * 2.0, 0f, 0f);
+                } else {
+                    // Deux colonnes et quatre rangs au-dessus de la caisse ; au-delà de huit, ils se recouvrent.
+                    porte.moveTo(vehicule.getX() + (i % 2 == 0 ? -0.4 : 0.4), vehicule.getY() + 2.5,
+                            vehicule.getZ() - 1.2 + 0.8 * ((i / 2) % 4), 0f, 0f);
+                }
+                monde.addFreshEntity(porte);
+            }
+        }
+        LOGGER.info("[mesure] {} porte-armures lâchés {}", rang, AU_SOL ? "au sol, à l'écart" : "sur les véhicules");
+    }
+
     private static void commencer() {
         ThreadMXBean threads = ManagementFactory.getThreadMXBean();
         muraleDebut = System.nanoTime();
@@ -214,6 +252,8 @@ public final class MesurePerformance {
         colliders = 0;
         palierGouverneur = 0;
         parcours = 0;
+        portesCumules = 0;
+        portesReleves = 0;
     }
 
     private static void relever(MinecraftServer serveur, int ticks) {
@@ -225,6 +265,12 @@ public final class MesurePerformance {
         }
         if (ticks % ECHANTILLON != 0) {
             return;
+        }
+        if (PORTES > 0) {
+            for (AxionEntity vehicule : VEHICULES) {
+                portesCumules += ForgeAxionApi.view(vehicule).carried().size();
+            }
+            portesReleves++;
         }
         String export = RuntimeAccess.get().metricsJson();
         StepBreakdown pas = export == null ? null : StepBreakdown.parse(export);
@@ -252,10 +298,12 @@ public final class MesurePerformance {
                         + " \"tick_vanilla_ms\": %.3f, \"pas_ms_moyen\": %.3f, \"pas_ms_p95\": %.3f,"
                         + " \"integration_ms\": %.3f, \"contacts_ms\": %.3f, \"joints_ms\": %.3f,"
                         + " \"colliders\": %d, \"palier_gouverneur\": %d, \"vitesse_moyenne_m_s\": %.2f,"
+                        + " \"portes_par_vehicule\": %d, \"au_sol\": %b, \"portes_moyens\": %.1f,"
                         + " \"coeurs_logiques\": %d}%n",
                 paliers[palier], RELEVER, murale, serveurCpu, processus, gc() - gcDebut, moyenne(VANILLE),
                 moyenne(PAS), p95(PAS), moyenne(INTEGRATION), moyenne(CONTACTS), moyenne(JOINTS), colliders,
                 palierGouverneur, VEHICULES.isEmpty() ? 0.0 : parcours / VEHICULES.size() / (RELEVER / 20.0),
+                PORTES, AU_SOL, portesReleves == 0 ? 0.0 : (double) portesCumules / portesReleves,
                 Runtime.getRuntime().availableProcessors());
         LOGGER.info("[mesure] releve {}", ligne.trim());
         try {
