@@ -107,6 +107,75 @@ public final class GelGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * Un ascenseur : un mob debout sur une assembly figée la suit quand un mod la mène vers le haut, puis vers le bas,
+     * puis de côté.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 300)
+    public static void adr183_unAscenseurMeneEmporteCeQuiSeTientDessus(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity plateau = AssembliesDeTest.poser(helper, CAISSE, new Vec3(4.5, DESSUS_DALLE, 4.5), DROIT);
+        net.minecraft.world.entity.animal.Pig cochon =
+                net.minecraft.world.entity.EntityType.PIG.create(helper.getLevel());
+        Vec3[] depart = new Vec3[1];
+        double[] ecart = new double[1];
+        Vec3[] but = new Vec3[1];
+        Runnable mener = () -> ForgeAxionApi.view(plateau).setKinematicTransform(
+                new Transform(but[0], plateau.orientation(), new Vec3(1, 1, 1)));
+        java.util.function.Consumer<String> suit = ou -> {
+            double vertical = cochon.getY() - plateau.getY() - ecart[0];
+            double horizontal = cochon.position().subtract(plateau.position()).horizontalDistance();
+            helper.assertTrue(Math.abs(vertical) < 0.25 && horizontal < 1.0, ou + " : le cochon suit, à " + vertical
+                    + " de haut et " + horizontal + " de côté ; plateau " + plateau.position() + ", cochon "
+                    + cochon.position());
+        };
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(plateau.hasPhysicalBounds() && plateau.carryPoses(0) != null,
+                        "simulé"))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    ForgeAxionApi.view(plateau).setFrozen(true);
+                    cochon.setNoAi(true);
+                    helper.getLevel().addFreshEntity(cochon);
+                    cochon.moveTo(plateau.getX(), plateau.getY() + 2.0, plateau.getZ(), 0f, 0f);
+                    cochon.move(net.minecraft.world.entity.MoverType.SELF, new Vec3(0.0, -2.0, 0.0));
+                    helper.assertTrue(CarrySupports.of(cochon) != null, "le cochon repose sur lui");
+                })
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    depart[0] = plateau.position();
+                    but[0] = depart[0];
+                    ecart[0] = cochon.getY() - plateau.getY();
+                })
+                .thenExecuteFor(30, () -> {
+                    but[0] = but[0].add(0.0, 0.1, 0.0);
+                    mener.run();
+                })
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    helper.assertTrue(plateau.getY() - depart[0].y > 2.8, "monté : " + (plateau.getY() - depart[0].y));
+                    suit.accept("en haut");
+                })
+                .thenExecuteFor(30, () -> {
+                    but[0] = but[0].add(0.0, -0.1, 0.0);
+                    mener.run();
+                })
+                .thenIdle(5)
+                .thenExecute(() -> suit.accept("redescendu"))
+                .thenExecuteFor(30, () -> {
+                    but[0] = but[0].add(0.15, 0.0, 0.0);
+                    mener.run();
+                })
+                .thenIdle(5)
+                .thenExecute(() -> {
+                    helper.assertTrue(plateau.getX() - depart[0].x > 4.0, "mené de côté");
+                    suit.accept("de côté");
+                    cochon.discard();
+                    plateau.discard();
+                })
+                .thenSucceed();
+    }
+
     /** Le conducteur d'une assembly figée reçoit, au plus une fois par seconde, la correction qui lui rend la main. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 100)
     public static void adr183_lAssemblyFigeeRendLaMainAuConducteurUneFoisParSeconde(GameTestHelper helper) {
