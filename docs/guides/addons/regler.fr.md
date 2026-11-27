@@ -342,6 +342,11 @@ assembly.applyForce(new Vec3(500, 0, 0), assembly.transform().position().add(0, 
 assembly.applyTorque(new Vec3(0, 800, 0));          // en N·m autour des axes du monde
 ```
 
+Ni les forces ni les impulsions ne sont **prédites** chez un conducteur : sur un véhicule conduit en multijoueur, son
+client les découvre par les corrections du serveur, et l'écran se recale — d'autant plus que la poussée est forte et la
+latence longue. Pour un effet permanent sur un véhicule conduit, un contrôleur de véhicule, prédit, vaut mieux quand
+il suffit (couple aux roues, paramètres).
+
 Redonnée à chaque tick, une force pousse en continu ; donnée une seule fois, elle vaut `F × 0,05` N·s. Elle réveille
 le corps ; donnée avant que le moteur ne simule l'assembly, ou à une assembly suspendue, elle se perd.
 

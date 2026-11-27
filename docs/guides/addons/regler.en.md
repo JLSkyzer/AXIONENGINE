@@ -335,6 +335,11 @@ assembly.applyForce(new Vec3(500, 0, 0), assembly.transform().position().add(0, 
 assembly.applyTorque(new Vec3(0, 800, 0));          // in N·m around the world axes
 ```
 
+Neither forces nor impulses are **predicted** on a driver's client: on a driven vehicle in multiplayer, the client
+learns of them through the server's corrections and the view snaps back — the stronger the push and the longer the
+latency, the more. For a lasting effect on a driven vehicle, a predicted vehicle controller is better when it is enough
+(wheel torque, parameters).
+
 Given again on every tick, a force pushes continuously; given once, it amounts to `F × 0.05` N·s. It wakes the body;
 given before the engine simulates the assembly, or to a suspended one, it is lost.
 
