@@ -1853,14 +1853,24 @@ impl SimDriver {
     }
 
     /// Applique `SET_KINEMATIC` : la pose monde imposée est ramenée au repère
-    /// local de la dimension par l'origine flottante.
+    /// local de la dimension par l'origine flottante. Une assembly **figée** y est menée tout entière, d'un mouvement
+    /// réparti sur les sous-pas du prochain pas (ADR-183 D4).
     pub fn apply_set_kinematic(&mut self, handle: Handle, world_position: DVec3, rotation: Quat) {
         if let Some((dimension, body)) = self.assembly_body(handle) {
             if let Some(sim) = self.dimensions.get_mut(&dimension) {
                 let local = sim.origin.to_local(world_position);
-                sim.world.set_kinematic_pose(body, local, rotation);
+                if !sim.world.drive_frozen(handle, local, rotation) {
+                    sim.world.set_kinematic_pose(body, local, rotation);
+                }
             }
         }
+    }
+
+    /// Applique `SET_FROZEN` (ADR-183 D3) : fige une assembly, ou la rend au moteur, à l'arrêt. Faux pour une assembly
+    /// inconnue.
+    pub fn set_frozen(&mut self, handle: Handle, frozen: bool) -> bool {
+        self.assembly_world(handle)
+            .is_some_and(|world| world.set_frozen(handle, frozen))
     }
 
     /// Applique `SET_ASSEMBLY_POSE` (ADR-168, précision 6c-C2) : chaque corps **cinématique** de l'assembly dont
@@ -2650,6 +2660,137 @@ mod tests {
     }
 
     /// Une bille de rayon 0,5 d'un type donné, sur la route du handle `index`.
+    /// Une boîte dynamique de demi-dimensions `demi`, centrée à la hauteur `y`.
+    fn boite(driver: &mut SimDriver, index: u32, y: f64, demi: [f32; 3]) {
+        driver
+            .create_assembly(
+                0,
+                Handle::new(index, 1),
+                WorldTransform {
+                    position: [0.0, y, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                },
+                BodyKind::Dynamic,
+                &[BodyCollider {
+                    shape: Shape::Cuboid { half_extents: demi },
+                    density: 1000.0,
+                    material: ContactMaterial::default(),
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                }],
+            )
+            .expect("boîte créée");
+    }
+
+    fn vitesse_de(driver: &mut SimDriver, index: u32) -> [f32; 3] {
+        driver
+            .collect_states()
+            .into_iter()
+            .find(|state| state.handle == Handle::new(index, 1))
+            .expect("corps rapporté")
+            .lin_vel
+    }
+
+    #[test]
+    fn adr183_d3_une_assembly_figee_ne_cede_a_rien_et_repart_a_l_arret() {
+        let (mut driver, masse) = bille_libre();
+        let bille = Handle::new(1, 1);
+        driver.apply_impulse(bille, Vec3::new(2.0 * masse, 0.0, 0.0), Vec3::ZERO, false);
+        driver.advance_all(0.05);
+        assert!(driver.set_frozen(bille, true));
+        let place = position_de(&mut driver, 1);
+        driver.apply_impulse(bille, Vec3::new(10.0 * masse, 0.0, 0.0), Vec3::ZERO, false);
+        driver.apply_force(bille, Vec3::new(0.0, 100.0 * masse, 0.0), Vec3::ZERO, false);
+        for _ in 0..20 {
+            driver.advance_all(0.05);
+        }
+        proche(position_de(&mut driver, 1), place, "figée");
+        assert_eq!(vitesse_de(&mut driver, 1), [0.0; 3]);
+        assert!(driver.set_frozen(bille, false));
+        assert_eq!(vitesse_de(&mut driver, 1), [0.0; 3]);
+        for _ in 0..10 {
+            driver.advance_all(0.05);
+        }
+        assert!(
+            position_de(&mut driver, 1)[1] < place[1] - 0.5,
+            "elle retombe"
+        );
+        assert!(
+            !driver.set_frozen(Handle::new(9, 1), true),
+            "assembly inconnue"
+        );
+    }
+
+    #[test]
+    fn adr183_d3_figer_une_assembly_suspendue_la_sort_de_la_suspension() {
+        let mut driver = SimDriver::new();
+        proxy_bille(&mut driver, 1, BodyKind::Dynamic, 0.0);
+        let corps = driver.assembly_body(Handle::new(1, 1)).expect("corps").1;
+        driver.suspend_assembly(0, corps);
+        assert!(driver.set_frozen(Handle::new(1, 1), true));
+        driver.advance_all(0.05);
+        let etat = driver.collect_states()[0];
+        assert_eq!(
+            etat.flags & ax_model::dm::physics::body_state_flags::SUSPENDED,
+            0
+        );
+    }
+
+    #[test]
+    fn adr183_d4_une_figee_porte_une_caisse_et_la_monte_quand_on_la_mene() {
+        let mut driver = SimDriver::new();
+        let plateau = Handle::new(1, 1);
+        boite(&mut driver, 1, 5.0, [2.0, 0.25, 2.0]);
+        assert!(driver.set_frozen(plateau, true));
+        boite(&mut driver, 2, 5.8, [0.5, 0.5, 0.5]);
+        for _ in 0..40 {
+            driver.advance_all(0.05);
+        }
+        proche(
+            position_de(&mut driver, 1),
+            [0.0, 5.0, 0.0],
+            "le plateau ne cède pas",
+        );
+        let posee = position_de(&mut driver, 2)[1];
+        assert!(
+            (posee - 5.75).abs() < 0.05,
+            "la caisse repose dessus : {posee}"
+        );
+        for k in 1..=40 {
+            let y = 5.0 + 0.05 * f64::from(k);
+            driver.apply_set_kinematic(plateau, DVec3::new(0.0, y, 0.0), Quat::IDENTITY);
+            driver.advance_all(0.05);
+            if k == 20 {
+                let montee = vitesse_de(&mut driver, 1)[1];
+                assert!(
+                    (montee - 1.0).abs() < 0.05,
+                    "0,05 bloc par tick, répartis sur les sous-pas, font 1 m/s : {montee}"
+                );
+            }
+        }
+        proche(
+            position_de(&mut driver, 1),
+            [0.0, 7.0, 0.0],
+            "le plateau est arrivé",
+        );
+        let montee = position_de(&mut driver, 2)[1];
+        assert!((montee - 7.75).abs() < 0.1, "la caisse a suivi : {montee}");
+        driver.advance_all(0.05);
+        assert_eq!(vitesse_de(&mut driver, 1), [0.0; 3], "arrivé, il s'arrête");
+    }
+
+    #[test]
+    fn adr183_d4_une_assembly_dynamique_ne_se_mene_pas() {
+        let (mut driver, _) = bille_libre();
+        driver.apply_set_kinematic(
+            Handle::new(1, 1),
+            DVec3::new(30.0, 5.0, 0.0),
+            Quat::IDENTITY,
+        );
+        driver.advance_all(0.05);
+        assert!(position_de(&mut driver, 1)[0].abs() < 1.0e-3);
+    }
+
     fn proxy_bille(driver: &mut SimDriver, index: u32, kind: BodyKind, x: f64) {
         driver
             .create_assembly(

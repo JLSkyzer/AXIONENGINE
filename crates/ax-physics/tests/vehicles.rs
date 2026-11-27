@@ -3320,3 +3320,61 @@ fn cap53_frequences_des_sous_pas() {
         );
     }
 }
+
+#[test]
+fn adr183_d3_un_vehicule_fige_ne_roule_pas_et_ne_consomme_rien() {
+    let (mut world, v) = sur_le_plat(electrique_pure(50.0), [400.0, 400.0], 1.0);
+    world.set_body_identity(v, ASSEMBLY, 0);
+    conduire(&mut world, moteur_autorise(entree(1.0, 0.0, 0.0)));
+    avancer(&mut world, 2.0);
+    assert!(vers_l_avant(&world, v) > 3.0, "il roule");
+
+    assert!(world.set_frozen(ASSEMBLY, true));
+    let pose = world.pose(v).expect("pose");
+    let pleine = reserve(&world);
+    avancer(&mut world, 1.0);
+    let apres = world.pose(v).expect("pose");
+    assert!(
+        (apres.translation - pose.translation).length() < 1.0e-5,
+        "figé, il ne bouge plus : {:?} puis {:?}",
+        pose.translation,
+        apres.translation
+    );
+    // Le solveur déduit la vitesse d'un corps cinématique de sa pose suivante : un bruit d'arrondi.
+    let bruit = world.velocity(v).expect("vitesse").length();
+    assert!(bruit < 1.0e-3, "à l'arrêt : {bruit}");
+    assert_eq!(reserve(&world), pleine, "rien ne se consomme");
+    let r = rapport(&world);
+    assert_eq!(r.motor_power[0], 0.0);
+    assert_eq!(r.motor_rpm[0], 0.0);
+    assert_eq!(r.load, 0.0);
+    let roues = world.wheel_reports();
+    assert_eq!(roues.len(), 4, "ses roues restent rapportées, à l'arrêt");
+    assert!(roues.iter().all(|roue| roue.spin_speed == 0.0));
+
+    assert!(world.set_frozen(ASSEMBLY, false));
+    assert_eq!(
+        world.velocity(v).expect("vitesse"),
+        Vec3::ZERO,
+        "défigé, il repart à l'arrêt"
+    );
+    avancer(&mut world, 1.0);
+    assert!(vers_l_avant(&world, v) > 1.0, "le conducteur le relance");
+}
+
+#[test]
+fn adr183_d3_un_moteur_a_combustion_fige_ne_tourne_pas() {
+    let (mut world, v) = sur_le_plat(berline(), [400.0, 400.0], 1.0);
+    world.set_body_identity(v, ASSEMBLY, 0);
+    conduire(&mut world, entree(1.0, 0.0, 0.0));
+    avancer(&mut world, 1.0);
+    assert!(rapport(&world).rpm > 0.0);
+    assert!(world.set_frozen(ASSEMBLY, true));
+    avancer(&mut world, 0.5);
+    let r = rapport(&world);
+    assert_eq!(r.rpm, 0.0);
+    assert_eq!(r.flags & vehicle_report_flags::RUNNING, 0);
+    assert!(world.set_frozen(ASSEMBLY, false));
+    avancer(&mut world, 0.5);
+    assert!(rapport(&world).rpm > 0.0, "il tourne de nouveau");
+}

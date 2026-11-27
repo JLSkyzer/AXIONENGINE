@@ -8,7 +8,8 @@ import java.util.List;
 /**
  * {@code S2C_Correction} (ADR-168 D4) : ce que le serveur a calculé du véhicule qu'un joueur conduit, à un tick. Il
  * part au seul conducteur, à chaque tick où son véhicule a avancé ; le client qui prédit le compare à ce qu'il avait
- * prédit, et rejoue ce qu'il a envoyé après la séquence acquittée (D5).
+ * prédit, et rejoue ce qu'il a envoyé après la séquence acquittée (D5). Figé (ADR-183 D3), le véhicule ne se prédit
+ * pas : sa correction ne vise aucun véhicule ({@link #release}).
  *
  * <pre>
  * genre u8 = 8 | tick varulong | drapeaux u8 | [séquence appliquée u32 | profondeur u8] | entité varuint
@@ -42,6 +43,9 @@ public record CorrectionMessage(long serverTick, long appliedSequence, int queue
 
     /** Drapeau : une entrée du conducteur a été appliquée, sa séquence suit. */
     public static final int FLAG_APPLIED = 1;
+
+    /** L'entité d'une correction qui ne vise aucun véhicule : Minecraft ne donne ce numéro à aucune. */
+    public static final int NO_VEHICLE = 0;
 
     /** Octets d'un état au moins sur le fil : l'entité, la longueur, huit octets. */
     private static final int MIN_STATE_BYTES = 1 + 1 + 8;
@@ -185,6 +189,18 @@ public record CorrectionMessage(long serverTick, long appliedSequence, int queue
         public String toString() {
             return "State[entity=" + entity + ", " + bytes.length + " octets]";
         }
+    }
+
+    /**
+     * {@return la correction qui rend la main au conducteur d'une assembly figée (ADR-183 D3)} Elle ne vise aucun
+     * véhicule : son client ferme son monde prédit, comme pour un véhicule qu'il ne conduit plus, et suit les snapshots.
+     * La correction suivante qui vise son véhicule le rouvre.
+     *
+     * @param serverTick le tick du serveur
+     * @param vehicle l'état du véhicule à ce tick, que le message doit porter
+     */
+    public static CorrectionMessage release(long serverTick, State vehicle) {
+        return new CorrectionMessage(serverTick, -1, -1, NO_VEHICLE, 0L, Variables.NONE, List.of(vehicle));
     }
 
     /** {@return vrai si une entrée du conducteur a été appliquée} */

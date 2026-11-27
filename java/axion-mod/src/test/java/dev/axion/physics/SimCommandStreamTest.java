@@ -390,6 +390,43 @@ class SimCommandStreamTest {
     }
 
     @Test
+    void encodeLeGelEtLaPoseDUneFigee() throws IOException {
+        // ADR-183 D3 : SetFrozen, 16 octets ; D4 : SetKinematic, 48 octets.
+        byte[] bytes = new SimCommandStream()
+                .setFrozen(7, 3, true)
+                .setKinematic(7, 3, new double[] {1.5, 64.0, -3.25}, new float[] {0f, 1f, 0f, 0f})
+                .setFrozen(7, 3, false)
+                .toBytes();
+        assertEquals(8 + (8 + 16) + (8 + 48) + (8 + 16), bytes.length);
+        ByteBuffer b = wrap(bytes);
+        assertEquals(SimCommandStream.OP_SET_FROZEN, b.getInt(8), "opcode");
+        assertEquals(16, b.getInt(12), "payload_len");
+        assertEquals(7, b.getInt(16), "handle.index");
+        assertEquals(3, b.getInt(20), "handle.generation");
+        assertEquals(1, b.getInt(24), "figée");
+        assertEquals(0, b.getInt(28), "réservé");
+        int pose = 8 + 8 + 16;
+        assertEquals(SimCommandStream.OP_SET_KINEMATIC, b.getInt(pose), "opcode");
+        assertEquals(48, b.getInt(pose + 4), "payload_len");
+        assertEquals(1.5, b.getDouble(pose + 8 + 8), "x");
+        assertEquals(-3.25, b.getDouble(pose + 8 + 24), "z");
+        assertEquals(1f, b.getFloat(pose + 8 + 36), "rotation.y");
+        assertEquals(0, b.getInt(pose + 8 + 48 + 8 + 8), "rendue au moteur");
+
+        Path source = Path.of(System.getProperty("axion.crates.dir"), "ax-model", "src", "dm", "commands.rs");
+        String rust = Files.readString(source, StandardCharsets.UTF_8);
+        assertTrue(rust.contains("pub const SET_FROZEN: u32 = " + SimCommandStream.OP_SET_FROZEN + ";"));
+        assertTrue(rust.contains("pub const SET_KINEMATIC: u32 = " + SimCommandStream.OP_SET_KINEMATIC + ";"));
+        for (String struct : new String[] {"SetFrozen", "SetKinematic"}) {
+            Matcher taille = Pattern.compile("impl " + struct + " \\{[^}]*?pub const BYTES: usize = (\\d+);")
+                    .matcher(rust);
+            assertTrue(taille.find(), struct + "::BYTES dans commands.rs");
+            assertEquals(Integer.parseInt(taille.group(1)),
+                    struct.equals("SetFrozen") ? SimCommandStream.SET_FROZEN_BYTES : SimCommandStream.SET_KINEMATIC_BYTES);
+        }
+    }
+
+    @Test
     void encodeLesCommandesDAttache() {
         // ADR-171 D6 : Attach, 152 octets, dans la disposition figée d'ax-model ; Detach et SetAttachmentLength, 8.
         float[] a = {1, 2, 3, 0, 0, 0, 1};

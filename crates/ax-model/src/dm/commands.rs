@@ -101,6 +101,8 @@ pub mod opcode {
     /// Déplacer d'un même mouvement rigide une assembly et celles qui lui sont attachées
     /// ([`super::MoveAssembly`]). ADR-183 D2.
     pub const MOVE_ASSEMBLY: u32 = 32;
+    /// Figer une assembly, ou la rendre au moteur ([`super::SetFrozen`]). ADR-183 D3.
+    pub const SET_FROZEN: u32 = 33;
 }
 
 /// Les formes d'un capteur déclaré, champ `shape` de [`SetSensor`] (ADR-174 D5).
@@ -544,6 +546,24 @@ pub struct MoveAssembly {
 impl MoveAssembly {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 56;
+}
+
+/// Payload de `SET_FROZEN` (ADR-183 D3) : 16 octets. Une assembly figée est cinématique : rien ne la pousse, elle
+/// porte et bloque ; ses roues et ses moteurs ne tournent pas. Rendue au moteur, elle repart à l'arrêt.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetFrozen {
+    /// L'assembly.
+    pub handle: Handle,
+    /// 1 pour la figer, 0 pour la rendre au moteur.
+    pub frozen: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl SetFrozen {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 16;
 }
 
 /// Payload de `APPLY_FORCE` et `APPLY_IMPULSE`.
@@ -1255,6 +1275,9 @@ mod tests {
         assert_eq!(opcode::SET_WET, 30);
         assert_eq!(opcode::APPLY_TORQUE, 31);
         assert_eq!(opcode::MOVE_ASSEMBLY, 32);
+        assert_eq!(opcode::SET_FROZEN, 33);
+        assert_eq!(size_of::<SetFrozen>(), SetFrozen::BYTES);
+        assert_eq!(offset_of!(SetFrozen, frozen), 8);
         assert_eq!(size_of::<MoveAssembly>(), MoveAssembly::BYTES);
         assert_eq!(offset_of!(MoveAssembly, transform), 8);
         assert_eq!(offset_of!(MoveAssembly, flags), 48);

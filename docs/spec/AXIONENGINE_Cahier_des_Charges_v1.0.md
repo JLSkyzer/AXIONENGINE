@@ -2475,6 +2475,7 @@ Spécifiée intégralement en **PARTIE 23**.
 /axion spawn <definition> [pos] [nbt] | remove <selector>
 /axion rename <selector> <nom>       (le nom d'entité de Minecraft, ADR-183 D5, amendement A34)
 /axion tp <selector> <x y z> [lacet] (l'ensemble attaché, même monde, ancres aux blocs défaites ; ADR-183 D2, A34)
+/axion freeze <selector> [on|off]    (figer une assembly, ou la rendre au moteur ; ADR-183 D3, A34)
 /axion variables <selector>          (amendement A10 ; par siège, amendement A25)
 /axion events [selector]             (les derniers événements de contenu, amendement A25)
 /axion dev reload                    (amendement A13 ; seulement si content.dev_reload)
@@ -5134,7 +5135,7 @@ C2S_Handshake (ADR-150 D4) :
 | `S2C_DeformSnapshot` | S→C | resynchronisation | champ plastique quantifié d'une région, zstd |
 | `S2C_Repair` | S→C | à l'occurrence | part, niveau, quantité |
 | `S2C_Attachment` | S→C | à l'occurrence | création, rupture d'attache |
-| `S2C_Correction` | S→C | à chaque tick où le véhicule piloté avance, au seul conducteur (ADR-168 D4) | état autoritatif complet de l'ensemble prédit, séquence appliquée, profondeur de la file des entrées, variables |
+| `S2C_Correction` | S→C | à chaque tick où le véhicule piloté avance, au seul conducteur (ADR-168 D4) | état autoritatif complet de l'ensemble prédit, séquence appliquée, profondeur de la file des entrées, variables ; un véhicule ou un ensemble **figé** : une fois par seconde, la première aussitôt, une correction qui ne vise aucun véhicule (entité 0), à laquelle le client ferme sa prédiction (ADR-183 D3, A34) |
 | `S2C_Event` | S→C | après le snapshot d'un tick qui a émis des événements vers ce joueur (protocole 13, ADR-174 D2, amendement A25) | les événements de contenu, dans l'ordre : entité, rang de l'événement dans la definition, valeur f64 ; `net.events_per_player_tick` au plus |
 | `C2S_Input` | C→S | une par tick, deux après une file trouvée vide, aucune pour en retenir une (ADR-168 D3) | entrées + numéro de séquence + octet de cadence |
 | `C2S_Carried` | C→S | à chaque tick où le joueur est porté (protocole 21, ADR-185, amendement A36) | sa place sur l'assembly : identifiant réseau varint, corps u8, place dans le repère du corps 3 x varint zigzag au 1/256 de bloc |
@@ -5364,6 +5365,7 @@ axion:energy    compound contenu de chaque réserve d'énergie déclarée, par s
                          R-1093, amendement A33)
 axion:wheels    compound usure du pneu de chaque roue, par nom de roue (le node), en double de 0 à 1 ;
                          absente si aucun pneu n'est usé (ADR-176 D4, R-1072, amendement A27)
+axion:frozen    byte     vrai tant que l'assembly est figée ; absente sinon (ADR-183 D3, amendement A34)
 axion:atts      list     attaches que l'assembly a posées : socket, autre assembly (UUID), son socket et la
                          révision de sa definition à laquelle ce nom vaut (ADR-179, amendement A30), ou bloc
                          d'ancrage ; type, longueur, mod (ADR-171 D7, R-692, amendement A21)
@@ -5546,7 +5548,9 @@ public interface Assembly {
     void applyForce(Vec3 f, @Nullable Vec3 worldPoint);   // le prochain pas, à chaque sous-pas (ADR-183 D1, A34)
     void applyImpulse(Vec3 j, @Nullable Vec3 worldPoint);
     void applyTorque(Vec3 t);                              // de même (ADR-183 D1, A34)
-    void setKinematicTransform(Transform t);
+    void setFrozen(boolean frozen);                        // figée : cinématique, sauvegardée (ADR-183 D3, A34)
+    boolean isFrozen();
+    void setKinematicTransform(Transform t);               // une figée, au prochain pas (ADR-183 D4, A34)
     void teleport(Transform t, boolean reset);              // l'ensemble attaché, ancres défaites (ADR-183 D2, A34)
 
     Optional<Socket> socket(String name);
@@ -8028,7 +8032,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A31 | 2026-11-25 | ADR-180, accepté par Killian, Q1 à Q3 comme recommandé (en cours, tranche par tranche ; 14a le 2026-11-25 : la frontière native, ABI 36 ; 14b le même jour : R-643, la palette envoyée par le serveur et le client ; 14c : R-1040, schéma 2 des correspondances, `cover` ; 14d : la mesure, puis les contacts des corps sur champ de hauteurs, R-643 ; les correspondances en Java le 2026-11-26, 23.3) | 5.30 et C-38 : palette d'au plus 16 matériaux par tuile dans `SET_WORLD_COLLISION` et `SET_WORLD_HEIGHTFIELD` ; la roue lit le matériau qu'elle touche ; R-643 amendé à la tranche 14b |
 | A32 | 2026-11-26 | ADR-181, accepté par Killian, Q1 à Q3 comme recommandé | R-1074 : le matériau touché dans le rapport de roue (ABI 37, `SIM_OUT` au schéma 8), `WheelView.surface()`, `/axion wear` ; aucun changement de protocole ni de sauvegarde |
 | A33 | 2026-11-26 | ADR-182, accepté par Killian, Q1 à Q6 comme recommandé (tranche par tranche) | ANNEXE A.7 : CAP-76, affectée à M5 ; chaque tranche (14a à 14d) précise 12.5, 23.2, 23.4, 21.5, 22.2 et A.4 ; 14a1 le 2026-11-26 : 12.5 R-1092, ABI 38, `SIM_OUT` 9, descripteur 16 et AXION-17 au 21.5 ; 14a2 le 2026-11-26 : 12.5 R-1093, schéma de definition 8 (R-1783), 22.2 `axion:energy` par nom, A.4 `energy.<réserve>.amount|ratio`, A.1 `E-7012` ; 14b le 2026-11-26 : 12.5 R-1094, 12.8 `native_flags`, ABI 39, `SIM_OUT` 10, descripteur 17 et AXION-18 au 21.5 (les descripteurs 15 et 16, omis alors, y entrent avec lui), A.4 `motor.<n>.rpm|power` ; 14c le 2026-11-26 : 12.5 R-1095, `motor.<nom>.torque` à R-1084, ABI 40, AXION-19 ; F le 2026-11-27 : R-1084 `motor.<nom>.regen`, ABI 42, `SET_PARAMETERS` de 104 octets |
-| A34 | 2026-11-26 | ADR-183, accepté par Killian, Q1 à Q4 comme recommandé (tranche par tranche) | forces et couples d'un tick, `MOVE_ASSEMBLY`, assembly figée et `setKinematicTransform`, `/axion tp|freeze|rename` (CAP-34, CAP-11) ; chaque tranche précise 22.2, 23.2, C-71 et l'ABI ; tranche 1 le 2026-11-27 : D5 et D1, ABI 41, `APPLY_FORCE` tenue et `APPLY_TORQUE`, C-71 `/axion rename` ; tranche 2 le 2026-11-27 : D2, `MOVE_ASSEMBLY`, ABI 43, `Assembly.teleport`, C-71 `/axion tp` |
+| A34 | 2026-11-26 | ADR-183, accepté par Killian, Q1 à Q4 comme recommandé (tranche par tranche) | forces et couples d'un tick, `MOVE_ASSEMBLY`, assembly figée et `setKinematicTransform`, `/axion tp|freeze|rename` (CAP-34, CAP-11) ; chaque tranche précise 22.2, 23.2, C-71 et l'ABI ; tranche 1 le 2026-11-27 : D5 et D1, ABI 41, `APPLY_FORCE` tenue et `APPLY_TORQUE`, C-71 `/axion rename` ; tranche 2 le 2026-11-27 : D2, `MOVE_ASSEMBLY`, ABI 43, `Assembly.teleport`, C-71 `/axion tp` ; tranche 3 le 2026-11-27 : D3 et D4, `SET_FROZEN`, `SET_KINEMATIC`, ABI 44, `axion:frozen`, `setFrozen`, `setKinematicTransform`, C-71 `/axion freeze`, 21.4 |
 | A35 | 2026-11-26 | ADR-184, accepté par Killian, Q1 et Q2 comme recommandé ; mis en œuvre le jour même | 21.5 : le serveur réplique les entités qu'une assembly porte, le corps et leur place dans son repère ; le client les dessine sur le corps qu'il dessine (CAP-14) ; descripteur 18, protocole 20, R-1665, R-1662 précisée |
 | A36 | 2026-11-26 | ADR-185, accepté par Killian ; mis en œuvre le jour même | 21.4 : `C2S_Carried`, protocole 21 ; 21.5 : R-1665 précisée, R-1666 ; 21.9 : R-1690, les places portées comptées à part (CAP-14) |
 

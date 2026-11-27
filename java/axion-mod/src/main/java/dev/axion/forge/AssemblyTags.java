@@ -59,6 +59,9 @@ final class AssemblyTags {
      */
     static final String PARAMETERS = "axion:params";
 
+    /** Figée (ADR-183 D3) : un booléen vrai ; absente sans le gel. */
+    static final String FROZEN = "axion:frozen";
+
     /** Le carburant et la batterie (ADR-176 D3) : {@code {fuel, battery}}, en {@code double}. */
     static final String ENERGY = "axion:energy";
 

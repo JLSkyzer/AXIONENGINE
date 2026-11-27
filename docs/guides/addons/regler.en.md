@@ -351,3 +351,20 @@ assembly.teleport(new Transform(new Vec3(120.5, 70, -40.5), new Quaternionf(), n
 
 Anchors to blocks are released (cause `teleported` for attachment listeners), and whatever stood on it without being
 seated stays where it is. The destination chunk is loaded.
+
+An administrator **freezes** it: `/axion freeze <target> [on|off]`; your mod: `assembly.setFrozen(true)`. While frozen,
+nothing pushes it and it does not fall, it carries and blocks like scenery, its engine is paused and nothing is consumed;
+passengers stay, and the game saves it frozen. Its driver does not predict it while it is. Handed back to the engine, it
+starts again at rest.
+
+A frozen assembly, your mod **drives** it — a lift, a lifting bridge, an animated prop:
+
+```java
+assembly.setFrozen(true);
+// Every server tick: the pose it reaches at the next physics step. The engine derives its velocity, so it pushes and
+// carries whatever it meets.
+Transform now = assembly.transform();
+assembly.setKinematicTransform(new Transform(now.position().add(0, 0.05, 0), now.rotation(), now.scale()));
+```
+
+Called on a dynamic assembly it throws `IllegalStateException`: to move it at once, use `teleport`.

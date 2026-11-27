@@ -2877,3 +2877,15 @@ défaut, et un rechargement reprend les assets du cache, sans l'avertissement.
 
 **Règle.** Un lot à part seulement quand un test change un état global qu'un autre lit ; sinon le lot par défaut. Le test
 de l'avertissement reste dépendant de l'ordre : à rendre indépendant s'il retombe.
+
+## 2026-11-27 | un GameTest de scène à ticks fixes échoue quand d'autres tests allongent la file de création
+
+**Ce qui a mal tourné.** `adr183_laCommandeTeleporteLEnsembleEtDefaitLesAncres` a échoué après l'ajout de trois tests
+sans lien : l'attelée n'a pas suivi la téléportation.
+
+**Cause.** La création native s'étale sous budget (R-1730) : avec plus d'assemblies dans le lot, la corde posée au tick 20
+n'était pas encore au natif au tick 25. Et la téléportation ne déplaçait les membres que par le natif : sans corps, un
+membre restait sur place — un vrai défaut, que le test ne voyait que par ce hasard.
+
+**Règle.** Un GameTest attend l'état qu'il suppose (`hasPhysicalBounds`) au lieu d'un nombre de ticks. Une opération sur
+un ensemble applique son effet à chaque membre côté Java, sans supposer que le natif les a.

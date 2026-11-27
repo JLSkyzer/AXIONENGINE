@@ -45,6 +45,17 @@ class CorrectionMessageTest {
     }
 
     @Test
+    @DisplayName("ADR-183 D3 : la main rendue au conducteur d'une assembly figée ne vise aucun véhicule")
+    void mainRendue() throws MalformedPacketException {
+        CorrectionMessage message = CorrectionMessage.release(42L, new CorrectionMessage.State(5, bloc(16, 1)));
+        CorrectionMessage relu = CorrectionMessage.decode(message.encode());
+        assertEquals(message, relu);
+        assertEquals(CorrectionMessage.NO_VEHICLE, relu.entity(), "aucune entité de Minecraft ne porte ce numéro");
+        assertFalse(relu.applied(), "elle n'acquitte rien");
+        assertEquals(42L, relu.serverTick());
+    }
+
+    @Test
     @DisplayName("D4 : sans entrée appliquée, la séquence est absente du fil")
     void sansEntree() throws MalformedPacketException {
         CorrectionMessage message = new CorrectionMessage(5L, -1L, -1, 7, 0L, CorrectionMessage.Variables.NONE,

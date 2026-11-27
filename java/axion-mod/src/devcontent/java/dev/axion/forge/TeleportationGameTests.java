@@ -57,7 +57,9 @@ public final class TeleportationGameTests {
         Vec3[] ecart = new Vec3[1];
         org.joml.Quaternionf[] avantLeSaut = new org.joml.Quaternionf[1];
         helper.startSequence()
-                .thenIdle(20)
+                // La création native s'étale sous budget (R-1730) : la scène attend que les deux corps existent.
+                .thenWaitUntil(() -> helper.assertTrue(a.hasPhysicalBounds() && b.hasPhysicalBounds(), "simulés"))
+                .thenIdle(10)
                 .thenExecute(() -> {
                     List<AttachmentListenerEntry> avec = new ArrayList<>(avant);
                     avec.add(new AttachmentListenerEntry("essai", ecouteur));
@@ -106,6 +108,50 @@ public final class TeleportationGameTests {
                     }
                     a.discard();
                     b.discard();
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Téléportée avant que le moteur ne simule ses membres (leur création native s'étale sous budget, R-1730),
+     * l'assembly emmène quand même ce qui lui est attaché, d'un même mouvement.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr183_unEnsembleSansCorpsSeTeleporteEnsemble(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        Vec3 saut = new Vec3(6.0, 0.25, 6.0);
+        AxionEntity[] paire = new AxionEntity[2];
+        Vec3[] attendus = new Vec3[2];
+        helper.startSequence()
+                .thenExecute(() -> {
+                    // Dans le même tick que leur apparition : aucun corps natif.
+                    AxionEntity a = AssembliesDeTest.poser(helper, MAILLON,
+                            new Vec3(4.5, DESSUS_DALLE + 0.05, 4.0), DROIT);
+                    AxionEntity b = AssembliesDeTest.poser(helper, MAILLON,
+                            new Vec3(4.5, DESSUS_DALLE + 0.05, 6.0), DROIT);
+                    paire[0] = a;
+                    paire[1] = b;
+                    AttachResult corde = ForgeAxionApi.view(a).attachments()
+                            .attach("avant", ForgeAxionApi.view(b), "arriere", "rope");
+                    helper.assertTrue(corde.status() == AttachResult.Status.ATTACHED, "corde : " + corde.message());
+                    attendus[0] = a.position().add(saut);
+                    attendus[1] = b.position().add(saut);
+                    ForgeAxionApi.view(a).teleport(new dev.axion.api.assembly.Transform(attendus[0], a.orientation(),
+                            new Vec3(1, 1, 1)), true);
+                    helper.assertTrue(b.position().distanceTo(attendus[1]) < 1.0e-3,
+                            "l'attelé suit aussitôt : " + b.position() + " pour " + attendus[1]);
+                })
+                .thenWaitUntil(() -> helper.assertTrue(paire[0].hasPhysicalBounds() && paire[1].hasPhysicalBounds(),
+                        "simulés"))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    for (int i = 0; i < 2; i++) {
+                        double ecart = paire[i].position().subtract(attendus[i]).horizontalDistance();
+                        helper.assertTrue(ecart < 0.5, "le maillon " + i + " est à l'arrivée : à " + ecart + " bloc");
+                    }
+                    helper.assertTrue(ForgeAxionApi.view(paire[0]).attachments().list().size() == 1, "la corde tient");
+                    paire[0].discard();
+                    paire[1].discard();
                 })
                 .thenSucceed();
     }

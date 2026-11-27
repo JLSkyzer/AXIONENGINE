@@ -232,6 +232,46 @@ public interface Assembly {
     }
 
     /**
+     * Fige l'assembly, ou la rend au moteur (ADR-183 D3, CAP-34). Figée, elle est cinématique : rien ne la pousse, elle
+     * porte et bloque ce qui la touche, ses roues et ses moteurs ne tournent pas et rien ne s'y consomme ; ses occupants
+     * restent, et les assemblies que des attaches lui relient restent simulées. La sauvegarde la garde figée. Rendue au
+     * moteur, elle repart à l'arrêt.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755), au serveur.
+     *
+     * @param frozen vrai pour la figer
+     * @throws IllegalStateException chez un client
+     */
+    default void setFrozen(boolean frozen) {
+        throw new UnsupportedOperationException("setFrozen : cette assembly ne se fige pas");
+    }
+
+    /**
+     * {@return vrai si l'assembly est figée} (ADR-183 D3) Chez un client, faux : il n'en est pas informé.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755).
+     */
+    default boolean isFrozen() {
+        return false;
+    }
+
+    /**
+     * Mène une assembly figée (ADR-183 D4) : au prochain pas physique, son corps racine arrive à la position et à
+     * l'orientation données, ses autres corps du même mouvement. Le moteur en déduit sa vitesse, si bien qu'elle pousse
+     * et porte ce qu'elle rencontre ; un mouvement continu se redonne à chaque tick. La dernière pose demandée avant un
+     * pas l'emporte. L'échelle de la transformation est ignorée. Pour la déplacer d'un coup, voir {@link #teleport}.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755), au serveur.
+     *
+     * @param transform la pose de son corps racine au prochain pas
+     * @throws IllegalArgumentException si la position ou la rotation n'est pas finie, ou la rotation nulle
+     * @throws IllegalStateException si l'assembly n'est pas figée, ou chez un client
+     */
+    default void setKinematicTransform(Transform transform) {
+        throw new UnsupportedOperationException("setKinematicTransform : cette assembly ne se mène pas");
+    }
+
+    /**
      * {@return les entités que cette assembly porte au serveur (ADR-178, CAP-14)} Celles posées sur un de ses corps ; une
      * copie, dans un ordre quelconque. Les passagers assis n'y sont pas : ils sont des passagers.
      *

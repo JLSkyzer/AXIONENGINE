@@ -53,6 +53,14 @@ public final class SimCommandStream {
 
     /** Opcode {@code REMOVE_ASSEMBLY} (ADR-114). */
     public static final int OP_REMOVE_ASSEMBLY = 1;
+    /** Opcode {@code SET_KINEMATIC} : où mener une assembly figée au prochain pas (ADR-183 D4). */
+    public static final int OP_SET_KINEMATIC = 2;
+    /** Taille du payload de {@code SET_KINEMATIC}, en octets. */
+    public static final int SET_KINEMATIC_BYTES = 48;
+    /** Opcode {@code SET_FROZEN} (ADR-183 D3). */
+    public static final int OP_SET_FROZEN = 33;
+    /** Taille du payload de {@code SET_FROZEN}, en octets. */
+    public static final int SET_FROZEN_BYTES = 16;
 
     /** Opcode de {@code APPLY_IMPULSE}. */
     public static final int OP_APPLY_IMPULSE = 4;
@@ -1118,6 +1126,48 @@ public final class SimCommandStream {
         }
         command.putInt(reset ? 1 : 0);
         command.putInt(0);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_FROZEN} (ADR-183 D3) : figer une assembly, ou la rendre au moteur.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param frozen vrai pour la figer
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setFrozen(int handleIndex, int handleGeneration, boolean frozen) {
+        ByteBuffer command = beginCommand(OP_SET_FROZEN, SET_FROZEN_BYTES);
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        command.putInt(frozen ? 1 : 0);
+        command.putInt(0);
+        commands.add(command.array());
+        return this;
+    }
+
+    /**
+     * Ajoute une commande {@code SET_KINEMATIC} (ADR-183 D4) : au prochain pas, le corps racine d'une assembly figée
+     * arrive à la pose donnée, ses autres corps du même mouvement.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param position position monde {@code x, y, z} du corps racine
+     * @param rotation orientation {@code x, y, z, w}
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream setKinematic(int handleIndex, int handleGeneration, double[] position, float[] rotation) {
+        ByteBuffer command = beginCommand(OP_SET_KINEMATIC, SET_KINEMATIC_BYTES);
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        for (int axis = 0; axis < 3; axis++) {
+            command.putDouble(position[axis]);
+        }
+        for (int axis = 0; axis < 4; axis++) {
+            command.putFloat(rotation[axis]);
+        }
         commands.add(command.array());
         return this;
     }

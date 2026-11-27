@@ -505,8 +505,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         // ADR-167 D9 : les contrôleurs lisent l'état du début du tick, avant que les entrées partent au natif.
         control(stream);
         drive(stream);
+        // Le gel d'abord : une impulsion du même tick pousse une assembly qu'on vient de rendre au moteur.
+        freezes(stream);
         impulses(stream);
         moves(stream);
+        drives(stream);
         energy(stream);
         wear(stream);
         weather(stream, tick);
@@ -609,6 +612,25 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             assembly.releaseCarried();
             for (AxionEntity member : ensembleMembers(assembly)) {
                 member.releaseCarried();
+            }
+        });
+    }
+
+    /** Envoie les gels (ADR-183 D3) aux corps qui existent : à chaque changement, et à chaque corps recréé. */
+    private void freezes(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            if (assembly.takeFrozenPush()) {
+                stream.setFrozen(index, GENERATION, assembly.isFrozen());
+            }
+        });
+    }
+
+    /** Envoie les poses où mener les assemblies figées (ADR-183 D4) aux corps qui existent. */
+    private void drives(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            AxionEntity.Move drive = assembly.takeDrive();
+            if (drive != null) {
+                stream.setKinematic(index, GENERATION, drive.position(), drive.rotation());
             }
         });
     }
@@ -840,10 +862,22 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 continue;
             }
             AxionEntity assembly = ledger.entity(report.handleIndex());
-            if (assembly == null || (!advanced.contains(report.handleIndex()) && !assembly.sleepingCorrectionDue(tick))) {
+            if (assembly == null) {
                 continue;
             }
             ServerPlayer driver = assembly.correctedDriver();
+            if (driver != null && heldFrozen(assembly)) {
+                // ADR-183 D3 : figé, il ne se prédit pas ; son conducteur le sait et suit les snapshots.
+                CorrectionMessage release = assembly.releaseCorrection(tick,
+                        new CorrectionMessage.State(report.handleIndex(), report.state()));
+                if (release != null) {
+                    corrections.accept(driver, release.encode());
+                }
+                continue;
+            }
+            if (!advanced.contains(report.handleIndex()) && !assembly.sleepingCorrectionDue(tick)) {
+                continue;
+            }
             if (driver != null) {
                 // Le véhicule d'abord, puis chaque membre de son ensemble dont l'état est là (ADR-168 D7, ADR-171 D7).
                 List<CorrectionMessage.State> correction = new ArrayList<>();
@@ -857,6 +891,11 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
                 corrections.accept(driver, assembly.correction(tick, correction).encode());
             }
         }
+    }
+
+    /** {@return vrai si le véhicule, ou une assembly de son ensemble, est figé} */
+    private boolean heldFrozen(AxionEntity vehicle) {
+        return vehicle.isFrozen() || ensembleMembers(vehicle).stream().anyMatch(AxionEntity::isFrozen);
     }
 
     /**

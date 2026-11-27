@@ -710,6 +710,9 @@ impl PhysicsWorld {
             .iter()
             .filter(|v| !self.vehicle_asleep(v))
             .map(|vehicle| {
+                if self.frozen.contains_key(&handle_key(vehicle.assembly)) {
+                    return still_report(vehicle);
+                }
                 let mut flags = 0;
                 if vehicle.gearbox.shifting() {
                     flags |= vehicle_report_flags::SHIFTING;
@@ -735,6 +738,20 @@ impl PhysicsWorld {
                 }
             })
             .collect()
+    }
+
+    /// Arrête les roues d'un véhicule qu'on fige (ADR-183 D3) ; le moteur, la boîte et les réserves restent.
+    pub(super) fn still_vehicle(&mut self, assembly: Handle) {
+        for vehicle in &mut self.vehicles {
+            if handle_key(vehicle.assembly) != handle_key(assembly) {
+                continue;
+            }
+            for wheel in &mut vehicle.wheels {
+                wheel.spin_speed = 0.0;
+                wheel.slip_long = 0.0;
+                wheel.slip_lat = 0.0;
+            }
+        }
     }
 
     /// Tous les corps du véhicule dorment : ses roues ne sont ni simulées ni rapportées.
@@ -788,6 +805,10 @@ impl PhysicsWorld {
         }
         let mut vehicles = std::mem::take(&mut self.vehicles);
         for vehicle in &mut vehicles {
+            // ADR-183 D3 : figé, ses roues et ses moteurs ne tournent pas ; rien ne s'y consomme.
+            if self.frozen.contains_key(&handle_key(vehicle.assembly)) {
+                continue;
+            }
             // Un couple posé sur une roue fait avancer le véhicule comme un conducteur qui accélère (R-1082).
             let driven = vehicle.drives.iter().any(|drive| drive.torque != 0.0);
             // Le démarreur tourne : le véhicule reste éveillé jusqu'à ce que son moteur ait pris (ADR-176 D1) ; un
@@ -1375,5 +1396,24 @@ impl PhysicsWorld {
             vehicle.wheels[index].slip_lat = wheel.slip_lat;
             vehicle.contacts[index].ground_speed = wheel.ground_speed;
         }
+    }
+}
+
+/// Le rapport d'un véhicule figé (ADR-183 D3) : rien ne tourne, ses réserves et son rapport engagé restent.
+fn still_report(vehicle: &Vehicle) -> VehicleReport {
+    VehicleReport {
+        handle: vehicle.assembly,
+        rpm: 0.0,
+        load: 0.0,
+        gear: vehicle.gearbox.gear(),
+        flags: if vehicle.driver {
+            vehicle_report_flags::DRIVER
+        } else {
+            0
+        },
+        steer: vehicle.steering.position(),
+        stores: vehicle.energy.stores.map(|store| store as f32),
+        motor_rpm: Default::default(),
+        motor_power: Default::default(),
     }
 }

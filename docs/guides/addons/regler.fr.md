@@ -358,3 +358,20 @@ assembly.teleport(new Transform(new Vec3(120.5, 70, -40.5), new Quaternionf(), n
 
 Les ancres aux blocs sont défaites (cause `teleported` pour les écouteurs d'attaches), et ce qui était posé dessus sans
 être assis reste sur place. Le chunk d'arrivée se charge.
+
+Un administrateur la **fige** : `/axion freeze <cible> [on|off]` ; ton mod : `assembly.setFrozen(true)`. Figée, rien ne
+la pousse ni ne la fait tomber, elle porte et bloque comme un décor, son moteur est en pause et rien ne s'y consomme ;
+les passagers restent, et le jeu la sauvegarde figée. Son conducteur ne la prédit plus tant qu'elle l'est. Rendue au
+moteur, elle repart à l'arrêt.
+
+Une assembly figée, ton mod la **mène** — un ascenseur, un pont levant, un décor animé :
+
+```java
+assembly.setFrozen(true);
+// À chaque tick du serveur : la pose où elle arrive au prochain pas physique. Le moteur en déduit sa vitesse, si bien
+// qu'elle pousse et porte ce qu'elle rencontre.
+Transform ici = assembly.transform();
+assembly.setKinematicTransform(new Transform(ici.position().add(0, 0.05, 0), ici.rotation(), ici.scale()));
+```
+
+Menée sur une assembly dynamique, elle lève `IllegalStateException` : pour la déplacer d'un coup, `teleport`.

@@ -321,6 +321,17 @@ final class AxionCommands {
                                                                 Vec3Argument.getVec3(context, "position"),
                                                                 com.mojang.brigadier.arguments.FloatArgumentType
                                                                         .getFloat(context, "lacet")))))))
+                        // ADR-183 D3 : figer une assembly, ou la rendre au moteur.
+                        .then(Commands.literal("freeze")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .executes(context -> freeze(context.getSource(),
+                                                EntityArgument.getEntity(context, "cible"), true))
+                                        .then(Commands.literal("on")
+                                                .executes(context -> freeze(context.getSource(),
+                                                        EntityArgument.getEntity(context, "cible"), true)))
+                                        .then(Commands.literal("off")
+                                                .executes(context -> freeze(context.getSource(),
+                                                        EntityArgument.getEntity(context, "cible"), false)))))
                         // ADR-183 D5 : le nom d'une assembly, celui de toute entité de Minecraft.
                         .then(Commands.literal("rename")
                                 .then(Commands.argument("cible", EntityArgument.entity())
@@ -808,6 +819,24 @@ final class AxionCommands {
                 source.getTextName());
         source.sendSuccess(() -> Component.literal("AXION : " + assembly.definitionId() + " téléportée en " + where),
                 true);
+        return 1;
+    }
+
+    /**
+     * Fige une assembly, ou la rend au moteur (ADR-183 D3). Commande d'administration, mutante, journalisée avec son
+     * auteur (R-810).
+     */
+    private static int freeze(CommandSourceStack source, Entity target, boolean frozen) {
+        AuthoritativeThread.require();
+        if (!(target instanceof AxionEntity assembly)) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        assembly.setFrozen(frozen);
+        LOGGER.info("AXION : /axion freeze {} {} ({}) demandé par {}", frozen ? "on" : "off", target.getUUID(),
+                assembly.definitionId(), source.getTextName());
+        source.sendSuccess(() -> Component.literal("AXION : " + assembly.definitionId()
+                + (frozen ? " figée" : " rendue au moteur")), true);
         return 1;
     }
 

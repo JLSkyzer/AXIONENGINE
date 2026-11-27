@@ -574,12 +574,35 @@ public final class ForgeAxionApi implements AxionApi {
 
         @Override
         public void teleport(Transform transform, boolean reset) {
+            org.joml.Quaternionf turn = checkedRotation(transform);
+            serverSide().teleportAssembly(transform.position(), turn, reset);
+        }
+
+        @Override
+        public void setFrozen(boolean frozen) {
+            serverSide().setFrozen(frozen);
+        }
+
+        @Override
+        public boolean isFrozen() {
+            AuthoritativeThread.require();
+            return entity.isFrozen();
+        }
+
+        @Override
+        public void setKinematicTransform(Transform transform) {
+            org.joml.Quaternionf turn = checkedRotation(transform);
+            serverSide().driveFrozen(transform.position(), turn);
+        }
+
+        /** La rotation d'une pose demandée, sa position et elle vérifiées. */
+        private org.joml.Quaternionf checkedRotation(Transform transform) {
             java.util.Objects.requireNonNull(transform, "transform");
             org.joml.Quaternionf turn = transform.rotation();
             if (!finite(transform.position()) || !turn.isFinite() || turn.lengthSquared() < 1.0e-6f) {
                 throw new IllegalArgumentException("pose non finie ou rotation nulle : " + transform);
             }
-            serverSide().teleportAssembly(transform.position(), turn, reset);
+            return turn;
         }
 
         @Override

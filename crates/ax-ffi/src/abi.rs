@@ -57,7 +57,8 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 43 depuis la téléportation (ADR-183 D2) :
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 44 depuis les assemblies figées (ADR-183 D3,
+/// D4) : `SET_FROZEN`. 43 depuis la téléportation (ADR-183 D2) :
 /// `MOVE_ASSEMBLY`. 42 depuis `motor.<nom>.regen` (ADR-182, F) :
 /// `SET_PARAMETERS` de 104 octets. 41 depuis les forces et les couples tenus un tick
 /// (ADR-183 D1) : `APPLY_FORCE` appliquée, opcode `APPLY_TORQUE`. 40 depuis l'hybride (ADR-182 D4) : le prolongateur
@@ -97,7 +98,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 43;
+pub const AXION_ABI_VERSION: u32 = 44;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;

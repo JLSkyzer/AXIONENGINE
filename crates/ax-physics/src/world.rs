@@ -244,6 +244,14 @@ struct ForcedSleep {
     angvel: Vec3,
 }
 
+/// Le chemin d'un corps figé qu'on mène (ADR-183 D4) : d'où il part, où il arrive au prochain pas.
+#[derive(Debug, Clone, Copy)]
+struct FrozenTarget {
+    body: BodyId,
+    from: Pose,
+    to: Pose,
+}
+
 /// Mouvement d'un corps juste avant un sous-pas : de quoi connaître la vitesse d'un de ses
 /// points à l'approche d'un contact, avant que la résolution ne l'absorbe (R-615).
 #[derive(Debug, Clone, Copy)]
@@ -449,6 +457,10 @@ pub struct PhysicsWorld {
     /// celui du solveur (un contact qui commence) : il repart alors de son état courant.
     /// Consultée par clé, jamais itérée (R-1020).
     forced_sleep: HashMap<BodyId, ForcedSleep>,
+    /// Les assemblies figées (ADR-183 D3), chacune avec les corps que le gel a rendus cinématiques.
+    frozen: HashMap<u64, Vec<BodyId>>,
+    /// Où mener les corps figés au prochain pas (ADR-183 D4).
+    frozen_targets: HashMap<u64, Vec<FrozenTarget>>,
     /// Forces et couples demandés pour le prochain pas (ADR-183 D1), dans l'ordre de leurs commandes (R-1020) ;
     /// vidés après lui.
     external: Vec<ExternalForce>,
@@ -667,6 +679,8 @@ impl PhysicsWorld {
             invalid_state_count: 0,
             bounds_unavailable: AtomicU64::new(0),
             forced_sleep: HashMap::new(),
+            frozen: HashMap::new(),
+            frozen_targets: HashMap::new(),
             external: Vec::new(),
             births: HashMap::new(),
             ccd_threshold: HashMap::new(),
@@ -953,8 +967,17 @@ impl PhysicsWorld {
         // ADR-171 D6 : une attache rompue a été rapportée une dernière fois ; elle part.
         self.purge_broken_attachments();
         let mut substeps = 0;
+        // ADR-183 D4 : le chemin des corps figés qu'on mène se partage entre les sous-pas de ce tick.
+        let planned = if self.frozen_targets.is_empty() {
+            0
+        } else {
+            planned_substeps(self.accumulator, dt, full_step)
+        };
         while self.accumulator >= full_step {
             self.sim_clock += f64::from(dt);
+            if planned > 0 {
+                self.drive_substep((substeps + 1) as f32 / planned as f32);
+            }
 
             // Étape 3 (C-40, R-660 ; ADR-159) : rayons, suspension et pneus des véhicules. Puis
             // étape 4 : intégration physique — forces, intégration Rapier,
@@ -1005,10 +1028,12 @@ impl PhysicsWorld {
             self.accumulator = (self.accumulator - dt).max(0.0);
             substeps += 1;
         }
-        // ADR-183 D1 : elles valaient ce pas ; sans sous-pas, elles attendent le suivant.
+        // ADR-183 D1 : elles valaient ce pas ; sans sous-pas, elles attendent le suivant. De même des poses où mener les
+        // corps figés (D4).
         if substeps > 0 {
             self.reset_external_forces();
             self.external.clear();
+            self.frozen_targets.clear();
         }
         // R-1011 (ADR-146) : un CONTACT_IMPULSE par paire et par tick, celui du sous-pas le plus fort — avec une
         // entité vanilla, ses impulsions sont celles de tous les sous-pas (ADR-123 §7).
@@ -2182,6 +2207,8 @@ impl PhysicsWorld {
         let turn = rotation.normalize() * old.rotation.inverse();
         let turned = |velocity: Vec3| if reset { Vec3::ZERO } else { turn * velocity };
         for member in self.ensemble_assemblies(assembly) {
+            // Une pose demandée avant la téléportation ne la ramène pas en arrière.
+            self.frozen_targets.remove(&handle_key(member));
             let bodies = self
                 .members
                 .get(&handle_key(member))
@@ -2239,6 +2266,104 @@ impl PhysicsWorld {
                 local_point: None,
                 torque,
             });
+        }
+    }
+
+    /// Fige une assembly, ou la rend au moteur (ADR-183 D3). Figés, ses corps dynamiques sont cinématiques, à l'arrêt :
+    /// rien ne les pousse, ils portent et bloquent ; ses roues ne tournent pas et ses moteurs sont en pause. Rendus au
+    /// moteur, ils repartent à l'arrêt. Faux pour une assembly inconnue.
+    pub fn set_frozen(&mut self, assembly: Handle, frozen: bool) -> bool {
+        let key = handle_key(assembly);
+        let Some(members) = self.members.get(&key).cloned() else {
+            return false;
+        };
+        if frozen == self.frozen.contains_key(&key) {
+            return true;
+        }
+        if frozen {
+            let mut held = Vec::with_capacity(members.len());
+            for id in members {
+                let Some(body) = self.inner.bodies.get_mut(id.handle()) else {
+                    continue;
+                };
+                if !body.is_dynamic() {
+                    continue;
+                }
+                // Une vitesse gardée par la gestion d'activité ne vaut plus.
+                self.forced_sleep.remove(&id);
+                body.set_linvel(Vec3::ZERO, true);
+                body.set_angvel(Vec3::ZERO, true);
+                body.set_body_type(RigidBodyType::KinematicPositionBased, true);
+                let place = *body.position();
+                body.set_next_kinematic_position(place);
+                held.push(id);
+            }
+            self.frozen.insert(key, held);
+            self.still_vehicle(assembly);
+        } else {
+            self.frozen_targets.remove(&key);
+            for id in self.frozen.remove(&key).unwrap_or_default() {
+                let Some(body) = self.inner.bodies.get_mut(id.handle()) else {
+                    continue;
+                };
+                body.set_body_type(RigidBodyType::Dynamic, true);
+                body.set_linvel(Vec3::ZERO, true);
+                body.set_angvel(Vec3::ZERO, true);
+                body.wake_up(true);
+            }
+        }
+        true
+    }
+
+    /// Mène une assembly figée (ADR-183 D4) : au prochain pas, son corps racine arrive à la pose locale donnée, les
+    /// autres suivent du même mouvement rigide, le chemin réparti sur les sous-pas ; le solveur en déduit la vitesse, si
+    /// bien qu'elle pousse et porte. Faux si elle n'est pas figée ; une pose non finie est ignorée.
+    pub fn drive_frozen(&mut self, assembly: Handle, position: Vec3, rotation: Quat) -> bool {
+        let key = handle_key(assembly);
+        let Some(held) = self.frozen.get(&key) else {
+            return false;
+        };
+        if !position.is_finite()
+            || !rotation.is_finite()
+            || rotation.length_squared() <= f32::EPSILON
+        {
+            return true;
+        }
+        let Some(old) = self
+            .members
+            .get(&key)
+            .and_then(|members| members.first())
+            .and_then(|root| self.pose(*root))
+        else {
+            return true;
+        };
+        let turn = rotation.normalize() * old.rotation.inverse();
+        let targets = held
+            .iter()
+            .filter_map(|&body| {
+                let from = self.pose(body)?;
+                let to = Pose {
+                    translation: position + turn * (from.translation - old.translation),
+                    rotation: (turn * from.rotation).normalize(),
+                };
+                Some(FrozenTarget { body, from, to })
+            })
+            .collect();
+        self.frozen_targets.insert(key, targets);
+        true
+    }
+
+    /// Pose la pose suivante de chaque corps figé qu'on mène, à la fraction `part` de son chemin.
+    fn drive_substep(&mut self, part: f32) {
+        for target in self.frozen_targets.values().flatten() {
+            let Some(body) = self.inner.bodies.get_mut(target.body.handle()) else {
+                continue;
+            };
+            let next = RapierPose::from_parts(
+                target.from.translation.lerp(target.to.translation, part),
+                target.from.rotation.slerp(target.to.rotation, part),
+            );
+            body.set_next_kinematic_position(next);
         }
     }
 
@@ -3467,6 +3592,15 @@ impl PhysicsWorld {
         self.guard_flags.remove(&id);
         self.clamp_journal_at.remove(&id);
         self.forced_sleep.remove(&id);
+        for held in self.frozen.values_mut() {
+            held.retain(|member| *member != id);
+        }
+        let members = &self.members;
+        self.frozen.retain(|key, _| members.contains_key(key));
+        self.frozen_targets.retain(|key, targets| {
+            targets.retain(|target| target.body != id);
+            members.contains_key(key)
+        });
         self.births.remove(&id);
         self.ccd_threshold.remove(&id);
         self.ccd_declared.remove(&id);
@@ -3933,6 +4067,16 @@ impl CellMaterials {
             }
         }
     }
+}
+
+/// Les sous-pas qu'un accumulateur donnera : le compte de la boucle de [`PhysicsWorld::advance`].
+fn planned_substeps(mut accumulator: f32, dt: f32, full_step: f32) -> u32 {
+    let mut count = 0;
+    while accumulator >= full_step {
+        accumulator = (accumulator - dt).max(0.0);
+        count += 1;
+    }
+    count
 }
 
 /// Genre et état d'un corps pour ses plages de debug (`debug_body_flags`) : aucun

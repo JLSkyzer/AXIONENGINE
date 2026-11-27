@@ -274,6 +274,14 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
 
     /** Le déplacement qu'une téléportation attend d'envoyer au natif (serveur, ADR-183 D2). */
     private Move pendingMove;
+    /** Figée (serveur, ADR-183 D3) : cinématique ; sauvegardée. */
+    private boolean frozen;
+    /** Vrai tant que le natif n'a pas reçu le gel ({@code SET_FROZEN}). */
+    private boolean frozenPending;
+    /** La pose où mener l'assembly figée au prochain pas (ADR-183 D4). */
+    private Move pendingDrive;
+    /** Le tick de la dernière correction qui a rendu la main au conducteur d'une assembly figée. */
+    private long lastReleaseTick = Long.MIN_VALUE / 2;
     /** Les forces et les couples du prochain pas (serveur, ADR-183 D1), et le tick où ils ont été demandés. */
     private final List<Push> pushes = new ArrayList<>();
     private long pushedAt;
@@ -3739,6 +3747,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Son corps natif est retiré (fin de suivi) : jusqu'à son prochain état, ses corps n'existent plus. */
     void forgetSimulation() {
         simulated = false;
+        // Le prochain corps natif naît dynamique : le gel lui est redit.
+        frozenPending = frozen;
         // Le prochain corps natif naît plein : l'énergie que Java tient lui est rendue.
         if (stores != null && energySpec().declared()) {
             energyPending = true;
@@ -3804,10 +3814,11 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     record Move(double[] position, float[] rotation, boolean reset) {}
 
     /**
-     * Téléporte l'assembly (serveur, ADR-183 D2) : le natif déplace son ensemble au prochain pas. Sa pose et ses corps
-     * sont déjà posés ici, pour une assembly que le moteur ne simule pas encore ; le natif y arrive d'un déplacement
-     * identique. Les ancres aux blocs de l'ensemble sont défaites, ce qu'elle portait reste, et le chunk d'arrivée se
-     * charge.
+     * Téléporte l'assembly (serveur, ADR-183 D2) : son ensemble arrive d'un même mouvement rigide au prochain pas. La
+     * pose et les corps de chaque membre sont déjà posés ici, pour ceux que le moteur ne simule pas encore (leur
+     * création native s'étale sous budget, R-1730) ; le natif reçoit le déplacement de chacun, identique, que ses
+     * attaches natives rendent sans effet au second. Les ancres aux blocs de l'ensemble sont défaites, ce que ses membres
+     * portaient reste, et les chunks d'arrivée se chargent.
      *
      * @param position la position d'arrivée du corps racine
      * @param orientation son orientation d'arrivée
@@ -3817,10 +3828,31 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         AuthoritativeThread.require();
         Quaternionf arrival = new Quaternionf(orientation).normalize();
         Quaternionf turn = new Quaternionf(arrival).mul(new Quaternionf(bodyRotation).conjugate());
+        Vec3 from = position();
+        List<AxionEntity> followers = new ArrayList<>();
         AttachmentRuntime attachments = AttachmentRuntime.current();
-        if (attachments != null) {
+        if (attachments != null && level() instanceof net.minecraft.server.level.ServerLevel server) {
             attachments.detachAnchors(this);
+            for (java.util.UUID member : attachments.ensemble(this)) {
+                if (!member.equals(getUUID()) && server.getEntity(member) instanceof AxionEntity other) {
+                    followers.add(other);
+                }
+            }
         }
+        for (AxionEntity other : followers) {
+            Vector3f offset = turn.transform(new Vector3f(
+                    (float) (other.getX() - from.x), (float) (other.getY() - from.y), (float) (other.getZ() - from.z)));
+            other.arrive(position.add(offset.x, offset.y, offset.z), new Quaternionf(turn).mul(other.bodyRotation),
+                    turn, reset);
+        }
+        arrive(position, arrival, turn, reset);
+    }
+
+    /**
+     * Pose cette assembly à son arrivée, ses autres corps et ses vitesses tournés de {@code turn}, et garde le
+     * déplacement que le natif recevra au prochain pas.
+     */
+    private void arrive(Vec3 position, Quaternionf arrival, Quaternionf turn, boolean reset) {
         List<BodyPose> moved = new ArrayList<>(secondaryBodies.size());
         for (BodyPose body : secondaryBodies) {
             Vector3f offset = turn.transform(new Vector3f(
@@ -3865,6 +3897,78 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         Move taken = pendingMove;
         pendingMove = null;
         return taken;
+    }
+
+    /** {@return vrai si l'assembly est figée (serveur, ADR-183 D3)} */
+    boolean isFrozen() {
+        return frozen;
+    }
+
+    /**
+     * Fige l'assembly, ou la rend au moteur (serveur, ADR-183 D3) : le natif le reçoit au prochain pas, et la
+     * sauvegarde le garde. Figée, elle est à l'arrêt ; son conducteur est averti aussitôt.
+     *
+     * @param value vrai pour la figer
+     */
+    void setFrozen(boolean value) {
+        AuthoritativeThread.require();
+        if (frozen == value) {
+            return;
+        }
+        frozen = value;
+        frozenPending = true;
+        pendingDrive = null;
+        java.util.Arrays.fill(linearVelocity, 0f);
+        java.util.Arrays.fill(angularVelocity, 0f);
+        secondaryBodies = secondaryBodies.stream().map(body -> new BodyPose(body.node(), body.x(), body.y(),
+                body.z(), body.rotation(), new float[3], new float[3])).toList();
+        lastReleaseTick = Long.MIN_VALUE / 2;
+    }
+
+    /** {@return vrai si le gel doit partir au natif, et l'oublie} */
+    boolean takeFrozenPush() {
+        boolean due = frozenPending;
+        frozenPending = false;
+        return due;
+    }
+
+    /**
+     * Mène une assembly figée à une pose au prochain pas (serveur, ADR-183 D4).
+     *
+     * @param position la position de son corps racine
+     * @param orientation son orientation
+     * @throws IllegalStateException si elle n'est pas figée
+     */
+    void driveFrozen(Vec3 position, Quaternionf orientation) {
+        AuthoritativeThread.require();
+        if (!frozen) {
+            throw new IllegalStateException("assembly " + getUUID() + " : seule une assembly figée se mène");
+        }
+        Quaternionf arrival = new Quaternionf(orientation).normalize();
+        pendingDrive = new Move(new double[] {position.x, position.y, position.z},
+                new float[] {arrival.x, arrival.y, arrival.z, arrival.w}, false);
+    }
+
+    /** {@return la pose où la mener au prochain pas, et l'oublie ; {@code null} sans} */
+    Move takeDrive() {
+        Move taken = pendingDrive;
+        pendingDrive = null;
+        return taken;
+    }
+
+    /**
+     * {@return la correction qui rend la main au conducteur d'une assembly figée, ou d'un ensemble qui en compte une
+     * (ADR-183 D3) : une par seconde, la première aussitôt ; {@code null} quand elle n'est pas due}
+     *
+     * @param tick le tick du serveur
+     * @param vehicle l'état du véhicule à ce tick
+     */
+    dev.axion.net.CorrectionMessage releaseCorrection(long tick, dev.axion.net.CorrectionMessage.State vehicle) {
+        if (tick - lastReleaseTick < SLEEPING_CORRECTION_TICKS) {
+            return null;
+        }
+        lastReleaseTick = tick;
+        return dev.axion.net.CorrectionMessage.release(tick, vehicle);
     }
 
     /** Garde une force pour le prochain pas, au point du monde ou au centre de masse (ADR-183 D1). */
@@ -4351,6 +4455,10 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
         // ADR-153 D3 : l'état gardé, rendu à la création de l'assembly ; ses vitesses et ses corps
         // secondaires sont aussi ceux que la sauvegarde suivante réécrit, tant que l'assembly dort.
         // ADR-176 D3 : le carburant et la batterie gardés, bornés aux capacités de la definition quand elle est connue.
+        // ADR-183 D3 : relue figée, elle le redit au corps qu'on lui crée.
+        frozen = stored.getBoolean(AssemblyTags.FROZEN);
+        frozenPending = frozen;
+        pendingDrive = null;
         savedWheels = AssemblyTags.wheels(stored);
         wheelWear = new float[0];
         wearInit = false;
@@ -4454,6 +4562,12 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
             AssemblyTags.putRotation(stored, bodyRotation);
         }
         AssemblyTags.putCustom(stored, custom);
+        // ADR-183 D3 : le gel, tant qu'il dure.
+        if (frozen) {
+            stored.putBoolean(AssemblyTags.FROZEN, true);
+        } else {
+            stored.remove(AssemblyTags.FROZEN);
+        }
         // ADR-175 D3 : la révision et l'empreinte de la definition à laquelle cet état est écrit.
         if (!inert) {
             java.util.Optional.ofNullable(document()).ifPresent(bound -> AssemblyTags.putRevision(stored,

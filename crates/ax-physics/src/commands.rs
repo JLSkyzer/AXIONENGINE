@@ -16,10 +16,10 @@ use ax_model::dm::commands::{
     dimension_env_flags, entity_proxy_shape, move_flags, opcode, sim_mode, vehicle_input_flags,
     ApplyForce, AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint,
     MoveAssembly, RemoveAssembly, RemoveWorldTile, SetAssemblyPose, SetAssemblyState,
-    SetDimensionEnv, SetEnergy, SetEntityProxies, SetKinematic, SetObservers, SetParameters,
-    SetPhysicsMaterials, SetSensor, SetSimMode, SetStateExport, SetVehicleInput, SetWear, SetWet,
-    SetWheelTorques, SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
-    MAX_TILE_PALETTE,
+    SetDimensionEnv, SetEnergy, SetEntityProxies, SetFrozen, SetKinematic, SetObservers,
+    SetParameters, SetPhysicsMaterials, SetSensor, SetSimMode, SetStateExport, SetVehicleInput,
+    SetWear, SetWet, SetWheelTorques, SetWorldCollision, SetWorldFluid, SetWorldHeightfield,
+    SimCommandHeader, MAX_TILE_PALETTE,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -202,6 +202,12 @@ fn apply_one(
             );
             let reset = read_u32(payload, 48) & move_flags::RESET != 0;
             driver.move_assembly(read_handle(payload, 0), position, rotation, reset);
+            outcome.applied += 1;
+        }
+        // ADR-183 D3 : figer une assembly, ou la rendre au moteur.
+        opcode::SET_FROZEN => {
+            expect_len(payload, SetFrozen::BYTES)?;
+            driver.set_frozen(read_handle(payload, 0), read_u32(payload, 8) != 0);
             outcome.applied += 1;
         }
         opcode::APPLY_IMPULSE => {
@@ -1004,6 +1010,34 @@ mod tests {
         assert!(
             world.angular_velocity(ball).unwrap().y > 0.1,
             "le couple fait tourner"
+        );
+    }
+
+    #[test]
+    fn adr183_d3_set_frozen_se_lit_et_fige() {
+        let mut driver = SimDriver::new();
+        let handle = Handle::new(5, 1);
+        body_in(&mut driver, 0, handle);
+        let figer = |figee: u32| {
+            let mut payload = handle.index.to_le_bytes().to_vec();
+            payload.extend_from_slice(&handle.generation.to_le_bytes());
+            payload.extend_from_slice(&figee.to_le_bytes());
+            payload.extend_from_slice(&0u32.to_le_bytes());
+            assert_eq!(payload.len(), SetFrozen::BYTES);
+            let mut bytes = stream();
+            push(&mut bytes, opcode::SET_FROZEN, &payload);
+            bytes
+        };
+        let outcome = apply_command_stream(&mut driver, &figer(1), 1).unwrap();
+        assert_eq!(outcome.applied, 1);
+        let place = driver.collect_states()[0].position;
+        driver.advance_all(0.5);
+        assert_eq!(driver.collect_states()[0].position, place, "figé");
+        apply_command_stream(&mut driver, &figer(0), 1).unwrap();
+        driver.advance_all(0.5);
+        assert!(
+            driver.collect_states()[0].position[1] < place[1],
+            "il tombe"
         );
     }
 
