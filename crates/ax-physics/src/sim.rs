@@ -2780,6 +2780,39 @@ mod tests {
     }
 
     #[test]
+    fn adr183_d4_une_figee_menee_tire_ce_qui_lui_est_attache() {
+        let mut driver = SimDriver::new();
+        proxy_bille(&mut driver, 1, BodyKind::Dynamic, 0.0);
+        proxy_bille(&mut driver, 2, BodyKind::Dynamic, 2.0);
+        assert!(driver.apply_attach(&attache_rigide(1, 2, 2.0)));
+        assert!(driver.set_frozen(Handle::new(1, 1), true));
+        let depart = position_de(&mut driver, 1);
+        for k in 1..=40 {
+            let x = depart[0] - 0.1 * f64::from(k);
+            driver.apply_set_kinematic(
+                Handle::new(1, 1),
+                DVec3::new(x, depart[1], depart[2]),
+                Quat::IDENTITY,
+            );
+            driver.advance_all(0.05);
+        }
+        let menee = position_de(&mut driver, 1);
+        let attelee = position_de(&mut driver, 2);
+        assert!(
+            (menee[0] - (depart[0] - 4.0)).abs() < 1.0e-3,
+            "menée : {menee:?}"
+        );
+        let ecart = ((menee[0] - attelee[0]).powi(2)
+            + (menee[1] - attelee[1]).powi(2)
+            + (menee[2] - attelee[2]).powi(2))
+        .sqrt();
+        assert!(
+            (ecart - 2.0).abs() < 0.1,
+            "l'attelée suit, à {ecart} blocs : {attelee:?}"
+        );
+    }
+
+    #[test]
     fn adr183_d4_une_assembly_dynamique_ne_se_mene_pas() {
         let (mut driver, _) = bille_libre();
         driver.apply_set_kinematic(

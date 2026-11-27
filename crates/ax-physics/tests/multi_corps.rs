@@ -750,3 +750,34 @@ fn adr151_une_assembly_endormie_ne_rapporte_pas_ses_joints() {
     );
     assert!(driver.collect_reports().joints.is_empty(), "endormie, rien");
 }
+
+#[test]
+fn adr183_d4_une_assembly_a_plusieurs_corps_menee_tourne_d_un_bloc() {
+    let mut driver = pilote(128.0, 2048);
+    let ids = creer(
+        &mut driver,
+        ASSEMBLY,
+        spawn([0.0, 10.0, 0.0], Quat::IDENTITY),
+        &[corps(0, Vec3::ZERO), corps(3, Vec3::new(2.0, 0.0, 0.0))],
+        false,
+    )
+    .expect("assembly créée");
+    assert!(driver.set_frozen(ASSEMBLY, true));
+    let quart = Quat::from_rotation_y(core::f32::consts::FRAC_PI_2);
+    for k in 1..=20 {
+        let part = k as f32 / 20.0;
+        driver.apply_set_kinematic(
+            ASSEMBLY,
+            DVec3::new(0.0, 10.0, 0.0),
+            Quat::IDENTITY.slerp(quart, part),
+        );
+        driver.advance_all(0.05);
+    }
+    let racine = position(&mut driver, ids[0]);
+    let second = position(&mut driver, ids[1]);
+    let ecart = second - racine;
+    assert!(
+        (ecart - Vec3::new(0.0, 0.0, -2.0)).length() < 1.0e-3,
+        "le second corps tourne autour de la racine : {ecart:?}"
+    );
+}
