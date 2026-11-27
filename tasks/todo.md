@@ -3982,7 +3982,7 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
      - [ ] R-1690 : des messages d'un conducteur honnête ignorés au plafond (7 des 12 essais de prédiction à 20 ms de
            gigue, et à 100 ms le 2026-11-27 ; aucune déconnexion vue) — [ADR-186](../docs/decisions/ADR-186.md)
            **proposé** (compter par genre), attend Killian.
-     - [ ] ADR-183 (CAP-34, CAP-11) — **accepté** le 2026-11-26 (A34) : forces et couples, téléporter, figer,
+     - [x] ADR-183 (CAP-34, CAP-11) — **accepté** le 2026-11-26 (A34) : forces et couples, téléporter, figer,
            renommer ; tranches de l'ADR. **Tranche 1** (renommer, forces et couples, ABI 41) FAITE le 2026-11-27.
            **Tranche 2** (téléporter, ABI 43) FAITE le 2026-11-27 ; non éprouvé : conducteur prédit téléporté, arrivée
            hors de portée de chargement. **Tranche 3** (figer et mener, ABI 44) FAITE le 2026-11-27 ; essai à deux
