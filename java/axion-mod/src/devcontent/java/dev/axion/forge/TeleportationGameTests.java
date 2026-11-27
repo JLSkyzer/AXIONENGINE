@@ -259,6 +259,68 @@ public final class TeleportationGameTests {
                 .thenSucceed();
     }
 
+    /**
+     * {@code /execute in minecraft:the_nether run tp} : Minecraft recopie l'assembly dans l'autre monde ; elle y arrive
+     * à la position demandée, ses corps autour d'elle, et l'ancienne disparaît.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 300)
+    public static void adr183_unChangementDeMondeEmporteSesCorps(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity original = AssembliesDeTest.poser(helper, "axion:test/deux_corps",
+                new Vec3(4.5, DESSUS_DALLE + 0.5, 4.5), DROIT);
+        net.minecraft.server.level.ServerLevel nether = helper.getLevel().getServer()
+                .getLevel(net.minecraft.world.level.Level.NETHER);
+        Vec3 arrivee = new Vec3(8.5, 40.5, 8.5);
+        dev.axion.forge.net.JoueurSimule[] temoin = new dev.axion.forge.net.JoueurSimule[1];
+        AxionEntity[] copie = new AxionEntity[1];
+        Vec3[] ecart = new Vec3[1];
+        helper.onEachTick(() -> {
+            if (temoin[0] != null && temoin[0].connecte()) {
+                temoin[0].tick();
+            }
+        });
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(original.hasPhysicalBounds()
+                        && original.secondaryBodies().size() == 1, "simulée, à deux corps"))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    helper.assertTrue(nether != null, "le serveur d'essai a un nether");
+                    ecart[0] = place(original.secondaryBodies().get(0)).subtract(original.position());
+                    // Une dalle au nether, et un témoin qui en tient les chunks.
+                    for (int x = 0; x < 16; x++) {
+                        for (int z = 0; z < 16; z++) {
+                            nether.setBlockAndUpdate(new BlockPos(x, 39, z),
+                                    net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
+                        }
+                    }
+                    temoin[0] = dev.axion.forge.net.JoueurSimule.rejoindre(nether, "temoin_nether",
+                            new Vec3(3.5, 40.0, 3.5));
+                    helper.assertTrue(original.teleportTo(nether, arrivee.x, arrivee.y, arrivee.z,
+                            java.util.Set.of(), original.getYRot(), 0f), "recopiée au nether");
+                    helper.assertTrue(original.isRemoved(), "l'ancienne disparaît");
+                })
+                .thenWaitUntil(() -> {
+                    java.util.UUID uuid = original.getUUID();
+                    helper.assertTrue(nether.getEntity(uuid) instanceof AxionEntity, "présente au nether");
+                    copie[0] = (AxionEntity) nether.getEntity(uuid);
+                    helper.assertTrue(copie[0].hasPhysicalBounds(), "simulée au nether");
+                })
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    try {
+                        double derive = copie[0].position().subtract(arrivee).horizontalDistance();
+                        helper.assertTrue(derive < 0.5, "arrivée où demandé : à " + derive + " bloc");
+                        Vec3 relatif = place(copie[0].secondaryBodies().get(0)).subtract(copie[0].position());
+                        helper.assertTrue(relatif.distanceTo(ecart[0]) < 0.4,
+                                "son second corps est autour d'elle : " + relatif + " pour " + ecart[0]);
+                    } finally {
+                        copie[0].discard();
+                        temoin[0].quitter();
+                    }
+                })
+                .thenSucceed();
+    }
+
     private static Vec3 place(AxionEntity.BodyPose corps) {
         return new Vec3(corps.x(), corps.y(), corps.z());
     }
