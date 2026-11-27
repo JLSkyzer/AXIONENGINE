@@ -200,6 +200,21 @@ class InterpolationTest {
     }
 
     @Test
+    @DisplayName("ADR-183 D2 : une téléportation entre deux snapshots ne se dessine pas comme une glissade")
+    void uneTeleportationNeGlissePas() {
+        Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        interpolation.push(0, etat(0, 0), 0, 0);
+        interpolation.push(2, etat(100, 0), 0, 0);
+        assertEquals(0.0, interpolation.sample(50, 50).x(), 2e-3, "tenue à son départ jusqu'au tick de l'arrivée");
+        assertEquals(100.0, interpolation.sample(100, 100).x(), 2e-3, "puis à son arrivée, d'un coup");
+        // Rapide, elle ne se téléporte pas : 100 m/s sur 100 ms font dix blocs, interpolés.
+        Interpolation rapide = new Interpolation(EXTRAPOLATION_MS, SNAP);
+        rapide.push(0, etat(0, 100), 0, 0);
+        rapide.push(2, etat(10, 100), 0, 0);
+        assertEquals(5.0, rapide.sample(50, 50).x(), 2e-2);
+    }
+
+    @Test
     @DisplayName("31.4 : le dernier état reçu se lit tel quel, à côté de la pose dessinée")
     void leDernierEtatRecuSeLitTelQuel() {
         Interpolation interpolation = new Interpolation(EXTRAPOLATION_MS, SNAP);

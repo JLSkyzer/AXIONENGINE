@@ -357,7 +357,8 @@ assembly.teleport(new Transform(new Vec3(120.5, 70, -40.5), new Quaternionf(), n
 ```
 
 Les ancres aux blocs sont défaites (cause `teleported` pour les écouteurs d'attaches), et ce qui était posé dessus sans
-être assis reste sur place. Le chunk d'arrivée se charge.
+être assis reste sur place. Le chunk d'arrivée se charge. Les autres joueurs la voient disparaître et réapparaître, sans
+glissade ; une position hors du monde de Minecraft est refusée.
 
 Un administrateur la **fige** : `/axion freeze <cible> [on|off]` ; ton mod : `assembly.setFrozen(true)`. Figée, rien ne
 la pousse ni ne la fait tomber, elle porte et bloque comme un décor, son moteur est en pause et rien ne s'y consomme ;

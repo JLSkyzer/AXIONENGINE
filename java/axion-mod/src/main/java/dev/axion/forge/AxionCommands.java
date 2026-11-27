@@ -810,6 +810,11 @@ final class AxionCommands {
             source.sendFailure(Component.literal("AXION : une assembly se téléporte dans son monde seulement"));
             return 0;
         }
+        // Les bornes de /tp de Minecraft : au-delà, ni chunk ni physique.
+        if (!net.minecraft.world.level.Level.isInSpawnableBounds(net.minecraft.core.BlockPos.containing(position))) {
+            source.sendFailure(Component.literal("AXION : position hors du monde"));
+            return 0;
+        }
         // L'avant d'une assembly est son -Z (6.5) : un demi-tour de plus que le lacet de Minecraft.
         org.joml.Quaternionf rotation = Float.isNaN(yaw) ? assembly.orientation()
                 : new org.joml.Quaternionf().rotationY((float) (Math.PI - Math.toRadians(yaw)));

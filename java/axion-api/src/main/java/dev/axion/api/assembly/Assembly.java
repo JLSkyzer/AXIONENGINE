@@ -224,7 +224,8 @@ public interface Assembly {
      *
      * @param transform la pose d'arrivée de son corps racine
      * @param reset vrai pour arriver arrêtée
-     * @throws IllegalArgumentException si la position ou la rotation n'est pas finie, ou la rotation nulle
+     * @throws IllegalArgumentException si la position ou la rotation n'est pas finie, la rotation nulle, ou la position
+     *     hors des bornes du monde de Minecraft
      * @throws IllegalStateException chez un client
      */
     default void teleport(Transform transform, boolean reset) {
@@ -264,7 +265,8 @@ public interface Assembly {
      * <p>Thread : autoritatif uniquement (R-1755), au serveur.
      *
      * @param transform la pose de son corps racine au prochain pas
-     * @throws IllegalArgumentException si la position ou la rotation n'est pas finie, ou la rotation nulle
+     * @throws IllegalArgumentException si la position ou la rotation n'est pas finie, la rotation nulle, ou la position
+     *     hors des bornes du monde de Minecraft
      * @throws IllegalStateException si l'assembly n'est pas figée, ou chez un client
      */
     default void setKinematicTransform(Transform transform) {

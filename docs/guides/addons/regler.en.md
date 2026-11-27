@@ -350,7 +350,8 @@ assembly.teleport(new Transform(new Vec3(120.5, 70, -40.5), new Quaternionf(), n
 ```
 
 Anchors to blocks are released (cause `teleported` for attachment listeners), and whatever stood on it without being
-seated stays where it is. The destination chunk is loaded.
+seated stays where it is. The destination chunk is loaded. Other players see it vanish and reappear, without a glide; a
+position outside Minecraft's world is refused.
 
 An administrator **freezes** it: `/axion freeze <target> [on|off]`; your mod: `assembly.setFrozen(true)`. While frozen,
 nothing pushes it and it does not fall, it carries and blocks like scenery, its engine is paused and nothing is consumed;

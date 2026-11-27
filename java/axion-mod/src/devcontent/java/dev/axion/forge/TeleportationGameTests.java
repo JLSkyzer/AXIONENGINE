@@ -156,6 +156,40 @@ public final class TeleportationGameTests {
                 .thenSucceed();
     }
 
+    /** Une arrivée hors du monde de Minecraft est refusée, à la commande comme à l'API, et rien ne bouge. */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 100)
+    public static void adr183_uneArriveeHorsDuMondeEstRefusee(GameTestHelper helper) {
+        AxionEntity assembly = AssembliesDeTest.poser(helper, MAILLON, new Vec3(4.5, DESSUS_DALLE + 0.05, 4.0),
+                DROIT);
+        helper.startSequence()
+                .thenExecute(() -> {
+                    Vec3 avant = assembly.position();
+                    Vec3 dehors = new Vec3(0.0, 3.0e7, 0.0);
+                    List<String> reponse = ParametresGameTests.commande(helper.getLevel().getServer(),
+                            "axion tp " + assembly.getUUID() + " 0 30000000 0");
+                    helper.assertTrue(reponse.size() == 1 && reponse.get(0).contains("hors du monde"),
+                            "réponse : " + reponse);
+                    Assembly vue = ForgeAxionApi.view(assembly);
+                    dev.axion.api.assembly.Transform but = new dev.axion.api.assembly.Transform(dehors,
+                            new org.joml.Quaternionf(), new Vec3(1, 1, 1));
+                    helper.assertTrue(refuse(() -> vue.teleport(but, true)), "teleport refusée");
+                    vue.setFrozen(true);
+                    helper.assertTrue(refuse(() -> vue.setKinematicTransform(but)), "setKinematicTransform refusée");
+                    helper.assertTrue(assembly.position().equals(avant), "rien n'a bougé : " + assembly.position());
+                    assembly.discard();
+                })
+                .thenSucceed();
+    }
+
+    private static boolean refuse(Runnable demande) {
+        try {
+            demande.run();
+            return false;
+        } catch (IllegalArgumentException attendu) {
+            return true;
+        }
+    }
+
     /** Ce qu'une assembly téléportée portait reste où il est : un cochon debout dessus ne la suit pas. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 200)
     public static void adr183_ceQueLAssemblyPortaitReste(GameTestHelper helper) {

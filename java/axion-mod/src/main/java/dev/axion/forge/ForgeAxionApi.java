@@ -574,7 +574,7 @@ public final class ForgeAxionApi implements AxionApi {
 
         @Override
         public void teleport(Transform transform, boolean reset) {
-            org.joml.Quaternionf turn = checkedRotation(transform);
+            org.joml.Quaternionf turn = checkedPose(transform);
             serverSide().teleportAssembly(transform.position(), turn, reset);
         }
 
@@ -591,16 +591,20 @@ public final class ForgeAxionApi implements AxionApi {
 
         @Override
         public void setKinematicTransform(Transform transform) {
-            org.joml.Quaternionf turn = checkedRotation(transform);
+            org.joml.Quaternionf turn = checkedPose(transform);
             serverSide().driveFrozen(transform.position(), turn);
         }
 
-        /** La rotation d'une pose demandée, sa position et elle vérifiées. */
-        private org.joml.Quaternionf checkedRotation(Transform transform) {
+        /** La rotation d'une pose demandée, sa position et elle vérifiées : finies, et dans le monde de Minecraft. */
+        private org.joml.Quaternionf checkedPose(Transform transform) {
             java.util.Objects.requireNonNull(transform, "transform");
             org.joml.Quaternionf turn = transform.rotation();
             if (!finite(transform.position()) || !turn.isFinite() || turn.lengthSquared() < 1.0e-6f) {
                 throw new IllegalArgumentException("pose non finie ou rotation nulle : " + transform);
+            }
+            if (!net.minecraft.world.level.Level.isInSpawnableBounds(
+                    net.minecraft.core.BlockPos.containing(transform.position()))) {
+                throw new IllegalArgumentException("pose hors du monde : " + transform.position());
             }
             return turn;
         }

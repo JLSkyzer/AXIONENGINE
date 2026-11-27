@@ -10,6 +10,8 @@ import java.util.List;
  * L'interpolation d'une assembly chez le client (21.7, ADR-150 D7), telle quelle.
  *
  * <ul>
+ *   <li>Entre deux snapshots que leurs vitesses n'expliquent pas — une téléportation (ADR-183 D2) — : le premier est
+ *       tenu jusqu'au tick du second.</li>
  *   <li>Entre deux snapshots : position par Hermite (positions et vitesses), rotation par slerp, emprise
  *       par interpolation linéaire.</li>
  *   <li>Au-delà du dernier : extrapolation par les vitesses, bornée à {@code net.extrapolation_max_ms},
@@ -33,6 +35,9 @@ import java.util.List;
  * client.
  */
 public final class Interpolation {
+
+    /** La part de la distance que ses vitesses expliquent, comptée large, avant de parler de téléportation. */
+    private static final double TELEPORT_REACH = 1.5;
 
     /** Durée de la correction douce au retour d'un snapshot, en millisecondes (21.7). */
     public static final double CORRECTION_MILLIS = 200.0;
@@ -511,6 +516,11 @@ public final class Interpolation {
         double span = b.millis() - a.millis();
         double s = (renderMillis - a.millis()) / span;
         double seconds = span / 1000.0;
+        // ADR-183 D2 : un écart que ses vitesses n'expliquent pas est une téléportation. Elle ne se glisse pas : le
+        // départ est tenu jusqu'au tick de l'arrivée.
+        if (teleported(a, b, seconds)) {
+            return pose(a, a.position(), a.rotation(), Mode.HELD);
+        }
         double s2 = s * s;
         double s3 = s2 * s;
         double h00 = 2 * s3 - 3 * s2 + 1;
@@ -529,6 +539,19 @@ public final class Interpolation {
         return new Pose(position[0], position[1], position[2], rotation, min, max, Mode.INTERPOLATED,
                 bodies(a.bodies(), b.bodies(), s), wheels(a.wheels(), b.wheels(), s),
                 vehicle(a.vehicle(), b.vehicle(), s, velocity, rotation), b.variables());
+    }
+
+    /** {@return vrai si l'écart entre deux snapshots passe le seuil de téléportation, vitesses comprises} */
+    private boolean teleported(Sample a, Sample b, double seconds) {
+        double dx = b.position()[0] - a.position()[0];
+        double dy = b.position()[1] - a.position()[1];
+        double dz = b.position()[2] - a.position()[2];
+        double reach = Math.max(speed(a.velocity()), speed(b.velocity())) * seconds;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) > snapThreshold + TELEPORT_REACH * reach;
+    }
+
+    private static double speed(float[] velocity) {
+        return Math.sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]);
     }
 
     /**
