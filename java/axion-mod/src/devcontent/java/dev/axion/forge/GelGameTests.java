@@ -221,6 +221,47 @@ public final class GelGameTests {
                 .thenSucceed();
     }
 
+    /** Menée contre un mob qui se tient sur son chemin, une assembly figée le pousse devant elle (D4). */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr183_uneAssemblyMeneePousseUnMobSurSonChemin(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity mur = AssembliesDeTest.poser(helper, CAISSE, new Vec3(4.5, DESSUS_DALLE + 0.05, 8.5), DROIT);
+        net.minecraft.world.entity.animal.Pig cochon =
+                net.minecraft.world.entity.EntityType.PIG.create(helper.getLevel());
+        Vec3[] but = new Vec3[1];
+        double[] depart = new double[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(mur.hasPhysicalBounds() && mur.carryPoses(0) != null, "simulé"))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    ForgeAxionApi.view(mur).setFrozen(true);
+                    Vec3 devant = helper.absoluteVec(new Vec3(7.0, DESSUS_DALLE, 8.5));
+                    cochon.setNoAi(false);
+                    cochon.goalSelector.removeAllGoals(goal -> true);
+                    cochon.moveTo(devant.x, devant.y, devant.z, 0f, 0f);
+                    helper.getLevel().addFreshEntity(cochon);
+                })
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    but[0] = mur.position();
+                    depart[0] = cochon.getX();
+                })
+                .thenExecuteFor(40, () -> {
+                    but[0] = but[0].add(0.1, 0.0, 0.0);
+                    ForgeAxionApi.view(mur).setKinematicTransform(
+                            new Transform(but[0], mur.orientation(), new Vec3(1, 1, 1)));
+                })
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    double pousse = cochon.getX() - depart[0];
+                    helper.assertTrue(pousse > 1.0, "poussé : de " + pousse + " bloc ; mur en " + mur.position()
+                            + ", cochon en " + cochon.position() + ", emprise " + mur.getBoundingBox());
+                    cochon.discard();
+                    mur.discard();
+                })
+                .thenSucceed();
+    }
+
     /** Le conducteur d'une assembly figée reçoit, au plus une fois par seconde, la correction qui lui rend la main. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 100)
     public static void adr183_lAssemblyFigeeRendLaMainAuConducteurUneFoisParSeconde(GameTestHelper helper) {

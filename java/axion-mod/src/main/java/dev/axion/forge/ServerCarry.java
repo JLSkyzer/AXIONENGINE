@@ -78,6 +78,9 @@ public final class ServerCarry {
             for (AxionEntity assembly : assemblies) {
                 assembly.rememberCarryPoses();
             }
+            if (AxionEntities.entityPush()) {
+                pushByDriven(level, assemblies);
+            }
             Map<AxionEntity, List<AssemblyState.CarriedEntity>> riders = new HashMap<>();
             if (AxionEntities.carry()) {
                 for (ServerPlayer player : level.players()) {
@@ -230,6 +233,32 @@ public final class ServerCarry {
             entity.setPos(world[0], world[1], world[2]);
             support.place(BodyFrame.toLocal(now, support.body(), world[0], world[1], world[2]));
             note(riders, entity);
+        }
+    }
+
+    /**
+     * Sort les entités des assemblies menées qui avancent contre elles (ADR-183 D4). Le contact de R-614 les pousse
+     * contre une assembly simulée ; une assembly figée, cinématique, n'en a aucun contre elles. Comme pour un joueur chez
+     * son client (ADR-178 D5), la plus courte sortie, bornée, arrêtée par les blocs. Ce qu'elle porte est transporté,
+     * pas poussé.
+     */
+    private static void pushByDriven(ServerLevel level, List<AxionEntity> assemblies) {
+        for (AxionEntity assembly : assemblies) {
+            // Immobile, elle ne pousse plus rien : ses collisions suffisent.
+            if (!assembly.isFrozen() || assembly.netSleeping()) {
+                continue;
+            }
+            for (Entity entity : level.getEntities(assembly, assembly.getBoundingBox().inflate(0.1),
+                    entity -> !(entity instanceof Player) && !(entity instanceof AxionEntity))) {
+                CarrySupports.Support support = CarrySupports.of(entity);
+                if (support != null && support.assembly() == assembly) {
+                    continue;
+                }
+                net.minecraft.world.phys.Vec3 push = AssemblyCollision.pushOut(entity);
+                if (push != null) {
+                    entity.setPos(entity.position().add(push));
+                }
+            }
         }
     }
 

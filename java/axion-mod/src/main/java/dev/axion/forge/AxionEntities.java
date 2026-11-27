@@ -110,6 +110,8 @@ public final class AxionEntities {
     private static volatile java.util.function.DoubleSupplier playerProxyMass = () -> 0.0;
     private static volatile java.util.function.DoubleSupplier pushSpeedMax = () -> 0.0;
     private static volatile java.util.function.IntSupplier degradationLevel = () -> 0;
+    /** {@code physics.entity_push} (R-614) ; faux sans runtime. */
+    private static volatile java.util.function.BooleanSupplier entityPush = () -> false;
 
     /** Le balayage d'une boîte contre les colliders d'une definition posée, vu de l'entité. */
     @FunctionalInterface
@@ -173,6 +175,7 @@ public final class AxionEntities {
         boxes = runtime::boxTouchesAssembly;
         collider = runtime::collideBox;
         carry = runtime::playerCarry;
+        entityPush = runtime::entityPush;
         carryTolerance = runtime::carryTolerance;
         carryMaxEntities = runtime::carryMaxEntities;
         interpolationDelayMillis = runtime::interpolationDelayMillis;
@@ -294,6 +297,11 @@ public final class AxionEntities {
     /** {@return vrai si les entités sont arrêtées par les assemblies, {@code physics.player_carry}} */
     static boolean carry() {
         return carry.getAsBoolean();
+    }
+
+    /** {@return vrai si les assemblies poussent les entités vanilla qu'elles heurtent, {@code physics.entity_push}} */
+    static boolean entityPush() {
+        return entityPush.getAsBoolean();
     }
 
     /** {@return la tolérance de la sonde sous les pieds d'un joueur porté, en blocs} */

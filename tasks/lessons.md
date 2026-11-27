@@ -2924,3 +2924,12 @@ son `JoueurSimule`, compté ensuite par le test réseau du lot suivant.
 **Règle.** Un test qui attend un chunk le force et le charge avant (`setChunkForced`, `getChunk`) ; tout ce qu'un test
 ajoute au serveur partagé (joueur, observateur) a un nettoyage indépendant de sa réussite (`@AfterBatch`).
 
+## 2026-11-27 | une assembly menée traversait les mobs
+
+**Ce qui a mal tourné.** ADR-183 D4 promettait qu'une assembly menée « pousse ce qu'elle rencontre » ; ses preuves
+n'essayaient que des corps du moteur (une caisse). Un mob sur son chemin n'était pas poussé.
+
+**Cause.** La poussée des entités vanilla repose sur les contacts du solveur, absents entre deux corps cinématiques.
+
+**Règle.** Une promesse « elle agit sur X » se prouve pour chaque famille de X — corps du moteur, mobs, objets,
+joueurs —, pas pour la plus facile à tester.

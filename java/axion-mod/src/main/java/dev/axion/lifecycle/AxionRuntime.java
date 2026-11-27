@@ -1435,6 +1435,11 @@ public final class AxionRuntime {
         return hasNativeRuntime() ? outcome.config().getFloat("physics.player_proxy_mass") : 0.0;
     }
 
+    /** {@return vrai si les assemblies poussent les entités vanilla : {@code physics.entity_push} (R-614)} */
+    public boolean entityPush() {
+        return hasNativeRuntime() && outcome.config().getBoolean("physics.entity_push");
+    }
+
     /** {@return {@code physics.push_speed_max}, en m/s (ADR-178 D5) ; 0 sans runtime natif} */
     public double pushSpeedMax() {
         return hasNativeRuntime() ? outcome.config().getFloat("physics.push_speed_max") : 0.0;

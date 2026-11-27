@@ -374,4 +374,6 @@ Transform now = assembly.transform();
 assembly.setKinematicTransform(new Transform(now.position().add(0, 0.05, 0), now.rotation(), now.scale()));
 ```
 
-Called on a dynamic assembly it throws `IllegalStateException`: to move it at once, use `teleport`.
+Called on a dynamic assembly it throws `IllegalStateException`: to move it at once, use `teleport`. While driven, it
+carries what stands on it and pushes mobs and items in its way ahead of it, without hurting them (as long as
+`physics.entity_push` is true); a player is pushed as by any advancing vehicle.
