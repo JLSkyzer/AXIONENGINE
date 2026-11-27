@@ -811,6 +811,13 @@ final class VehicleSpec {
                 out.add(Tuning.above(Parameters.motorTorque(string(motor, "name")), "N·m",
                         peak(motor.getAsJsonArray("torque_curve")), 0, true));
             }
+            // ADR-182, question F : le facteur de la récupération d'un moteur qui récupère, de 0 à 2.
+            for (JsonObject motor : motors(powertrain)) {
+                if (motor.has("regen")) {
+                    out.add(new Tuning.Parameter(Parameters.motorRegen(string(motor, "name")), "×", 1,
+                            new Parameters.Range(0, true, 2, true), Tuning.unbounded()));
+                }
+            }
             // Un véhicule à moteurs électriques seuls n'a pas de régime maximal à régler.
             if (engine != null) {
                 out.add(Tuning.above(Parameters.ENGINE_MAX_RPM, "tr/min", number(engine, "max_rpm", MAX_RPM),

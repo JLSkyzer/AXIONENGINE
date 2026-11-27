@@ -354,6 +354,8 @@ pub struct SetParameters {
     pub downforce_rear: f32,
     /// `motor.<nom>.torque` de chaque moteur électrique, à son rang : le pic de sa courbe en N·m (ADR-182 D4).
     pub motor_torque: [f32; 4],
+    /// `motor.<nom>.regen` de chaque moteur électrique, à son rang : le facteur de sa récupération (ADR-182, F).
+    pub motor_regen: [f32; 4],
     /// Nombre de rapports qui suivent : celui de la table de la definition, ou 0.
     pub gear_count: u16,
     /// Réservé, à zéro.
@@ -362,7 +364,7 @@ pub struct SetParameters {
 
 impl SetParameters {
     /// Taille de l'en-tête sur la frontière, en octets.
-    pub const BYTES: usize = 88;
+    pub const BYTES: usize = 104;
 }
 
 /// En-tête de `SET_WHEEL_TORQUES` (R-1082, ADR-167 D9) : 12 octets, puis `count` couples en `f32`.
@@ -1272,7 +1274,8 @@ mod tests {
         assert_eq!(offset_of!(SetParameters, downforce_front), 60);
         assert_eq!(offset_of!(SetParameters, downforce_rear), 64);
         assert_eq!(offset_of!(SetParameters, motor_torque), 68);
-        assert_eq!(offset_of!(SetParameters, gear_count), 84);
+        assert_eq!(offset_of!(SetParameters, motor_regen), 84);
+        assert_eq!(offset_of!(SetParameters, gear_count), 100);
     }
 
     #[test]

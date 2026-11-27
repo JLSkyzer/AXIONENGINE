@@ -24,6 +24,7 @@ chaque changement d'AXION.
 | `steering.max_angle` | rad | le braquage maximal |
 | `aero.drag`, `aero.downforce_front`, `aero.downforce_rear` | — | la traînée et l'appui aérodynamique |
 | `motor.<nom>.torque` | N·m | le pic du couple d'un [moteur électrique](moteur.md) ; à 0, il ne donne plus rien |
+| `motor.<nom>.regen` | × | la récupération d'un moteur électrique qui déclare `regen` : 1 la fiche, 0 aucune, 2 le double (de 0 à 2) |
 
 **Un objet n'a que les paramètres que sa fiche déclare.** `mass` n'existe que si la fiche déclare `physics.mass`. Les
 paramètres du moteur n'existent que pour un véhicule à moteur, et il y a un rapport par entrée de `gears`.

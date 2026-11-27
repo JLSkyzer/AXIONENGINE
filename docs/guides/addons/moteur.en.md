@@ -185,7 +185,9 @@ With `engine` **and** `electric_motors`, the vehicle is a hybrid ([ADR-182](../.
 **In parallel**, the torques add up and the same pedal drives both. A stopped combustion engine stays declutched: with the
 ignition off, the vehicle drives on electricity alone. The strategy is yours: each electric motor has the
 `motor.<name>.torque` parameter ([Tuning](regler.md)) — its curve's peak, in N·m — which a variable, a modifier or your
-mod's controller lowers, cuts or boosts. At 0 the motor gives nothing; its regeneration remains.
+mod's controller lowers, cuts or boosts. At 0 the motor gives nothing; its regeneration remains. It is tuned separately by
+`motor.<name>.regen`, for a motor that declares `regen`: the factor of both its torques, lifting off and braking — an
+"eco" driving mode at 2, free coasting at 0.
 
 **As a range extender**, the combustion engine **never** drives the wheels: it charges a store.
 

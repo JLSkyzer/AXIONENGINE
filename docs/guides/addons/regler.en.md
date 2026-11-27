@@ -23,6 +23,7 @@ change to AXION.
 | `steering.max_angle` | rad | the maximum steering angle |
 | `aero.drag`, `aero.downforce_front`, `aero.downforce_rear` | — | aerodynamic drag and downforce |
 | `motor.<name>.torque` | N·m | an [electric motor](moteur.md)'s peak torque; at 0 it gives nothing |
+| `motor.<name>.regen` | × | the regenerative braking of an electric motor that declares `regen`: 1 as in the sheet, 0 none, 2 twice (0 to 2) |
 
 **An object only has the parameters its sheet declares.** `mass` only exists if the sheet declares `physics.mass`. The
 engine's parameters only exist for a vehicle with an engine, and there is one gear per entry of `gears`.

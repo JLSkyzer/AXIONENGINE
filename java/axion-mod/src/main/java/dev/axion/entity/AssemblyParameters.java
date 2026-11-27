@@ -329,7 +329,9 @@ public final class AssemblyParameters {
             String name = names.get(i);
             int index = name.startsWith(MOTOR_SLOT)
                     ? motorTorque(Integer.parseInt(name.substring(MOTOR_SLOT.length())))
-                    : tuning.indexOf(name);
+                    : name.startsWith(REGEN_SLOT)
+                            ? motorRegen(Integer.parseInt(name.substring(REGEN_SLOT.length())))
+                            : tuning.indexOf(name);
             fields[i] = index < 0 ? Float.NaN : (float) values[index];
         }
         return fields;
@@ -340,6 +342,19 @@ public final class AssemblyParameters {
      * premier moteur, quel que soit son nom.
      */
     public static final String MOTOR_SLOT = "motor#";
+
+    /** Le préfixe d'un champ qui désigne la récupération d'un moteur électrique par son rang (ADR-182, F). */
+    public static final String REGEN_SLOT = "regen#";
+
+    /** {@return le rang, dans la table, du facteur de récupération du moteur électrique de rang {@code motor} ; -1 sans} */
+    private int motorRegen(int motor) {
+        int torque = motorTorque(motor);
+        if (torque < 0) {
+            return -1;
+        }
+        String name = tuning.get(torque).name();
+        return tuning.indexOf(name.substring(0, name.length() - ".torque".length()) + ".regen");
+    }
 
     /** {@return le rang, dans la table, du couple du moteur électrique de rang {@code motor} ; -1 sans} */
     private int motorTorque(int motor) {

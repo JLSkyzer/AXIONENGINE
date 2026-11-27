@@ -580,25 +580,26 @@ class SimCommandStreamTest {
 
     @Test
     void encodeLesParametresDUneInstance() throws IOException {
-        // ADR-167 D6, ADR-182 D4 : SetParameters, 88 octets — handle, dix-neuf f32, nombre de rapports — puis les rapports.
+        // ADR-167 D6, ADR-182 D4 et F : SetParameters, 104 octets — handle, vingt-trois f32, nombre de rapports — puis les
+        // rapports.
         float[] valeurs = new float[SimCommandStream.PARAMETER_FIELDS.size()];
         java.util.Arrays.fill(valeurs, Float.NaN);
         valeurs[0] = 1100f;
         valeurs[1] = 390f;
         byte[] bytes = new SimCommandStream().setParameters(7, 3, valeurs, new float[] {-3.2f, 0f, 3.5f})
                 .removeAssembly(9, 1).toBytes();
-        assertEquals(8 + (8 + 104) + (8 + 8), bytes.length, "100 octets de payload, complétés à 104");
+        assertEquals(8 + (8 + 120) + (8 + 8), bytes.length, "116 octets de payload, complétés à 120");
         ByteBuffer b = wrap(bytes);
         assertEquals(SimCommandStream.OP_SET_PARAMETERS, b.getInt(8), "opcode");
-        assertEquals(88 + 3 * 4, b.getInt(12), "payload_len, rapports compris");
+        assertEquals(104 + 3 * 4, b.getInt(12), "payload_len, rapports compris");
         assertEquals(7, b.getInt(16), "handle.index");
         assertEquals(1100f, b.getFloat(24), "mass");
         assertEquals(390f, b.getFloat(28), "torque");
         assertTrue(Float.isNaN(b.getFloat(32)), "max_rpm : la base");
-        assertEquals(3, b.getShort(16 + 84), "gear_count");
-        assertEquals(-3.2f, b.getFloat(16 + 88), "premier rapport");
-        assertEquals(3.5f, b.getFloat(16 + 96), "dernier rapport");
-        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 104), "commande suivante, alignée");
+        assertEquals(3, b.getShort(16 + 100), "gear_count");
+        assertEquals(-3.2f, b.getFloat(16 + 104), "premier rapport");
+        assertEquals(3.5f, b.getFloat(16 + 112), "dernier rapport");
+        assertEquals(SimCommandStream.OP_REMOVE_ASSEMBLY, b.getInt(8 + 8 + 120), "commande suivante, alignée");
         assertThrows(IllegalArgumentException.class,
                 () -> new SimCommandStream().setParameters(7, 3, new float[3], new float[0]));
 
@@ -620,10 +621,12 @@ class SimCommandStreamTest {
                 "brake_rear", "handbrake", "grip", "stiffness", "damping", "max_angle", "drag", "downforce_front",
                 "downforce_rear"), champs);
         assertTrue(struct.group(1).contains("pub motor_torque: [f32; 4],"), "puis le couple des quatre moteurs");
+        assertTrue(struct.group(1).contains("pub motor_regen: [f32; 4],"), "puis leur récupération");
         assertEquals(java.util.List.of("mass", "engine.torque", "engine.max_rpm", "transmission.final_drive",
                 "transmission.shift_time", "brakes.front", "brakes.rear", "brakes.handbrake", "tires.grip",
                 "suspension.stiffness", "suspension.damping", "steering.max_angle", "aero.drag", "aero.downforce_front",
-                "aero.downforce_rear", "motor#0", "motor#1", "motor#2", "motor#3"), SimCommandStream.PARAMETER_FIELDS,
+                "aero.downforce_rear", "motor#0", "motor#1", "motor#2", "motor#3", "regen#0", "regen#1", "regen#2",
+                "regen#3"), SimCommandStream.PARAMETER_FIELDS,
                 "un paramètre par champ, dans le même ordre ; les moteurs par leur rang");
     }
 

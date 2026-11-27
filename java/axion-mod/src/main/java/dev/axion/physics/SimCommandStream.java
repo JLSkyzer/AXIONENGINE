@@ -326,7 +326,7 @@ public final class SimCommandStream {
     public static final int OP_SET_PARAMETERS = 18;
 
     /** Taille de l'en-tête {@code SetParameters}, en octets : le handle, quinze valeurs, le nombre de rapports. */
-    public static final int SET_PARAMETERS_BYTES = 88;
+    public static final int SET_PARAMETERS_BYTES = 104;
 
     /**
      * Les paramètres que porte l'en-tête de {@code SET_PARAMETERS}, dans son ordre (ADR-167 D6) ; les rapports
@@ -339,7 +339,10 @@ public final class SimCommandStream {
             Parameters.AERO_DOWNFORCE_FRONT, Parameters.AERO_DOWNFORCE_REAR,
             // ADR-182 D4 : le couple de chaque moteur électrique, à son rang (AssemblyParameters.fields).
             AssemblyParameters.MOTOR_SLOT + 0, AssemblyParameters.MOTOR_SLOT + 1, AssemblyParameters.MOTOR_SLOT + 2,
-            AssemblyParameters.MOTOR_SLOT + 3);
+            AssemblyParameters.MOTOR_SLOT + 3,
+            // ADR-182, F : le facteur de la récupération de chacun.
+            AssemblyParameters.REGEN_SLOT + 0, AssemblyParameters.REGEN_SLOT + 1, AssemblyParameters.REGEN_SLOT + 2,
+            AssemblyParameters.REGEN_SLOT + 3);
 
     /** Opcode {@code SET_WHEEL_TORQUES} : le couple posé sur chaque roue d'un véhicule (R-1082, ADR-167 D9). */
     public static final int OP_SET_WHEEL_TORQUES = 19;

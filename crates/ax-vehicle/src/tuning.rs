@@ -42,6 +42,8 @@ pub struct Tuning {
     pub downforce_rear: f32,
     /// Le pic de la courbe de chaque moteur électrique, à son rang, en N·m (ADR-182 D4).
     pub motors: [f32; MAX_MOTORS],
+    /// Le facteur de la récupération de chaque moteur électrique, à son rang : 1 à la fiche, 0 aucune (ADR-182, F).
+    pub regen: [f32; MAX_MOTORS],
     /// La table des rapports, vide pour garder celle de la base.
     pub gears: Vec<f32>,
 }
@@ -66,6 +68,7 @@ impl Tuning {
             downforce_front: f32::NAN,
             downforce_rear: f32::NAN,
             motors: [f32::NAN; MAX_MOTORS],
+            regen: [f32::NAN; MAX_MOTORS],
             gears: Vec::new(),
         }
     }
@@ -117,6 +120,14 @@ impl Tuning {
                     point[1] = from[1] * scale;
                 }
             }
+        }
+        // La récupération d'un moteur électrique multiplie ses deux couples : au lever de pied et au frein.
+        for (rank, (motor, of)) in desc.motors.iter_mut().zip(&base.motors).enumerate() {
+            let Some(factor) = self.regen.get(rank).copied().and_then(finite) else {
+                continue;
+            };
+            motor.regen_lift_off = of.regen_lift_off * factor;
+            motor.regen_brake = of.regen_brake * factor;
         }
         for (wheel, of) in desc.wheels.iter_mut().zip(&base.wheels) {
             if let Some(grip) = finite(self.grip) {
@@ -215,6 +226,52 @@ mod tests {
         assert_eq!(
             mal.gears, base.gears,
             "une table d'une autre longueur est ignorée"
+        );
+    }
+
+    #[test]
+    fn adr182_la_recuperation_met_a_l_echelle_les_couples_de_regeneration() {
+        let mut base = description();
+        base.motors.push(ax_model::dm::vehicle::MotorDesc {
+            store: 0,
+            coupling: 0,
+            wheels: 0b1100,
+            max_rpm: 9000.0,
+            efficiency: 0.9,
+            ratio: 8.0,
+            regen_lift_off: 20.0,
+            regen_brake: 60.0,
+            regen_efficiency: 0.7,
+            torque_curve: vec![[0.0, 150.0], [9000.0, 60.0]],
+        });
+        assert_eq!(Tuning::base().apply(&base), base, "sans réglage, la fiche");
+        let reglee = |facteur: f32| {
+            Tuning {
+                regen: [facteur, f32::NAN, f32::NAN, f32::NAN],
+                ..Tuning::base()
+            }
+            .apply(&base)
+        };
+        let double = reglee(2.0);
+        assert_eq!(
+            (
+                double.motors[0].regen_lift_off,
+                double.motors[0].regen_brake
+            ),
+            (40.0, 120.0)
+        );
+        assert_eq!(
+            double.motors[0].regen_efficiency, 0.7,
+            "le rendement ne bouge pas"
+        );
+        assert_eq!(double.motors[0].torque_curve, base.motors[0].torque_curve);
+        let aucune = reglee(0.0);
+        assert_eq!(
+            (
+                aucune.motors[0].regen_lift_off,
+                aucune.motors[0].regen_brake
+            ),
+            (0.0, 0.0)
         );
     }
 

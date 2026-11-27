@@ -99,6 +99,16 @@ public interface Parameters {
     }
 
     /**
+     * {@return le facteur de la récupération d'un moteur électrique (ADR-182) : 1 à la fiche, 0 aucune, 2 le double, au
+     * lever de pied comme au frein} Seulement pour un moteur qui déclare {@code regen}.
+     *
+     * @param motor le nom du moteur
+     */
+    static String motorRegen(String motor) {
+        return "motor." + motor + ".regen";
+    }
+
+    /**
      * {@return la clé de traduction du nom d'un paramètre (ADR-167 D10)}, pour l'écran d'un mod d'améliorations :
      * <ul>
      *   <li>{@code axion.parameter.<nom>} pour un paramètre d'AXION, traduit par AXION en français et en anglais
@@ -117,6 +127,9 @@ public interface Parameters {
         int colon = name.indexOf(':');
         if (colon >= 0) {
             return name.substring(0, colon) + ".parameter." + name.substring(colon + 1);
+        }
+        if (name.startsWith("motor.") && name.endsWith(".regen")) {
+            return "axion.parameter.motor.regen";
         }
         if (name.startsWith("motor.") && name.endsWith(".torque")) {
             return "axion.parameter.motor.torque";

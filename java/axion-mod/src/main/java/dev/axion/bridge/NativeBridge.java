@@ -31,7 +31,8 @@ public final class NativeBridge {
      *
      * <p>R-260 : elle est comparée à {@link #nativeAbiVersion()} avant tout
      * autre appel, et un écart fait basculer en {@code DISABLED} avec
-     * {@code E-1002}. 41 depuis les forces et les couples tenus un tick (ADR-183 D1) : {@code APPLY_FORCE} appliquée,
+     * {@code E-1002}. 42 depuis {@code motor.<nom>.regen} (ADR-182, F) : {@code SET_PARAMETERS} de 104 octets.
+     * 41 depuis les forces et les couples tenus un tick (ADR-183 D1) : {@code APPLY_FORCE} appliquée,
      * opcode {@code APPLY_TORQUE}. 40 depuis l'hybride (ADR-182 D4) : {@code DEFN} version 6, {@code SET_PARAMETERS} de 88 octets et le
      * bloc d'état en version 6 ; 39 depuis les moteurs électriques (ADR-182 D3) : {@code DEFN} version 5,
      * {@code VehicleReport} de 72 octets et {@code SIM_OUT} au schéma 10 ; 38 depuis les 4 réserves d'énergie (ADR-182) ; 37 depuis le matériau sous la roue (ADR-181) :
@@ -62,7 +63,7 @@ public final class NativeBridge {
      * (7, ADR-151 D7), l'empreinte déterministe et la compression des charges utiles réseau (6,
      * ADR-150 D4, D5).
      */
-    public static final int EXPECTED_ABI_VERSION = 41;
+    public static final int EXPECTED_ABI_VERSION = 42;
 
     /** Succès. */
     public static final int OK = 0;

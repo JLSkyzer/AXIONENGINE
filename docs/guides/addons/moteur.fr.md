@@ -194,7 +194,8 @@ Avec `engine` **et** `electric_motors`, le véhicule est hybride ([ADR-182](../.
 débrayé : avec un contact coupé, le véhicule roule à l'électricité seule. La stratégie est la tienne : chaque moteur
 électrique a le paramètre `motor.<nom>.torque` ([Régler](regler.md)) — le pic de sa courbe, en N·m — qu'une variable, un
 modificateur ou le contrôleur de ton mod baisse, coupe ou renforce. À 0, le moteur ne donne plus rien ; sa récupération,
-elle, reste.
+elle, reste. Elle se règle à part par `motor.<nom>.regen`, pour un moteur qui déclare `regen` : le facteur de ses deux
+couples, au lever de pied et au frein — un mode de conduite « éco » à 2, une roue libre à 0.
 
 **En prolongateur d'autonomie**, le moteur à combustion n'entraîne **jamais** les roues : il charge une réserve.
 

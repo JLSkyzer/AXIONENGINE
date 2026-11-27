@@ -67,6 +67,27 @@ class AssemblyParametersTest {
     }
 
     @Test
+    @DisplayName("ADR-182, F : le champ natif de la récupération suit le rang du moteur, NaN pour un moteur sans elle")
+    void adr182ChampsDeLaRecuperation() {
+        AssemblyParameters parametres = new AssemblyParameters(new Tuning(List.of(
+                new Tuning.Parameter(Parameters.motorTorque("avant"), "N·m", 90, TOUT, TOUT),
+                new Tuning.Parameter(Parameters.motorTorque("arriere"), "N·m", 150, TOUT, TOUT),
+                new Tuning.Parameter(Parameters.motorRegen("arriere"), "×", 1,
+                        new Parameters.Range(0, true, 2, true), TOUT))));
+        parametres.modify(new Modifier("conduite:eco", Parameters.motorRegen("arriere"), Operation.ADD, 1),
+                AssemblyParameters.API);
+        float[] champs = parametres.fields(dev.axion.physics.SimCommandStream.PARAMETER_FIELDS);
+        List<String> noms = dev.axion.physics.SimCommandStream.PARAMETER_FIELDS;
+        assertEquals(90f, champs[noms.indexOf(AssemblyParameters.MOTOR_SLOT + 0)]);
+        assertEquals(150f, champs[noms.indexOf(AssemblyParameters.MOTOR_SLOT + 1)]);
+        assertTrue(Float.isNaN(champs[noms.indexOf(AssemblyParameters.REGEN_SLOT + 0)]), "le moteur avant ne récupère pas");
+        assertEquals(2f, champs[noms.indexOf(AssemblyParameters.REGEN_SLOT + 1)]);
+        assertThrows(IllegalArgumentException.class, () -> parametres.modify(
+                new Modifier("conduite:trop", Parameters.motorRegen("arriere"), Operation.ADD, 0.5),
+                AssemblyParameters.API), "au-delà de 2");
+    }
+
+    @Test
     @DisplayName("D3 : poser, remplacer par la même cause, retirer par cause ; les autres paramètres n'en voient rien")
     void poserEtRetirer() {
         AssemblyParameters parametres = new AssemblyParameters(tuning());

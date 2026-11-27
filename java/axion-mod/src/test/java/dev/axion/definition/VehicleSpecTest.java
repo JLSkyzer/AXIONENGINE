@@ -311,6 +311,15 @@ class VehicleSpecTest {
         assertTrue(moteur >= 0, tuning.names().toString());
         assertEquals(150.0, tuning.get(moteur).base(), "le pic de sa courbe");
         assertEquals(dev.axion.api.assembly.Parameters.motorTorque("arriere"), tuning.get(moteur).name());
+        // ADR-182, question F : le facteur de sa récupération, de 0 à 2, 1 à la base.
+        int recuperation = tuning.indexOf(dev.axion.api.assembly.Parameters.motorRegen("arriere"));
+        assertTrue(recuperation >= 0, tuning.names().toString());
+        assertEquals(1.0, tuning.get(recuperation).base());
+        assertEquals(new dev.axion.api.assembly.Parameters.Range(0, true, 2, true), tuning.get(recuperation).limit());
+        Tuning sans = Tuning.of("mymod:pickup",
+                lire(base.replace(", \"regen\": {\"lift_off\": 20, \"brake\": 60}", "")).root());
+        assertEquals(-1, sans.indexOf(dev.axion.api.assembly.Parameters.motorRegen("arriere")),
+                "sans regen déclaré, rien à régler");
     }
 
     @Test

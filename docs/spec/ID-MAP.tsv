@@ -71,7 +71,7 @@ ADR-178	ADR		2321	13	5.44 C-53 : Interaction & Sièges
 ADR-179	ADR		2275	3	5.40 C-48 : Attachment System
 ADR-180	ADR		2090	5	5.30 C-38 : World Collision Provider
 ADR-181	ADR		3327	3	12.4 Modèle de pneu
-ADR-182	ADR		3349	14	12.5 Groupe motopropulseur
+ADR-182	ADR		3349	15	12.5 Groupe motopropulseur
 ADR-183	ADR		2476	4	5.58 C-71 : Commandes
 ADR-184	ADR		5199	2	21.5 Snapshots, quantification, delta
 ADR-185	ADR		5139	4	21.4 Paquets
@@ -719,7 +719,7 @@ R-1080	R	3345	3345	1	12.5 Groupe motopropulseur
 R-1081	R	3346	3346	1	12.5 Groupe motopropulseur
 R-1082	R	3347	3347	1	12.5 Groupe motopropulseur
 R-1083	R	3348	3348	2	12.5 Groupe motopropulseur
-R-1084	R	3349	3349	8	12.5 Groupe motopropulseur
+R-1084	R	3349	3349	9	12.5 Groupe motopropulseur
 R-1085	R	3350	3350	2	12.5 Groupe motopropulseur
 R-1086	R	3351	3351	6	12.5 Groupe motopropulseur
 R-1087	R	3358	3358	5	12.5 Groupe motopropulseur

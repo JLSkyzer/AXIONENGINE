@@ -57,7 +57,8 @@ use ax_physics::{
 ///
 /// Versionnée indépendamment du produit (R-261) : toute rupture de
 /// compatibilité binaire l'incrémente. Java la compare à la sienne avant tout
-/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 41 depuis les forces et les couples tenus un tick
+/// autre appel et bascule en `DISABLED` sur écart (R-260, `E-1002`). 42 depuis `motor.<nom>.regen` (ADR-182, F) :
+/// `SET_PARAMETERS` de 104 octets. 41 depuis les forces et les couples tenus un tick
 /// (ADR-183 D1) : `APPLY_FORCE` appliquée, opcode `APPLY_TORQUE`. 40 depuis l'hybride (ADR-182 D4) : le prolongateur
 /// dans la section du véhicule de `DEFN` (en-tête de 172 octets, `DEFN` version 6), le couple de chaque moteur dans
 /// `SET_PARAMETERS` (88 octets) et le bloc d'état en version 6 (104 octets de véhicule). 39 depuis les moteurs électriques (ADR-182 D3) : les
@@ -95,7 +96,7 @@ use ax_physics::{
 /// d'une assembly à sa création et le sommeil des assemblies chargées (ADR-153 D3, D4), après les
 /// assemblies à plusieurs corps et leurs joints (7, ADR-151 D7), l'empreinte déterministe et la
 /// compression des charges utiles réseau (6, ADR-150 D4, D5).
-pub const AXION_ABI_VERSION: u32 = 41;
+pub const AXION_ABI_VERSION: u32 = 42;
 
 /// Succès.
 pub const AXION_OK: i32 = 0;
