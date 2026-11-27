@@ -67,7 +67,8 @@ def valeurs_lues(releve: list[str], journal: list[str]) -> bool:
     return juste
 
 
-def essai(latence: int, film: bool, observateur: bool = False, assis: bool = False, gigue: int = 0) -> bool:
+def essai(latence: int, film: bool, observateur: bool = False, assis: bool = False, gigue: int = 0,
+          ascenseur: bool = False) -> bool:
     """Joue l'essai ; rend vrai si le client est vert et le serveur sans correction ni expulsion."""
     SORTIES.mkdir(parents=True, exist_ok=True)
     for fichier in (JOURNAL_SERVEUR, RAPPORT, RAPPORT_OBSERVATEUR):
@@ -82,6 +83,9 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
     environnement = dict(os.environ, AXION_ESSAI_PORTEUR="1")
     environnement.pop("AXION_ESSAI_PREDICTION", None)
     environnement.pop("AXION_ESSAI_PORTEUR_DEUX", None)
+    environnement.pop("AXION_ESSAI_ASCENSEUR", None)
+    if ascenseur:
+        environnement["AXION_ESSAI_ASCENSEUR"] = "1"
     if observateur:
         environnement["AXION_ESSAI_PORTEUR_DEUX"] = "1"
     regard = None
@@ -106,6 +110,7 @@ def essai(latence: int, film: bool, observateur: bool = False, assis: bool = Fal
                         f"-PessaiGigue={gigue}"]
             # Avec un observateur, c'est lui qu'on filme : deux clients qui encodent à la fois se ralentiraient.
             commande += ["-PessaiFilm"] if film and not observateur else []
+            commande += ["-PessaiAscenseur"] if ascenseur else []
             client = subprocess.run(commande, cwd=RACINE, stdout=sortie, stderr=subprocess.STDOUT,
                                     timeout=CLIENT_MAX_S)
         if client.returncode != 0 and not assis:
@@ -165,6 +170,8 @@ def main() -> int:
                         help="filmer l'essai : le client (avec --observateur, l'observateur) tourne dans"
                              " .runs/essai-*/axion-film, tools/film/encoder.py fait le MP4")
     parser.add_argument("--observateur", action="store_true", help="un second client juge ce qu'il voit du porté")
+    parser.add_argument("--ascenseur", action="store_true",
+                        help="le plateau figé et mené vers le haut, le bas et de côté au lieu d'être conduit (ADR-183 D4)")
     parser.add_argument("--gigue", type=int, default=0, metavar="MS",
                         help="gigue du relais : chaque envoi attend de 0 à MS millisecondes de plus, au hasard")
     parser.add_argument("--retard", action="store_true",
@@ -186,7 +193,7 @@ def main() -> int:
         if arguments.retard:
             os.environ["AXION_ESSAI_RETARD"] = "1"
         vert = essai(arguments.latence, arguments.film, arguments.observateur or bool(arguments.siege),
-                     bool(arguments.siege), arguments.gigue)
+                     bool(arguments.siege), arguments.gigue, arguments.ascenseur)
     except (RuntimeError, subprocess.TimeoutExpired) as faute:
         print(f"ÉCHEC : {faute}")
         vert = False

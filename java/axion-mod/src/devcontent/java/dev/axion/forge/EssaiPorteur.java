@@ -72,6 +72,18 @@ public final class EssaiPorteur {
     /** La gigue du relais, en millisecondes : chaque morceau attend de 0 à tant de plus, au hasard. */
     private static final long GIGUE_MS = Long.getLong("axion.essai.gigue", 0L);
     private static final boolean FILM = Boolean.getBoolean("axion.essai.film");
+    /**
+     * ADR-183 D4 : au lieu de le conduire, le serveur fige le véhicule et le mène comme un ascenseur — vers le haut, un
+     * palier, vers le bas, puis de côté. Au serveur sous {@code AXION_ESSAI_ASCENSEUR=1}, au client sous
+     * {@code -Daxion.essai.ascenseur}.
+     */
+    private static final boolean ASCENSEUR = "1".equals(System.getenv("AXION_ESSAI_ASCENSEUR"));
+    private static final boolean ASCENSEUR_CLIENT = Boolean.getBoolean("axion.essai.ascenseur");
+    /** Les ticks de chaque étape : monter, tenir, descendre, aller de côté ; et la vitesse, en blocs par tick. */
+    private static final int MONTE = 120;
+    private static final int TIENT = 40;
+    private static final int DESCEND = 120;
+    private static final double PAS = 0.05;
 
     private static final int DUREE_SERVEUR_S = 300;
     private static final String HOTE = "127.0.0.1";
@@ -115,8 +127,41 @@ public final class EssaiPorteur {
         private static double parcours;
         private static double parcoursSeul;
         private static Vec3 avant;
+        private static Vec3 base;
 
         private Serveur() {}
+
+        /** Où le plateau doit être après {@code t} ticks de conduite, depuis sa place de départ. */
+        private static Vec3 ascension(int t) {
+            double haut = PAS * Math.min(t, MONTE) - PAS * Math.max(0, Math.min(t - MONTE - TIENT, DESCEND));
+            double cote = PAS * Math.max(0, t - MONTE - TIENT - DESCEND);
+            return base.add(cote, haut, 0.0);
+        }
+
+        /** Mène le plateau figé à sa place de ce tick, et compte le portage comme la conduite le fait. */
+        private static void menerLAscenseur(int conduite) {
+            var assembly = ForgeAxionApi.view(vehicule);
+            if (base == null) {
+                assembly.setFrozen(true);
+                base = vehicule.position();
+            }
+            assembly.setKinematicTransform(new dev.axion.api.assembly.Transform(ascension(conduite),
+                    vehicule.orientation(), new Vec3(1, 1, 1)));
+            CarrySupports.Support support = CarrySupports.of(joueur);
+            if (support != null && support.assembly() == vehicule) {
+                portes++;
+            }
+            if (avant != null) {
+                parcours += vehicule.position().distanceTo(avant);
+            }
+            avant = vehicule.position();
+            if (conduite % 40 == 0) {
+                LOGGER.info(String.format(Locale.ROOT, "[porteur] ascenseur %d : %s, joueur à %.2f au-dessus, à %.2f de"
+                        + " côté, plateau à %s", conduite, support == null ? "sans support" : "corps " + support.body(),
+                        joueur.getY() - vehicule.getY(),
+                        Math.hypot(joueur.getX() - vehicule.getX(), joueur.getZ() - vehicule.getZ()), vehicule.position()));
+            }
+        }
 
         /**
          * Le sol, en damier de quatre blocs pour que la vitesse se voie, posé dès le premier tick : posé à l'arrivée du joueur,
@@ -250,6 +295,12 @@ public final class EssaiPorteur {
             if (SIEGE != null && "conducteur".equals(PLACE)) {
                 return;
             }
+            if (ASCENSEUR) {
+                if (conduite < CONDUITE) {
+                    menerLAscenseur(conduite);
+                }
+                return;
+            }
             if (conduite < CONDUITE) {
                 commande.drive(CONDUIRE);
                 CarrySupports.Support support = CarrySupports.of(joueur);
@@ -321,7 +372,9 @@ public final class EssaiPorteur {
                 if (support != null) {
                     Vec3 la = support.assembly().position();
                     // Le départ : le véhicule qui porte le joueur s'est déplacé de plus de 5 cm en un tick.
-                    if (avant != null && la.subtract(avant).horizontalDistance() > 0.05 && support.local() != null) {
+                    // En ascenseur, il part vers le haut : tout déplacement compte.
+                    if (avant != null && support.local() != null && (ASCENSEUR_CLIENT ? la.distanceTo(avant) > 0.02
+                            : la.subtract(avant).horizontalDistance() > 0.05)) {
                         porteur = support.assembly();
                         corps = support.body();
                         place = support.local();
@@ -349,7 +402,7 @@ public final class EssaiPorteur {
                         minecraft.player.getZ(), sienne[0], sienne[1], sienne[2]);
             }
             Vec3 la = porteur.position();
-            parcours += la.subtract(avant).horizontalDistance();
+            parcours += ASCENSEUR_CLIENT ? la.distanceTo(avant) : la.subtract(avant).horizontalDistance();
             avant = la;
             if (support != null && support.assembly() == porteur && support.local() != null) {
                 portes++;
