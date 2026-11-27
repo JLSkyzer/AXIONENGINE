@@ -98,6 +98,9 @@ pub mod opcode {
     /// Appliquer un couple pendant le prochain pas du monde, à chacun de ses sous-pas (payload [`super::ApplyForce`] :
     /// le vecteur est le couple en repère monde, le point est ignoré). ADR-183 D1.
     pub const APPLY_TORQUE: u32 = 31;
+    /// Déplacer d'un même mouvement rigide une assembly et celles qui lui sont attachées
+    /// ([`super::MoveAssembly`]). ADR-183 D2.
+    pub const MOVE_ASSEMBLY: u32 = 32;
 }
 
 /// Les formes d'un capteur déclaré, champ `shape` de [`SetSensor`] (ADR-174 D5).
@@ -515,6 +518,32 @@ pub struct SetKinematic {
 impl SetKinematic {
     /// Taille sur la frontière, en octets.
     pub const BYTES: usize = 48;
+}
+
+/// Drapeaux de [`MoveAssembly`], champ `flags`.
+pub mod move_flags {
+    /// Les vitesses sont mises à zéro au lieu de tourner avec l'assembly.
+    pub const RESET: u32 = 1 << 0;
+}
+
+/// Payload de `MOVE_ASSEMBLY` (ADR-183 D2) : 56 octets. La pose monde où le corps racine arrive ; tous les corps de
+/// l'assembly et de celles que des attaches lui relient le suivent d'un même mouvement rigide.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MoveAssembly {
+    /// L'assembly déplacée.
+    pub handle: Handle,
+    /// La pose monde demandée de son corps racine.
+    pub transform: WorldTransform,
+    /// Voir [`move_flags`].
+    pub flags: u32,
+    /// Réservé, à zéro.
+    pub _pad: u32,
+}
+
+impl MoveAssembly {
+    /// Taille sur la frontière, en octets.
+    pub const BYTES: usize = 56;
 }
 
 /// Payload de `APPLY_FORCE` et `APPLY_IMPULSE`.
@@ -1225,6 +1254,10 @@ mod tests {
         assert_eq!(opcode::SET_WEAR, 29);
         assert_eq!(opcode::SET_WET, 30);
         assert_eq!(opcode::APPLY_TORQUE, 31);
+        assert_eq!(opcode::MOVE_ASSEMBLY, 32);
+        assert_eq!(size_of::<MoveAssembly>(), MoveAssembly::BYTES);
+        assert_eq!(offset_of!(MoveAssembly, transform), 8);
+        assert_eq!(offset_of!(MoveAssembly, flags), 48);
         assert_eq!(size_of::<SetWet>(), SetWet::BYTES);
         assert_eq!(align_of::<SetWet>(), 4);
         assert_eq!(offset_of!(SetWet, wet), 8);

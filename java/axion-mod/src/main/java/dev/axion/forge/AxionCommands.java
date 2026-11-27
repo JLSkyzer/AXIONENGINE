@@ -306,6 +306,21 @@ final class AxionCommands {
                                         .then(Commands.literal("reset")
                                                 .executes(context -> wearSet(context.getSource(),
                                                         EntityArgument.getEntity(context, "cible"), null, 0.0)))))
+                        // ADR-183 D2 : téléporter une assembly et ce qui lui est attaché.
+                        .then(Commands.literal("tp")
+                                .then(Commands.argument("cible", EntityArgument.entity())
+                                        .then(Commands.argument("position", Vec3Argument.vec3())
+                                                .executes(context -> teleport(context.getSource(),
+                                                        EntityArgument.getEntity(context, "cible"),
+                                                        Vec3Argument.getVec3(context, "position"), Float.NaN))
+                                                .then(Commands.argument("lacet",
+                                                                com.mojang.brigadier.arguments.FloatArgumentType
+                                                                        .floatArg())
+                                                        .executes(context -> teleport(context.getSource(),
+                                                                EntityArgument.getEntity(context, "cible"),
+                                                                Vec3Argument.getVec3(context, "position"),
+                                                                com.mojang.brigadier.arguments.FloatArgumentType
+                                                                        .getFloat(context, "lacet")))))))
                         // ADR-183 D5 : le nom d'une assembly, celui de toute entité de Minecraft.
                         .then(Commands.literal("rename")
                                 .then(Commands.argument("cible", EntityArgument.entity())
@@ -766,6 +781,34 @@ final class AxionCommands {
         List<String> lines = wearLines(assembly);
         source.sendSuccess(() -> Component.literal(String.join("\n", lines)), false);
         return assembly.wheelNodes().size();
+    }
+
+    /**
+     * Téléporte une assembly et son ensemble (ADR-183 D2), arrêtés ; avec un lacet de Minecraft, droite et tournée vers
+     * lui, sinon dans son orientation. Dans son monde seulement. Commande d'administration, mutante, journalisée avec son
+     * auteur (R-810).
+     */
+    private static int teleport(CommandSourceStack source, Entity target, net.minecraft.world.phys.Vec3 position,
+            float yaw) {
+        AuthoritativeThread.require();
+        if (!(target instanceof AxionEntity assembly)) {
+            source.sendFailure(Component.literal("AXION : la cible n'est pas une assembly"));
+            return 0;
+        }
+        if (assembly.level() != source.getLevel()) {
+            source.sendFailure(Component.literal("AXION : une assembly se téléporte dans son monde seulement"));
+            return 0;
+        }
+        // L'avant d'une assembly est son -Z (6.5) : un demi-tour de plus que le lacet de Minecraft.
+        org.joml.Quaternionf rotation = Float.isNaN(yaw) ? assembly.orientation()
+                : new org.joml.Quaternionf().rotationY((float) (Math.PI - Math.toRadians(yaw)));
+        assembly.teleportAssembly(position, rotation, true);
+        String where = String.format(java.util.Locale.ROOT, "%.2f %.2f %.2f", position.x, position.y, position.z);
+        LOGGER.info("AXION : /axion tp {} ({}) vers {} demandé par {}", target.getUUID(), assembly.definitionId(), where,
+                source.getTextName());
+        source.sendSuccess(() -> Component.literal("AXION : " + assembly.definitionId() + " téléportée en " + where),
+                true);
+        return 1;
     }
 
     /**

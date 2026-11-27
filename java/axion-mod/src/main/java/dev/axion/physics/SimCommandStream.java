@@ -60,6 +60,10 @@ public final class SimCommandStream {
     public static final int OP_APPLY_FORCE = 3;
     /** Opcode {@code APPLY_TORQUE} (ADR-183 D1) : même payload, le vecteur est un couple. */
     public static final int OP_APPLY_TORQUE = 31;
+    /** Opcode {@code MOVE_ASSEMBLY} (ADR-183 D2). */
+    public static final int OP_MOVE_ASSEMBLY = 32;
+    /** Taille du payload de {@code MOVE_ASSEMBLY}, en octets. */
+    public static final int MOVE_ASSEMBLY_BYTES = 56;
 
     /** Taille du payload de {@code APPLY_IMPULSE}, en octets. */
     public static final int APPLY_IMPULSE_BYTES = 36;
@@ -1088,6 +1092,34 @@ public final class SimCommandStream {
      */
     public SimCommandStream torque(int handleIndex, int handleGeneration, float[] torque) {
         return vectorAt(OP_APPLY_TORQUE, handleIndex, handleGeneration, torque, null);
+    }
+
+    /**
+     * Ajoute une commande {@code MOVE_ASSEMBLY} (ADR-183 D2) : l'ensemble de l'assembly arrive d'un même mouvement, son
+     * corps racine à la pose donnée.
+     *
+     * @param handleIndex rang du handle d'assembly
+     * @param handleGeneration génération du handle
+     * @param position position monde {@code x, y, z} du corps racine
+     * @param rotation orientation {@code x, y, z, w}
+     * @param reset vrai pour mettre les vitesses à zéro
+     * @return {@code this}, pour chaîner
+     */
+    public SimCommandStream moveAssembly(int handleIndex, int handleGeneration, double[] position, float[] rotation,
+            boolean reset) {
+        ByteBuffer command = beginCommand(OP_MOVE_ASSEMBLY, MOVE_ASSEMBLY_BYTES);
+        command.putInt(handleIndex);
+        command.putInt(handleGeneration);
+        for (int axis = 0; axis < 3; axis++) {
+            command.putDouble(position[axis]);
+        }
+        for (int axis = 0; axis < 4; axis++) {
+            command.putFloat(rotation[axis]);
+        }
+        command.putInt(reset ? 1 : 0);
+        command.putInt(0);
+        commands.add(command.array());
+        return this;
     }
 
     /** Le payload commun d'une impulsion, d'une force et d'un couple : handle, vecteur, point, drapeau du point. */

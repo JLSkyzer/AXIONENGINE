@@ -347,3 +347,14 @@ le corps ; donnée avant que le moteur ne simule l'assembly, ou à une assembly 
 
 Un administrateur **nomme** une assembly, comme toute entité : `/axion rename <cible> <nom>`. Le nom s'affiche
 au-dessus d'elle et se sauvegarde.
+
+Il la **téléporte** dans son monde, avec ce qui lui est attaché : `/axion tp <cible> <x y z> [lacet]` (avec un lacet,
+elle arrive droite et tournée vers lui) ; ton mod, par l'API :
+
+```java
+// La pose du corps racine ; les autres corps et les remorques suivent d'un même mouvement. true : à l'arrêt.
+assembly.teleport(new Transform(new Vec3(120.5, 70, -40.5), new Quaternionf(), new Vec3(1, 1, 1)), true);
+```
+
+Les ancres aux blocs sont défaites (cause `teleported` pour les écouteurs d'attaches), et ce qui était posé dessus sans
+être assis reste sur place. Le chunk d'arrivée se charge.

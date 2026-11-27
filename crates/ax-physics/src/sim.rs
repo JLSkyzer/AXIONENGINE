@@ -1902,6 +1902,27 @@ impl SimDriver {
         }
     }
 
+    /// Applique `MOVE_ASSEMBLY` (ADR-183 D2) : le corps racine arrive à la pose monde demandée, les autres corps de
+    /// l'assembly et ceux des assemblies que des attaches lui relient suivent d'un même mouvement rigide ; `reset` met
+    /// leurs vitesses à zéro. Sans effet sur une assembly absente ou une pose non finie.
+    pub fn move_assembly(
+        &mut self,
+        handle: Handle,
+        world_position: DVec3,
+        rotation: Quat,
+        reset: bool,
+    ) {
+        if !world_position.is_finite() {
+            return;
+        }
+        if let Some((dimension, _)) = self.assembly_body(handle) {
+            if let Some(sim) = self.dimensions.get_mut(&dimension) {
+                let local = sim.origin.to_local(world_position);
+                sim.world.move_assembly(handle, local, rotation, reset);
+            }
+        }
+    }
+
     /// Applique `APPLY_FORCE` : une force en repère monde sur le corps racine, au centre de masse ou en un point de son
     /// repère, pendant le prochain pas (ADR-183 D1). Sans effet sur une assembly absente ou endormie par l'activité.
     pub fn apply_force(&mut self, handle: Handle, force: Vec3, point: Vec3, at_point: bool) {
@@ -2412,6 +2433,120 @@ mod tests {
     fn vitesses(driver: &mut SimDriver) -> ([f32; 3], [f32; 3]) {
         let etat = driver.collect_states()[0];
         (etat.lin_vel, etat.ang_vel)
+    }
+
+    fn attache_rigide(a: u32, b: u32, ecart: f32) -> ax_model::dm::attachments::Attach {
+        let repere = |x: f32| [x, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        ax_model::dm::attachments::Attach {
+            id: 1,
+            kind: ax_model::dm::attachments::attachment_kind::RIGID,
+            _pad0: [0; 3],
+            a: Handle::new(a, 1),
+            a_node: 0,
+            b_node: 0,
+            b: Handle::new(b, 1),
+            a_frame: repere(ecart / 2.0),
+            _pad1: 0,
+            b_frame: repere(-ecart / 2.0),
+            _pad2: 0,
+            world: [0.0; 3],
+            max_force: f32::INFINITY,
+            max_torque: f32::INFINITY,
+            cone: 0.0,
+            length: 0.0,
+            min_length: 0.0,
+            max_length: 0.0,
+            speed: 0.0,
+            _pad3: 0,
+        }
+    }
+
+    fn proche(vu: [f64; 3], attendu: [f64; 3], quoi: &str) {
+        for axe in 0..3 {
+            assert!(
+                (vu[axe] - attendu[axe]).abs() < 1.0e-3,
+                "{quoi} : {vu:?} pour {attendu:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn adr183_d2_une_assembly_deplacee_arrive_a_la_pose_ses_vitesses_tournees() {
+        let (mut driver, masse) = bille_libre();
+        driver.apply_impulse(
+            Handle::new(1, 1),
+            Vec3::new(2.0 * masse, 0.0, 0.0),
+            Vec3::ZERO,
+            false,
+        );
+        let quart = Quat::from_rotation_y(core::f32::consts::FRAC_PI_2);
+        driver.move_assembly(Handle::new(1, 1), DVec3::new(20.0, 10.0, 5.0), quart, false);
+        proche(position_de(&mut driver, 1), [20.0, 10.0, 5.0], "la bille");
+        let (vitesse, _) = vitesses(&mut driver);
+        assert!(
+            (vitesse[2] + 2.0).abs() < 1.0e-3 && vitesse[0].abs() < 1.0e-3,
+            "+x tournée d'un quart de tour autour de +y devient -z : {vitesse:?}"
+        );
+        driver.move_assembly(
+            Handle::new(1, 1),
+            DVec3::new(0.0, 5.0, 0.0),
+            Quat::IDENTITY,
+            true,
+        );
+        let (apres, rotation) = vitesses(&mut driver);
+        assert!(
+            apres
+                .iter()
+                .chain(rotation.iter())
+                .all(|v| v.abs() < 1.0e-6),
+            "reset : {apres:?}"
+        );
+        driver.move_assembly(
+            Handle::new(1, 1),
+            DVec3::new(f64::NAN, 0.0, 0.0),
+            Quat::IDENTITY,
+            true,
+        );
+        proche(
+            position_de(&mut driver, 1),
+            [0.0, 5.0, 0.0],
+            "une pose non finie ne déplace rien",
+        );
+    }
+
+    #[test]
+    fn adr183_d2_les_assemblies_attachees_suivent_d_un_seul_mouvement() {
+        let mut driver = SimDriver::new();
+        proxy_bille(&mut driver, 1, BodyKind::Dynamic, 0.0);
+        proxy_bille(&mut driver, 2, BodyKind::Dynamic, 2.0);
+        proxy_bille(&mut driver, 3, BodyKind::Dynamic, 10.0);
+        assert!(driver.apply_attach(&attache_rigide(1, 2, 2.0)));
+        driver.advance_all(0.05);
+        let loin = position_de(&mut driver, 3);
+        let quart = Quat::from_rotation_y(core::f32::consts::FRAC_PI_2);
+        let racine = position_de(&mut driver, 1);
+        let second = position_de(&mut driver, 2);
+        let ecart = second[0] - racine[0];
+        driver.move_assembly(Handle::new(1, 1), DVec3::new(100.0, 50.0, 0.0), quart, true);
+        proche(position_de(&mut driver, 1), [100.0, 50.0, 0.0], "la racine");
+        let attendu = [100.0, 50.0 + (second[1] - racine[1]), -ecart];
+        proche(position_de(&mut driver, 2), attendu, "l'attelée");
+        proche(
+            position_de(&mut driver, 3),
+            loin,
+            "une assembly sans attache ne bouge pas",
+        );
+        for _ in 0..10 {
+            driver.advance_all(0.05);
+        }
+        let a = position_de(&mut driver, 1);
+        let b = position_de(&mut driver, 2);
+        let distance =
+            ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
+        assert!(
+            (distance - 2.0).abs() < 0.05,
+            "l'attache tient : {distance}"
+        );
     }
 
     #[test]

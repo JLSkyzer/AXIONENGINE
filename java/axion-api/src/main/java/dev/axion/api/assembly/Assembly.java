@@ -214,6 +214,24 @@ public interface Assembly {
     }
 
     /**
+     * Téléporte l'assembly dans son monde (ADR-183 D2, CAP-34) : son corps racine arrive à la position et à
+     * l'orientation données au prochain pas physique, et tous ses corps, comme les assemblies que des attaches lui
+     * relient, la suivent d'un même mouvement rigide. Les vitesses tournent avec elle, ou s'annulent avec {@code reset}.
+     * Un ancrage à un bloc est défait, cause {@code teleported} ; une entité posée dessus, qui n'est pas assise, reste où
+     * elle est. Le chunk d'arrivée est chargé. L'échelle de la transformation est ignorée.
+     *
+     * <p>Thread : autoritatif uniquement (R-1755), au serveur.
+     *
+     * @param transform la pose d'arrivée de son corps racine
+     * @param reset vrai pour arriver arrêtée
+     * @throws IllegalArgumentException si la position ou la rotation n'est pas finie, ou la rotation nulle
+     * @throws IllegalStateException chez un client
+     */
+    default void teleport(Transform transform, boolean reset) {
+        throw new UnsupportedOperationException("teleport : cette assembly ne se téléporte pas");
+    }
+
+    /**
      * {@return les entités que cette assembly porte au serveur (ADR-178, CAP-14)} Celles posées sur un de ses corps ; une
      * copie, dans un ordre quelconque. Les passagers assis n'y sont pas : ils sont des passagers.
      *

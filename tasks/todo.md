@@ -3984,7 +3984,8 @@ lui est affectée reste ouverte. Les points ci-dessous sont les constats des deu
            **proposé** (compter par genre), attend Killian.
      - [ ] ADR-183 (CAP-34, CAP-11) — **accepté** le 2026-11-26 (A34) : forces et couples, téléporter, figer,
            renommer ; tranches de l'ADR. **Tranche 1** (renommer, forces et couples, ABI 41) FAITE le 2026-11-27.
-           Restent : 2 téléporter, 3 figer et `setKinematicTransform`, 4 guides, coût, grille D7.
+           **Tranche 2** (téléporter, ABI 43) FAITE le 2026-11-27 ; non éprouvé : conducteur prédit téléporté, arrivée
+           hors de portée de chargement. Restent : 3 figer et `setKinematicTransform`, 4 guides, coût, grille D7.
      - [x] `motor.<nom>.regen` (ADR-182, question F) — FAIT le 2026-11-27, ABI 42.
      - [ ] ADR-176, tranche 11b (énergie) : plan et contrats C1 à C7 dans l'ADR (précision « découpage et contrats de
            11b »). 11b1 natif et contrat FAIT (2026-11-20, ABI 31) → 11b2 instance Java/sauvegarde/masse FAIT (2026-11-20) → 11b3 réseau/prédiction/sources FAIT (2026-11-20) → 11b4 API/commande/action/buggy FAIT (2026-11-20, film à faire) →

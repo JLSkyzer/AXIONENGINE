@@ -2150,6 +2150,73 @@ impl PhysicsWorld {
         }
     }
 
+    /// Déplace d'un même mouvement rigide les corps d'une assembly et ceux des assemblies que des attaches lui relient
+    /// (ADR-183 D2) : son corps racine arrive à la position locale et à la rotation données, les vitesses tournent avec
+    /// l'ensemble, ou s'annulent avec `reset`. Les contacts et la détection continue repartent de la nouvelle pose ; un
+    /// ancrage au monde n'est pas déplacé. Une assembly endormie par l'activité le reste, ses vitesses gardées tournées.
+    /// Faux sans l'assembly ou pour une pose non finie.
+    pub fn move_assembly(
+        &mut self,
+        assembly: Handle,
+        position: Vec3,
+        rotation: Quat,
+        reset: bool,
+    ) -> bool {
+        if !position.is_finite()
+            || !rotation.is_finite()
+            || rotation.length_squared() <= f32::EPSILON
+        {
+            return false;
+        }
+        let Some(root) = self
+            .members
+            .get(&handle_key(assembly))
+            .and_then(|members| members.first())
+            .copied()
+        else {
+            return false;
+        };
+        let Some(old) = self.pose(root) else {
+            return false;
+        };
+        let turn = rotation.normalize() * old.rotation.inverse();
+        let turned = |velocity: Vec3| if reset { Vec3::ZERO } else { turn * velocity };
+        for member in self.ensemble_assemblies(assembly) {
+            let bodies = self
+                .members
+                .get(&handle_key(member))
+                .cloned()
+                .unwrap_or_default();
+            for id in bodies {
+                let suspended = if let Some(sleep) = self.forced_sleep.get_mut(&id) {
+                    sleep.linvel = turned(sleep.linvel);
+                    sleep.angvel = turned(sleep.angvel);
+                    true
+                } else {
+                    false
+                };
+                let Some(body) = self.inner.bodies.get_mut(id.handle()) else {
+                    continue;
+                };
+                let pose = *body.position();
+                let moved = RapierPose::from_parts(
+                    position + turn * (pose.translation - old.translation),
+                    (turn * pose.rotation).normalize(),
+                );
+                let (linear, angular) = (turned(body.linvel()), turned(body.angvel()));
+                body.set_position(moved, !suspended);
+                if !suspended {
+                    body.set_linvel(linear, true);
+                    body.set_angvel(angular, true);
+                }
+                if body.is_kinematic() {
+                    body.set_next_kinematic_position(moved);
+                }
+            }
+        }
+        true
+    }
+
     /// Demande une force en repère monde pour le prochain pas, au centre de masse, ou au point du repère du corps
     /// donné (ADR-183 D1). Une valeur non finie est ignorée.
     pub fn apply_force(&mut self, id: BodyId, force: Vec3, local_point: Option<Vec3>) {

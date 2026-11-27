@@ -2474,6 +2474,7 @@ Spécifiée intégralement en **PARTIE 23**.
 /axion defs list | info <id>
 /axion spawn <definition> [pos] [nbt] | remove <selector>
 /axion rename <selector> <nom>       (le nom d'entité de Minecraft, ADR-183 D5, amendement A34)
+/axion tp <selector> <x y z> [lacet] (l'ensemble attaché, même monde, ancres aux blocs défaites ; ADR-183 D2, A34)
 /axion variables <selector>          (amendement A10 ; par siège, amendement A25)
 /axion events [selector]             (les derniers événements de contenu, amendement A25)
 /axion dev reload                    (amendement A13 ; seulement si content.dev_reload)
@@ -5546,6 +5547,7 @@ public interface Assembly {
     void applyImpulse(Vec3 j, @Nullable Vec3 worldPoint);
     void applyTorque(Vec3 t);                              // de même (ADR-183 D1, A34)
     void setKinematicTransform(Transform t);
+    void teleport(Transform t, boolean reset);              // l'ensemble attaché, ancres défaites (ADR-183 D2, A34)
 
     Optional<Socket> socket(String name);
     Collection<String> socketNames();
@@ -8026,7 +8028,7 @@ assouplir ou reporter une règle qui ne sert pas le projet : l'amendement le dit
 | A31 | 2026-11-25 | ADR-180, accepté par Killian, Q1 à Q3 comme recommandé (en cours, tranche par tranche ; 14a le 2026-11-25 : la frontière native, ABI 36 ; 14b le même jour : R-643, la palette envoyée par le serveur et le client ; 14c : R-1040, schéma 2 des correspondances, `cover` ; 14d : la mesure, puis les contacts des corps sur champ de hauteurs, R-643 ; les correspondances en Java le 2026-11-26, 23.3) | 5.30 et C-38 : palette d'au plus 16 matériaux par tuile dans `SET_WORLD_COLLISION` et `SET_WORLD_HEIGHTFIELD` ; la roue lit le matériau qu'elle touche ; R-643 amendé à la tranche 14b |
 | A32 | 2026-11-26 | ADR-181, accepté par Killian, Q1 à Q3 comme recommandé | R-1074 : le matériau touché dans le rapport de roue (ABI 37, `SIM_OUT` au schéma 8), `WheelView.surface()`, `/axion wear` ; aucun changement de protocole ni de sauvegarde |
 | A33 | 2026-11-26 | ADR-182, accepté par Killian, Q1 à Q6 comme recommandé (tranche par tranche) | ANNEXE A.7 : CAP-76, affectée à M5 ; chaque tranche (14a à 14d) précise 12.5, 23.2, 23.4, 21.5, 22.2 et A.4 ; 14a1 le 2026-11-26 : 12.5 R-1092, ABI 38, `SIM_OUT` 9, descripteur 16 et AXION-17 au 21.5 ; 14a2 le 2026-11-26 : 12.5 R-1093, schéma de definition 8 (R-1783), 22.2 `axion:energy` par nom, A.4 `energy.<réserve>.amount|ratio`, A.1 `E-7012` ; 14b le 2026-11-26 : 12.5 R-1094, 12.8 `native_flags`, ABI 39, `SIM_OUT` 10, descripteur 17 et AXION-18 au 21.5 (les descripteurs 15 et 16, omis alors, y entrent avec lui), A.4 `motor.<n>.rpm|power` ; 14c le 2026-11-26 : 12.5 R-1095, `motor.<nom>.torque` à R-1084, ABI 40, AXION-19 ; F le 2026-11-27 : R-1084 `motor.<nom>.regen`, ABI 42, `SET_PARAMETERS` de 104 octets |
-| A34 | 2026-11-26 | ADR-183, accepté par Killian, Q1 à Q4 comme recommandé (tranche par tranche) | forces et couples d'un tick, `MOVE_ASSEMBLY`, assembly figée et `setKinematicTransform`, `/axion tp|freeze|rename` (CAP-34, CAP-11) ; chaque tranche précise 22.2, 23.2, C-71 et l'ABI ; tranche 1 le 2026-11-27 : D5 et D1, ABI 41, `APPLY_FORCE` tenue et `APPLY_TORQUE`, C-71 `/axion rename` |
+| A34 | 2026-11-26 | ADR-183, accepté par Killian, Q1 à Q4 comme recommandé (tranche par tranche) | forces et couples d'un tick, `MOVE_ASSEMBLY`, assembly figée et `setKinematicTransform`, `/axion tp|freeze|rename` (CAP-34, CAP-11) ; chaque tranche précise 22.2, 23.2, C-71 et l'ABI ; tranche 1 le 2026-11-27 : D5 et D1, ABI 41, `APPLY_FORCE` tenue et `APPLY_TORQUE`, C-71 `/axion rename` ; tranche 2 le 2026-11-27 : D2, `MOVE_ASSEMBLY`, ABI 43, `Assembly.teleport`, C-71 `/axion tp` |
 | A35 | 2026-11-26 | ADR-184, accepté par Killian, Q1 et Q2 comme recommandé ; mis en œuvre le jour même | 21.5 : le serveur réplique les entités qu'une assembly porte, le corps et leur place dans son repère ; le client les dessine sur le corps qu'il dessine (CAP-14) ; descripteur 18, protocole 20, R-1665, R-1662 précisée |
 | A36 | 2026-11-26 | ADR-185, accepté par Killian ; mis en œuvre le jour même | 21.4 : `C2S_Carried`, protocole 21 ; 21.5 : R-1665 précisée, R-1666 ; 21.9 : R-1690, les places portées comptées à part (CAP-14) |
 

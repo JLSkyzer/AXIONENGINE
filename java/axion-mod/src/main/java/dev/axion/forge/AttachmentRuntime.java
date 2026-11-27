@@ -380,6 +380,20 @@ public final class AttachmentRuntime implements SimCommandProvider, Consumer<Col
     }
 
     /**
+     * Défait les ancres aux blocs de l'ensemble d'une assembly qu'on téléporte (ADR-183 D2), cause {@code teleported}.
+     *
+     * @param assembly l'assembly téléportée
+     */
+    void detachAnchors(AxionEntity assembly) {
+        Set<UUID> members = graph.ensemble(assembly.getUUID());
+        for (Live attached : List.copyOf(live.values())) {
+            if (attached.anchor != null && members.contains(attached.a.getUUID())) {
+                drop(attached.id, "teleported", true);
+            }
+        }
+    }
+
+    /**
      * Retire une attache du graphe ; {@code native} demande au natif de défaire son joint. {@code suspended} : une
      * extrémité est déchargée (D7, R-692) — l'assembly d'où elle part la garde, et la rétablira ; les écouteurs n'en
      * savent rien. Sinon elle est oubliée, et les écouteurs l'apprennent avec sa cause.

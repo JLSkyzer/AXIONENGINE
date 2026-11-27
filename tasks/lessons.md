@@ -2866,3 +2866,14 @@ propre tick lit la pose du tick d'avant quand le support passe après elle.
 
 **Règle.** Ce qui se place sur un support à un tick se repose sur lui à la fin du tick (`ClientTickEvent.END`), les
 positions d'avant suivant d'autant ; juger séparément le dessin et la position de tick.
+
+## 2026-11-27 | Un nouveau lot de GameTests a fait échouer un test ancien
+
+**Ce qui a mal tourné.** Un GameTest rangé dans un lot neuf (`batch = "teleportation_ecouteur"`) : le test de
+l'avertissement de compilation, du lot par défaut, a échoué (« état CACHED »).
+
+**Cause.** L'ordre des lots n'est pas garanti ; le lot neuf a fait passer les lots de rechargement avant le lot par
+défaut, et un rechargement reprend les assets du cache, sans l'avertissement.
+
+**Règle.** Un lot à part seulement quand un test change un état global qu'un autre lit ; sinon le lot par défaut. Le test
+de l'avertissement reste dépendant de l'ordre : à rendre indépendant s'il retombe.

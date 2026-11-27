@@ -506,6 +506,7 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
         control(stream);
         drive(stream);
         impulses(stream);
+        moves(stream);
         energy(stream);
         wear(stream);
         weather(stream, tick);
@@ -592,6 +593,24 @@ public final class AssemblyRuntime implements SimCommandProvider, SimStateSink {
             }
         }
         return true;
+    }
+
+    /**
+     * Envoie les téléportations (ADR-183 D2) aux corps qui existent ; une assembly sans corps a déjà sa pose. Chaque
+     * membre de l'ensemble déplacé laisse ce qu'il portait : le natif change sa pose à ce pas.
+     */
+    private void moves(SimCommandStream stream) {
+        ledger.forEachBody((index, assembly) -> {
+            AxionEntity.Move move = assembly.takeMove();
+            if (move == null) {
+                return;
+            }
+            stream.moveAssembly(index, GENERATION, move.position(), move.rotation(), move.reset());
+            assembly.releaseCarried();
+            for (AxionEntity member : ensembleMembers(assembly)) {
+                member.releaseCarried();
+            }
+        });
     }
 
     /**

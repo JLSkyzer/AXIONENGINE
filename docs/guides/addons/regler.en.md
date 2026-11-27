@@ -340,3 +340,14 @@ given before the engine simulates the assembly, or to a suspended one, it is los
 
 An administrator **names** an assembly, like any entity: `/axion rename <target> <name>`. The name shows above it and
 is saved.
+
+They **teleport** it within its world, with whatever is attached to it: `/axion tp <target> <x y z> [yaw]` (with a yaw,
+it arrives upright, facing it); your mod, through the API:
+
+```java
+// The root body's pose; other bodies and trailers follow in the same motion. true: arrive stopped.
+assembly.teleport(new Transform(new Vec3(120.5, 70, -40.5), new Quaternionf(), new Vec3(1, 1, 1)), true);
+```
+
+Anchors to blocks are released (cause `teleported` for attachment listeners), and whatever stood on it without being
+seated stays where it is. The destination chunk is loaded.

@@ -573,6 +573,16 @@ public final class ForgeAxionApi implements AxionApi {
         }
 
         @Override
+        public void teleport(Transform transform, boolean reset) {
+            java.util.Objects.requireNonNull(transform, "transform");
+            org.joml.Quaternionf turn = transform.rotation();
+            if (!finite(transform.position()) || !turn.isFinite() || turn.lengthSquared() < 1.0e-6f) {
+                throw new IllegalArgumentException("pose non finie ou rotation nulle : " + transform);
+            }
+            serverSide().teleportAssembly(transform.position(), turn, reset);
+        }
+
+        @Override
         public void applyTorque(Vec3 torque) {
             java.util.Objects.requireNonNull(torque, "torque");
             if (!finite(torque)) {

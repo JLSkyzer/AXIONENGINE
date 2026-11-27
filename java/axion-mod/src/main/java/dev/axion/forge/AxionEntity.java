@@ -272,6 +272,8 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /** Vrai tant que la gestion d'activité le suspend (ADR-153), au dernier état : ses vitesses gardées sont gelées. */
     private boolean suspendedBody;
 
+    /** Le déplacement qu'une téléportation attend d'envoyer au natif (serveur, ADR-183 D2). */
+    private Move pendingMove;
     /** Les forces et les couples du prochain pas (serveur, ADR-183 D1), et le tick où ils ont été demandés. */
     private final List<Push> pushes = new ArrayList<>();
     private long pushedAt;
@@ -3791,6 +3793,79 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
      * @param local le point d'une force au repère du corps racine, ou {@code null} : au centre de masse
      */
     record Push(boolean torque, float[] vector, float[] local) {}
+
+    /**
+     * Un déplacement à envoyer au natif (ADR-183 D2).
+     *
+     * @param position la position d'arrivée du corps racine
+     * @param rotation son orientation d'arrivée {@code (x, y, z, w)}
+     * @param reset vrai pour arriver arrêtée
+     */
+    record Move(double[] position, float[] rotation, boolean reset) {}
+
+    /**
+     * Téléporte l'assembly (serveur, ADR-183 D2) : le natif déplace son ensemble au prochain pas. Sa pose et ses corps
+     * sont déjà posés ici, pour une assembly que le moteur ne simule pas encore ; le natif y arrive d'un déplacement
+     * identique. Les ancres aux blocs de l'ensemble sont défaites, ce qu'elle portait reste, et le chunk d'arrivée se
+     * charge.
+     *
+     * @param position la position d'arrivée du corps racine
+     * @param orientation son orientation d'arrivée
+     * @param reset vrai pour arriver arrêtée
+     */
+    void teleportAssembly(Vec3 position, Quaternionf orientation, boolean reset) {
+        AuthoritativeThread.require();
+        Quaternionf arrival = new Quaternionf(orientation).normalize();
+        Quaternionf turn = new Quaternionf(arrival).mul(new Quaternionf(bodyRotation).conjugate());
+        AttachmentRuntime attachments = AttachmentRuntime.current();
+        if (attachments != null) {
+            attachments.detachAnchors(this);
+        }
+        List<BodyPose> moved = new ArrayList<>(secondaryBodies.size());
+        for (BodyPose body : secondaryBodies) {
+            Vector3f offset = turn.transform(new Vector3f(
+                    (float) (body.x() - getX()), (float) (body.y() - getY()), (float) (body.z() - getZ())));
+            moved.add(new BodyPose(body.node(), position.x + offset.x, position.y + offset.y, position.z + offset.z,
+                    new Quaternionf(turn).mul(body.rotation()), turned(turn, body.linear(), reset),
+                    turned(turn, body.angular(), reset)));
+        }
+        secondaryBodies = List.copyOf(moved);
+        System.arraycopy(turned(turn, linearVelocity, reset), 0, linearVelocity, 0, 3);
+        System.arraycopy(turned(turn, angularVelocity, reset), 0, angularVelocity, 0, 3);
+        bodyRotation.set(arrival);
+        if (level() instanceof net.minecraft.server.level.ServerLevel server) {
+            server.getChunkSource().addRegionTicket(net.minecraft.server.level.TicketType.POST_TELEPORT,
+                    new net.minecraft.world.level.ChunkPos(net.minecraft.core.BlockPos.containing(position)), 2,
+                    getId());
+        }
+        setPos(position);
+        releaseCarried();
+        pendingMove = new Move(new double[] {position.x, position.y, position.z},
+                new float[] {arrival.x, arrival.y, arrival.z, arrival.w}, reset);
+    }
+
+    private static float[] turned(Quaternionf turn, float[] velocity, boolean reset) {
+        if (reset) {
+            return new float[3];
+        }
+        Vector3f v = turn.transform(new Vector3f(velocity[0], velocity[1], velocity[2]));
+        return new float[] {v.x, v.y, v.z};
+    }
+
+    /** Oublie les poses gardées pour porter, et les supports posés sur elle : un saut de pose ne les emporte pas. */
+    void releaseCarried() {
+        carryHistory.clear();
+        for (net.minecraft.world.entity.Entity carried : CarrySupports.carriedBy(this)) {
+            CarrySupports.clear(carried);
+        }
+    }
+
+    /** {@return le déplacement qu'une téléportation attend, et l'oublie ; {@code null} sans} */
+    Move takeMove() {
+        Move taken = pendingMove;
+        pendingMove = null;
+        return taken;
+    }
 
     /** Garde une force pour le prochain pas, au point du monde ou au centre de masse (ADR-183 D1). */
     void addForce(Vec3 force, Vec3 worldPoint) {

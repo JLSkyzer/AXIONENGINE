@@ -13,12 +13,13 @@ use crate::sim::SimDriver;
 use ax_math::{DVec3, Quat, Vec3};
 use ax_model::dm::attachments::{Attach, Detach, SetAttachmentLength};
 use ax_model::dm::commands::{
-    dimension_env_flags, entity_proxy_shape, opcode, sim_mode, vehicle_input_flags, ApplyForce,
-    AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint, RemoveAssembly,
-    RemoveWorldTile, SetAssemblyPose, SetAssemblyState, SetDimensionEnv, SetEnergy,
-    SetEntityProxies, SetKinematic, SetObservers, SetParameters, SetPhysicsMaterials, SetSensor,
-    SetSimMode, SetStateExport, SetVehicleInput, SetWear, SetWet, SetWheelTorques,
-    SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader, MAX_TILE_PALETTE,
+    dimension_env_flags, entity_proxy_shape, move_flags, opcode, sim_mode, vehicle_input_flags,
+    ApplyForce, AssemblyBodyPose, BreakJoint, CommandStreamHeader, EntityProxyDesc, JamJoint,
+    MoveAssembly, RemoveAssembly, RemoveWorldTile, SetAssemblyPose, SetAssemblyState,
+    SetDimensionEnv, SetEnergy, SetEntityProxies, SetKinematic, SetObservers, SetParameters,
+    SetPhysicsMaterials, SetSensor, SetSimMode, SetStateExport, SetVehicleInput, SetWear, SetWet,
+    SetWheelTorques, SetWorldCollision, SetWorldFluid, SetWorldHeightfield, SimCommandHeader,
+    MAX_TILE_PALETTE,
 };
 use ax_model::dm::handle::Handle;
 use ax_model::dm::physics::PhysicsMaterial;
@@ -183,6 +184,24 @@ fn apply_one(
                 read_f32(payload, 44),
             );
             driver.apply_set_kinematic(handle, position, rotation);
+            outcome.applied += 1;
+        }
+        // ADR-183 D2 : une assembly et celles qui lui sont attachées, déplacées d'un même mouvement.
+        opcode::MOVE_ASSEMBLY => {
+            expect_len(payload, MoveAssembly::BYTES)?;
+            let position = DVec3::new(
+                read_f64(payload, 8),
+                read_f64(payload, 16),
+                read_f64(payload, 24),
+            );
+            let rotation = Quat::from_xyzw(
+                read_f32(payload, 32),
+                read_f32(payload, 36),
+                read_f32(payload, 40),
+                read_f32(payload, 44),
+            );
+            let reset = read_u32(payload, 48) & move_flags::RESET != 0;
+            driver.move_assembly(read_handle(payload, 0), position, rotation, reset);
             outcome.applied += 1;
         }
         opcode::APPLY_IMPULSE => {
@@ -985,6 +1004,30 @@ mod tests {
         assert!(
             world.angular_velocity(ball).unwrap().y > 0.1,
             "le couple fait tourner"
+        );
+    }
+
+    #[test]
+    fn adr183_d2_move_assembly_se_lit_et_deplace() {
+        let mut driver = SimDriver::new();
+        let handle = Handle::new(5, 1);
+        body_in(&mut driver, 0, handle);
+        let mut payload = handle.index.to_le_bytes().to_vec();
+        payload.extend_from_slice(&handle.generation.to_le_bytes());
+        for coordonnee in [30.0f64, 12.0, -4.0] {
+            payload.extend_from_slice(&coordonnee.to_le_bytes());
+        }
+        payload.extend(f32s(&[0.0, 0.0, 0.0, 1.0]));
+        payload.extend_from_slice(&1u32.to_le_bytes());
+        payload.extend_from_slice(&0u32.to_le_bytes());
+        assert_eq!(payload.len(), MoveAssembly::BYTES);
+        let mut bytes = stream();
+        push(&mut bytes, opcode::MOVE_ASSEMBLY, &payload);
+        let outcome = apply_command_stream(&mut driver, &bytes, 1).unwrap();
+        assert_eq!(outcome.applied, 1);
+        let etat = driver.collect_states()[0];
+        assert!(
+            (etat.position[0] - 30.0).abs() < 1.0e-3 && (etat.position[2] + 4.0).abs() < 1.0e-3
         );
     }
 
