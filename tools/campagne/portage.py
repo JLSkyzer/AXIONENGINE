@@ -49,6 +49,10 @@ SUPPORT_MIN = 0.9
 MOTIF_VALEURS = re.compile(r"carburant ([\d.]+), mouillé ([\d.]+), usure ([\d.]+)")
 # L'écart admis entre ce que le serveur dit et ce que l'observateur lit : la quantification du snapshot et un tick.
 TOLERANCES = (0.01, 0.05, 0.02)
+MOTIF_MOTEUR = re.compile(r"moteur (-?[\d.]+) tr/min (-?[\d.]+) kW")
+# Un moteur électrique, si le serveur en dit un : régime et puissance changent d'un tick à l'autre.
+TOLERANCE_REGIME = 0.1
+TOLERANCE_PUISSANCE_KW = 0.5
 
 
 def valeurs_lues(releve: list[str], journal: list[str]) -> bool:
@@ -64,6 +68,25 @@ def valeurs_lues(releve: list[str], journal: list[str]) -> bool:
     juste = all(e <= t for e, t in zip(ecarts, TOLERANCES)) and vus[0] > 0.1 and vus[1] > 0.1 and vus[2] > 0.3
     print(f"valeurs lues par l'observateur : {vus} ; écarts au serveur {[round(e, 3) for e in ecarts]} :"
           f" {'justes' if juste else 'FAUSSES'}")
+    return moteur_lu(releve, journal) and juste
+
+
+def moteur_lu(releve: list[str], journal: list[str]) -> bool:
+    """Sans moteur au serveur, vrai ; sinon, ce que l'observateur lit du moteur doit être près d'une valeur dite."""
+    dit = [m for ligne in journal if "valeurs serveur" in ligne and (m := MOTIF_MOTEUR.search(ligne))]
+    if not dit:
+        return True
+    lu = next((m for ligne in releve if ligne.startswith("valeurs vues") and (m := MOTIF_MOTEUR.search(ligne))), None)
+    if not lu:
+        print("moteur : absent chez l'observateur")
+        return False
+    regime, puissance = (float(x) for x in lu.groups())
+    proche = min(dit, key=lambda m: abs(float(m.group(1)) - regime))
+    attendu, attendue = (float(x) for x in proche.groups())
+    juste = (regime > 100 and abs(regime - attendu) <= TOLERANCE_REGIME * max(attendu, 1.0)
+             and abs(puissance - attendue) <= TOLERANCE_PUISSANCE_KW)
+    print(f"moteur lu par l'observateur : {regime} tr/min, {puissance} kW ; au serveur {attendu} tr/min, {attendue} kW :"
+          f" {'juste' if juste else 'FAUX'}")
     return juste
 
 

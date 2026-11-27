@@ -131,6 +131,16 @@ public final class EssaiPorteur {
 
         private Serveur() {}
 
+        /** Le premier moteur électrique, tel que ses sources le disent ; rien sans lui. */
+        private static String moteur(dev.axion.api.assembly.Assembly assembly) {
+            try {
+                return String.format(Locale.ROOT, ", moteur %.0f tr/min %.3f kW",
+                        assembly.source("motor.arriere.rpm"), assembly.source("motor.arriere.power"));
+            } catch (IllegalArgumentException sansMoteur) {
+                return "";
+            }
+        }
+
         /** Où le plateau doit être après {@code t} ticks de conduite, depuis sa place de départ. */
         private static Vec3 ascension(int t) {
             double haut = PAS * Math.min(t, MONTE) - PAS * Math.max(0, Math.min(t - MONTE - TIENT, DESCEND));
@@ -276,6 +286,10 @@ public final class EssaiPorteur {
                     reservoir.set(reservoir.capacity() / 4);
                     assembly.vehicle().orElseThrow().setWear(vehicule.wheelNodes().get(0), 0.4);
                     monde.setWeatherParameters(0, 20 * 60 * 20, true, false);
+                    // Un moteur électrique ne tourne que son contact mis, une variable du conducteur absent.
+                    if (assembly.variables().names().contains("contact")) {
+                        assembly.variables().setBoolean("contact", true);
+                    }
                 }
             } else if (tick == CHARGEMENT) {
                 joueur.teleportTo(monde, vehicule.getX(), vehicule.getY() + 2.5, vehicule.getZ(), 180f, 15f);
@@ -289,7 +303,8 @@ public final class EssaiPorteur {
             if (VALEURS && conduite % 20 == 0) {
                 var reservoir = ForgeAxionApi.view(vehicule).energy().stores().get(0);
                 LOGGER.info(String.format(Locale.ROOT, "[porteur] valeurs serveur : carburant %.3f, mouillé %.3f, usure %.3f",
-                        reservoir.ratio(), ForgeAxionApi.view(vehicule).source("vehicle.wet"), vehicule.wheelWear(0)));
+                        reservoir.ratio(), ForgeAxionApi.view(vehicule).source("vehicle.wet"), vehicule.wheelWear(0))
+                        + moteur(ForgeAxionApi.view(vehicule)));
             }
             // Assis au volant, le porté tient la voiture : un mod ne la conduit pas (ADR-167 D9), elle reste là.
             if (SIEGE != null && "conducteur".equals(PLACE)) {

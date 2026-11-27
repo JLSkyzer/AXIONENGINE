@@ -149,8 +149,10 @@ public final class EssaiObservateur {
             if (mesures == MESURE) {
                 AxionEntity.RenderPose pose = vehicule.renderPose(1f);
                 if (pose.vehicle() != null && !pose.wheels().isEmpty()) {
-                    lignes.add(String.format(Locale.ROOT, "valeurs vues : carburant %.3f, mouillé %.3f, usure %.3f",
-                            pose.vehicle().store0(), pose.vehicle().wet(), pose.wheels().get(0).wear()));
+                    lignes.add(String.format(Locale.ROOT, "valeurs vues : carburant %.3f, mouillé %.3f, usure %.3f,"
+                            + " moteur %.0f tr/min %.3f kW", pose.vehicle().store0(), pose.vehicle().wet(),
+                            pose.wheels().get(0).wear(), pose.vehicle().motors().rpm(0),
+                            pose.vehicle().motors().power(0)));
                 }
                 terminer(minecraft, null);
             }
