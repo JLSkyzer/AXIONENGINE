@@ -96,6 +96,22 @@ class PersistedStateTest {
     }
 
     @Test
+    @DisplayName("ADR-153 D3 : l'entité posée ailleurs emporte ses corps ; à sa place sauvée, rien ne change")
+    void deplaceAvecLEntite() {
+        PersistedState etat = etat();
+        assertSame(etat, etat.movedTo(1.5, 64.0, -3.25), "à sa place : le même état, au bit près");
+        PersistedState ailleurs = etat.movedTo(11.5, 70.0, -3.25);
+        assertArrayEquals(new double[] {11.5, 70.0, -3.25}, ailleurs.position());
+        assertEquals(12.5, ailleurs.bodies().get(0).x());
+        assertEquals(69.0, ailleurs.bodies().get(0).y());
+        assertEquals(-3.0, ailleurs.bodies().get(0).z());
+        assertEquals(30_000_010.25, ailleurs.bodies().get(1).x(), "chaque corps du même décalage");
+        assertSame(etat.rotation(), ailleurs.rotation());
+        assertEquals(etat.joints(), ailleurs.joints());
+        assertEquals(7, ailleurs.bodies().get(0).node());
+    }
+
+    @Test
     @DisplayName("ADR-153 D2 : le sommeil est le bit 0 de axion:flags, les bits réservés restent")
     void drapeaux() {
         CompoundTag gardees = new CompoundTag();

@@ -196,6 +196,73 @@ public final class TeleportationGameTests {
                 .thenSucceed();
     }
 
+    /** La téléportation de Minecraft, que {@code /tp} et d'autres mods appellent, emmène l'assembly elle aussi. */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr183_leTpDeMinecraftEmmeneLAssembly(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity assembly = AssembliesDeTest.poser(helper, MAILLON, new Vec3(4.5, DESSUS_DALLE + 0.05, 4.5), DROIT);
+        Vec3 arrivee = helper.absoluteVec(new Vec3(11.5, DESSUS_DALLE + 0.1, 11.5));
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(assembly.hasPhysicalBounds(), "simulée"))
+                .thenIdle(10)
+                .thenExecute(() -> helper.getLevel().getServer().getCommands().performPrefixedCommand(
+                        helper.getLevel().getServer().createCommandSourceStack().withSuppressedOutput(),
+                        String.format(java.util.Locale.ROOT, "tp %s %.3f %.3f %.3f", assembly.getUUID(), arrivee.x,
+                                arrivee.y, arrivee.z)))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    double ecart = assembly.position().subtract(arrivee).horizontalDistance();
+                    helper.assertTrue(ecart < 0.5, "l'assembly est arrivée : à " + ecart + " bloc, en "
+                            + assembly.position());
+                    assembly.discard();
+                })
+                .thenSucceed();
+    }
+
+    /**
+     * Une assembly relue puis posée ailleurs — un changement de monde recopie son NBT avant de la déplacer — garde la
+     * place de ses corps autour d'elle, et ne revient pas où elle a été sauvée.
+     */
+    @GameTest(template = "test/plancher_16", timeoutTicks = 200)
+    public static void adr183_uneCopieDeplaceeGardeSesCorpsAutourDElle(GameTestHelper helper) {
+        ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
+        AxionEntity original = AssembliesDeTest.poser(helper, "axion:test/deux_corps",
+                new Vec3(4.5, DESSUS_DALLE + 0.5, 4.5), DROIT);
+        Vec3 arrivee = helper.absoluteVec(new Vec3(11.5, DESSUS_DALLE + 0.5, 11.5));
+        AxionEntity[] copie = new AxionEntity[1];
+        Vec3[] ecart = new Vec3[1];
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(original.hasPhysicalBounds()
+                        && original.secondaryBodies().size() == 1, "simulée, à deux corps"))
+                .thenIdle(20)
+                .thenExecute(() -> {
+                    ecart[0] = place(original.secondaryBodies().get(0)).subtract(original.position());
+                    net.minecraft.nbt.CompoundTag nbt = new net.minecraft.nbt.CompoundTag();
+                    original.saveWithoutId(nbt);
+                    original.discard();
+                    copie[0] = AxionEntities.ASSEMBLY.get().create(helper.getLevel());
+                    copie[0].load(nbt);
+                    copie[0].setUUID(java.util.UUID.randomUUID());
+                    copie[0].moveTo(arrivee.x, arrivee.y, arrivee.z, 0f, 0f);
+                    helper.assertTrue(helper.getLevel().addFreshEntity(copie[0]), "entrée au monde");
+                })
+                .thenWaitUntil(() -> helper.assertTrue(copie[0].hasPhysicalBounds(), "la copie est simulée"))
+                .thenIdle(10)
+                .thenExecute(() -> {
+                    double derive = copie[0].position().subtract(arrivee).horizontalDistance();
+                    helper.assertTrue(derive < 0.5, "elle reste où on l'a posée : à " + derive + " bloc");
+                    Vec3 relatif = place(copie[0].secondaryBodies().get(0)).subtract(copie[0].position());
+                    helper.assertTrue(relatif.distanceTo(ecart[0]) < 0.4,
+                            "son second corps est autour d'elle : " + relatif + " pour " + ecart[0]);
+                    copie[0].discard();
+                })
+                .thenSucceed();
+    }
+
+    private static Vec3 place(AxionEntity.BodyPose corps) {
+        return new Vec3(corps.x(), corps.y(), corps.z());
+    }
+
     /** Une arrivée hors du monde de Minecraft est refusée, à la commande comme à l'API, et rien ne bouge. */
     @GameTest(template = "test/plancher_16", timeoutTicks = 100)
     public static void adr183_uneArriveeHorsDuMondeEstRefusee(GameTestHelper helper) {

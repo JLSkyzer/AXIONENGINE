@@ -815,9 +815,7 @@ final class AxionCommands {
             source.sendFailure(Component.literal("AXION : position hors du monde"));
             return 0;
         }
-        // L'avant d'une assembly est son -Z (6.5) : un demi-tour de plus que le lacet de Minecraft.
-        org.joml.Quaternionf rotation = Float.isNaN(yaw) ? assembly.orientation()
-                : new org.joml.Quaternionf().rotationY((float) (Math.PI - Math.toRadians(yaw)));
+        org.joml.Quaternionf rotation = Float.isNaN(yaw) ? assembly.orientation() : AxionEntity.upright(yaw);
         assembly.teleportAssembly(position, rotation, true);
         String where = String.format(java.util.Locale.ROOT, "%.2f %.2f %.2f", position.x, position.y, position.z);
         LOGGER.info("AXION : /axion tp {} ({}) vers {} demandé par {}", target.getUUID(), assembly.definitionId(), where,

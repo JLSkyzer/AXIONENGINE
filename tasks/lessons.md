@@ -2900,3 +2900,14 @@ GameTests de la tranche 2 sautaient de quelques blocs, sans joueur à bord ; le 
 
 **Règle.** Un « non éprouvé » d'une opération sur une entité montée se teste avant de passer à la suite, à une distance
 qui sort des chunks chargés, avec un joueur à bord (`JoueurSimule`).
+
+## 2026-11-27 | `/tp` et une copie de NBT ramenaient une assembly à sa place
+
+**Ce qui a mal tourné.** La commande `/tp` de Minecraft annonçait un succès et l'assembly revenait au tick suivant ; une
+assembly relue puis posée ailleurs revenait où elle avait été sauvée.
+
+**Cause.** Le natif tient la pose : tout déplacement fait côté Java par Minecraft (`teleportTo`, `moveTo` après lecture)
+lui échappait, et l'état sauvé des corps (`axion:pos`) primait sur le `Pos` de l'entité.
+
+**Règle.** Une entité dont la pose vit ailleurs que dans Minecraft reprend chaque chemin par lequel Minecraft la déplace
+(`teleportTo`, relecture puis `moveTo`) et le dit au moteur ; chacun a son GameTest.

@@ -349,7 +349,8 @@ Un administrateur **nomme** une assembly, comme toute entité : `/axion rename <
 au-dessus d'elle et se sauvegarde.
 
 Il la **téléporte** dans son monde, avec ce qui lui est attaché : `/axion tp <cible> <x y z> [lacet]` (avec un lacet,
-elle arrive droite et tournée vers lui) ; ton mod, par l'API :
+elle arrive droite et tournée vers lui) ; la commande `/tp` de Minecraft et `Entity#teleportTo` font de même, à l'arrêt ;
+ton mod, par l'API :
 
 ```java
 // La pose du corps racine ; les autres corps et les remorques suivent d'un même mouvement. true : à l'arrêt.

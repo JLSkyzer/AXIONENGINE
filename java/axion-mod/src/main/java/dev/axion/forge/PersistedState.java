@@ -110,6 +110,23 @@ record PersistedState(
     }
 
     /**
+     * {@return le même état, son corps racine à la position donnée et chaque autre corps déplacé d'autant} La position de
+     * l'entité fait foi (ADR-153) : un NBT recopié ailleurs — changement de monde, structure, commande — emporte ses
+     * corps. À sa place sauvée, cet état lui-même.
+     */
+    PersistedState movedTo(double x, double y, double z) {
+        double dx = x - position[0];
+        double dy = y - position[1];
+        double dz = z - position[2];
+        if (dx == 0 && dy == 0 && dz == 0) {
+            return this;
+        }
+        List<Body> moved = bodies.stream().map(body -> new Body(body.node(), body.name(), body.x() + dx, body.y() + dy,
+                body.z() + dz, body.rotation(), body.linear(), body.angular())).toList();
+        return new PersistedState(new double[] {x, y, z}, rotation, linear, angular, sleeping, moved, joints);
+    }
+
+    /**
      * Écrit l'état dans les clés gardées d'une entité. Les bits réservés de {@link #FLAGS} qu'elles
      * portent déjà restent.
      */

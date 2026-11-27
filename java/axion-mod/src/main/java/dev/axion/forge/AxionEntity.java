@@ -403,12 +403,13 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
     /**
      * {@return l'état que la sauvegarde de l'entité a gardé, pour la création de son assembly, ou vide
      * pour une entité qui n'en sort pas} Rendu une fois : une assembly recréée plus tard part de l'état
-     * courant de l'entité (ADR-153 D3, D4).
+     * courant de l'entité (ADR-153 D3, D4). Ses corps suivent la position de l'entité, si elle n'est plus
+     * celle de la sauvegarde.
      */
     Optional<PersistedState> takeSavedState() {
         PersistedState state = savedState;
         savedState = null;
-        return Optional.ofNullable(state);
+        return Optional.ofNullable(state).map(saved -> saved.movedTo(getX(), getY(), getZ()));
     }
 
     /** {@return vrai si l'entité sort d'une sauvegarde : son assembly naît endormie (22.4)} Rendu une fois. */
@@ -3846,6 +3847,43 @@ public final class AxionEntity extends Entity implements IEntityAdditionalSpawnD
                     turn, reset);
         }
         arrive(position, arrival, turn, reset);
+    }
+
+    /**
+     * La téléportation de Minecraft, que des commandes et d'autres mods appellent : comme {@link #teleportAssembly},
+     * arrêtée, dans son orientation. Sans elle, le moteur ramènerait l'entité à sa place au pas suivant.
+     */
+    @Override
+    public void teleportTo(double x, double y, double z) {
+        if (level().isClientSide()) {
+            super.teleportTo(x, y, z);
+            return;
+        }
+        teleportAssembly(new Vec3(x, y, z), orientation(), true);
+    }
+
+    /**
+     * La téléportation de {@code /tp} : dans son monde, comme {@link #teleportAssembly}, arrêtée. Un lacet autre que le
+     * sien — celui que {@code /tp} rend sans rotation — la pose droite et tournée vers lui. Vers un autre monde,
+     * Minecraft la recopie.
+     */
+    @Override
+    public boolean teleportTo(net.minecraft.server.level.ServerLevel target, double x, double y, double z,
+            java.util.Set<net.minecraft.world.entity.RelativeMovement> relative, float yaw, float pitch) {
+        if (target != level()) {
+            return super.teleportTo(target, x, y, z, relative, yaw, pitch);
+        }
+        boolean turned = Math.abs(net.minecraft.util.Mth.wrapDegrees(yaw - getYRot())) > 0.01f;
+        teleportAssembly(new Vec3(x, y, z), turned ? upright(yaw) : orientation(), true);
+        return true;
+    }
+
+    /**
+     * {@return l'orientation droite d'une assembly tournée vers un lacet de Minecraft} L'avant d'une assembly est son -Z
+     * (6.5) : un demi-tour de plus que le lacet.
+     */
+    static Quaternionf upright(float yaw) {
+        return new Quaternionf().rotationY((float) (Math.PI - Math.toRadians(yaw)));
     }
 
     /**

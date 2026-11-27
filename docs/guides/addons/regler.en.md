@@ -342,7 +342,8 @@ An administrator **names** an assembly, like any entity: `/axion rename <target>
 is saved.
 
 They **teleport** it within its world, with whatever is attached to it: `/axion tp <target> <x y z> [yaw]` (with a yaw,
-it arrives upright, facing it); your mod, through the API:
+it arrives upright, facing it); Minecraft's `/tp` and `Entity#teleportTo` do the same, at rest; your mod, through the
+API:
 
 ```java
 // The root body's pose; other bodies and trailers follow in the same motion. true: arrive stopped.
