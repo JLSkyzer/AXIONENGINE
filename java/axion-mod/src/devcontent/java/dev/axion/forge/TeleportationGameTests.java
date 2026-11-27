@@ -31,6 +31,15 @@ public final class TeleportationGameTests {
 
     private TeleportationGameTests() {}
 
+    /** Après chaque lot par défaut : un joueur simulé qu'un test a laissé ne pèse pas sur les lots suivants. */
+    @net.minecraft.gametest.framework.AfterBatch(batch = "defaultBatch")
+    public static void aucunJoueurSimuleNeSurvitAuLot(net.minecraft.server.level.ServerLevel monde) {
+        int restes = dev.axion.forge.net.JoueurSimule.quitterLesRestants();
+        if (restes > 0) {
+            org.slf4j.LoggerFactory.getLogger("AXION test").warn("{} joueur(s) simulé(s) laissé(s) par le lot", restes);
+        }
+    }
+
     /**
      * {@code /axion tp} pose le maillon tracteur à la position demandée, tourné au lacet demandé ; l'attelé le suit à sa
      * place relative, la corde tient, et l'ancre à un bloc est défaite, cause {@code teleported}.
@@ -263,7 +272,7 @@ public final class TeleportationGameTests {
      * {@code /execute in minecraft:the_nether run tp} : Minecraft recopie l'assembly dans l'autre monde ; elle y arrive
      * à la position demandée, ses corps autour d'elle, et l'ancienne disparaît.
      */
-    @GameTest(template = "test/plancher_16", timeoutTicks = 300)
+    @GameTest(template = "test/plancher_16", timeoutTicks = 1200)
     public static void adr183_unChangementDeMondeEmporteSesCorps(GameTestHelper helper) {
         ObservateursDeTest.declarer(helper, new Vec3(8.0, DESSUS_DALLE, 8.0));
         AxionEntity original = AssembliesDeTest.poser(helper, "axion:test/deux_corps",
@@ -286,6 +295,13 @@ public final class TeleportationGameTests {
                 .thenExecute(() -> {
                     helper.assertTrue(nether != null, "le serveur d'essai a un nether");
                     ecart[0] = place(original.secondaryBodies().get(0)).subtract(original.position());
+                    // Les chunks d'arrivée forcés et chargés : un serveur lent les générait après l'expiration du test.
+                    for (int cx = -1; cx <= 1; cx++) {
+                        for (int cz = -1; cz <= 1; cz++) {
+                            nether.setChunkForced(cx, cz, true);
+                            nether.getChunk(cx, cz);
+                        }
+                    }
                     // Une dalle au nether, et un témoin qui en tient les chunks.
                     for (int x = 0; x < 16; x++) {
                         for (int z = 0; z < 16; z++) {
@@ -316,6 +332,11 @@ public final class TeleportationGameTests {
                     } finally {
                         copie[0].discard();
                         temoin[0].quitter();
+                        for (int cx = -1; cx <= 1; cx++) {
+                            for (int cz = -1; cz <= 1; cz++) {
+                                nether.setChunkForced(cx, cz, false);
+                            }
+                        }
                     }
                 })
                 .thenSucceed();

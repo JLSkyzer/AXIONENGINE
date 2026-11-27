@@ -2911,3 +2911,16 @@ lui échappait, et l'état sauvé des corps (`axion:pos`) primait sur le `Pos` d
 
 **Règle.** Une entité dont la pose vit ailleurs que dans Minecraft reprend chaque chemin par lequel Minecraft la déplace
 (`teleportTo`, relecture puis `moveTo`) et le dit au moteur ; chacun a son GameTest.
+
+## 2026-11-27 | un GameTest expiré sur la CI laissait son joueur simulé, et un autre test échouait
+
+**Ce qui a mal tourné.** Sur la CI GitHub, `adr183_unChangementDeMondeEmporteSesCorps` a expiré (chunk du nether généré
+trop tard sur une machine lente), puis `t411` a échoué : « les métriques du tick ne disent pas le joueur et ses 49
+assemblies ». La CI locale était verte.
+
+**Cause.** Le test attendait un chunk d'une autre dimension sans le forcer, en ticks ; expiré, il ne faisait pas partir
+son `JoueurSimule`, compté ensuite par le test réseau du lot suivant.
+
+**Règle.** Un test qui attend un chunk le force et le charge avant (`setChunkForced`, `getChunk`) ; tout ce qu'un test
+ajoute au serveur partagé (joueur, observateur) a un nettoyage indépendant de sa réussite (`@AfterBatch`).
+

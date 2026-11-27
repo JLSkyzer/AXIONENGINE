@@ -68,6 +68,9 @@ public final class JoueurSimule {
      */
     public record Recu(int handle, long serverTick, AssemblyState state) {}
 
+    /** Les joueurs simulés entrés et pas encore partis, dans l'ordre de leur entrée. */
+    private static final java.util.Set<JoueurSimule> EN_JEU = new java.util.LinkedHashSet<>();
+
     private static final ResourceLocation CANAL =
             new ResourceLocation(NetProtocol.CHANNEL_NAMESPACE, NetProtocol.CHANNEL_PATH);
 
@@ -106,6 +109,18 @@ public final class JoueurSimule {
             registres.add(relu.definitions());
             return relu.journal();
         }, this::appliquer, dev.axion.forge.net.RequiredAddons::installed);
+    }
+
+    /**
+     * Fait partir ceux qu'un test a laissés en jeu — échoué ou expiré avant son départ —, sur le thread du serveur :
+     * un joueur resté pèserait sur les lots suivants.
+     *
+     * @return le nombre de joueurs partis
+     */
+    public static int quitterLesRestants() {
+        List<JoueurSimule> restants = new ArrayList<>(EN_JEU);
+        restants.forEach(JoueurSimule::quitter);
+        return restants.size();
     }
 
     /**
@@ -158,6 +173,7 @@ public final class JoueurSimule {
         joueur.moveTo(position.x, position.y, position.z, 0f, 0f);
         level.getServer().getPlayerList().placeNewPlayer(connexion, joueur);
         simule.joueur = joueur;
+        EN_JEU.add(simule);
         simule.tick();
         return simule;
     }
@@ -255,6 +271,9 @@ public final class JoueurSimule {
      * sortie.
      */
     public void quitter() {
+        if (!EN_JEU.remove(this)) {
+            return;
+        }
         joueur.connection.disconnect(Component.literal("fin du joueur simulé"));
         if (joueur.getServer().getPlayerList().getPlayer(joueur.getUUID()) == joueur) {
             // Le canal n'a pas fermé la connexion : Minecraft le retire comme à sa fermeture.
